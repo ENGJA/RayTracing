@@ -8,13 +8,31 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 {
 	switch (uMsg)
 	{
+	case WM_NCCREATE:
+	{
+		LPCREATESTRUCT pcs = reinterpret_cast<LPCREATESTRUCT>(lParam);
+		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pcs->lpCreateParams));
+
+		cout << "Window non-client area created!" << endl;
+		break;
+	}
 	case WM_CREATE:
+	{
+		Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+		app->OnCreate();
+
 		cout << "Window created!" << endl;
-		return 0;
+		break;
+	}
 	case WM_DESTROY:
+	{
+		Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+		app->OnDestroy();
+
 		cout << "Window destroyed!" << endl;
 		PostQuitMessage(0);
-		return 0;
+		break;
+	}
 	}
 
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -40,7 +58,7 @@ bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, i
 
 	mHwnd = CreateWindow(className, windowName, WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT, CW_USEDEFAULT, width, height,
-		NULL, NULL, GetModuleHandle(NULL), NULL);
+		NULL, NULL, GetModuleHandle(NULL), this);
 
 	if (!mHwnd)
 	{
@@ -53,6 +71,27 @@ bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, i
 
 	mIsRunning = true;
 	return true;
+}
+
+void Application::Update()
+{
+	MSG msg;
+	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+	{
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+}
+
+void Application::OnCreate()
+{
+	cout << "Application OnCreate called!" << endl;
+}
+
+void Application::OnDestroy()
+{
+	cout << "Application OnDestroy called!" << endl;
+	mIsRunning = false;
 }
 
 
