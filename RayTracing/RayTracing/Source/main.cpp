@@ -1,0 +1,29 @@
+#include <iostream>
+#include "Application.h"
+
+using std::cerr, std::endl;
+
+int main()
+{
+	LPCWSTR className = L"RayTracingWindowClass";
+	LPCWSTR windowName = L"Ray Tracing Application";
+	Application app;
+
+	// Initialize the application
+	if (!app.Initialize(className, windowName))
+	{
+		cerr << "Failed to initialize application." << endl;
+		return -1;
+	}
+
+	// Main loop
+	while(app.IsRunning())
+	{
+
+
+	}
+
+
+	return 0;
+
+}
