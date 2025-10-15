@@ -1,5 +1,5 @@
-#include <iostream>
-#include "Application.h"
+#include "pch.h"
+#include "Application/Application.h"
 
 using std::cerr, std::endl;
 
@@ -24,5 +24,4 @@ int main()
 
 
 	return 0;
-
 }
