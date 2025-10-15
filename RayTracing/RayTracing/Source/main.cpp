@@ -19,8 +19,7 @@ int main()
 	// Main loop
 	while(app.IsRunning())
 	{
-
-
+		app.Update();
 	}
 
 
