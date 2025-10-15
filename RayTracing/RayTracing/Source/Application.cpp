@@ -24,7 +24,7 @@ static ATOM RegisterWindowClass(HINSTANCE hInstance, LPCWSTR className)
 {
 	WNDCLASS wc{};
 	wc.lpfnWndProc = WindowProc;
-	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW);
+	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wc.hInstance = hInstance;
 	wc.lpszClassName = className;
 	return RegisterClass(&wc);
