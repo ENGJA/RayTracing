@@ -13,5 +13,69 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Pliki nagłówkowe\Application">
+      <UniqueIdentifier>{f21cd646-4f5a-40a1-bbcb-7b227f5008de}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\Application">
+      <UniqueIdentifier>{f3edf4f6-86a5-4833-8f6e-21ed5a95e633}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\DXGI">
+      <UniqueIdentifier>{9ba3b6cd-c5a9-4b50-89e3-5f2454d82ccc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\DXGI">
+      <UniqueIdentifier>{c710c7aa-8201-4412-a21e-b631945be1ec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI">
+      <UniqueIdentifier>{27d660df-aac8-44c4-af74-36df2c841c49}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI">
+      <UniqueIdentifier>{109215a2-d011-4b97-b636-d49e1ef60d1b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Source\pch.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\main.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Application\Application.cpp">
+      <Filter>Pliki źródłowe\Application</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\DXGI\DXGIAdapter.cpp">
+      <Filter>Pliki źródłowe\DXGI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\DXGI\DXGIFactory.cpp">
+      <Filter>Pliki źródłowe\DXGI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Renderer.cpp">
+      <Filter>Pliki źródłowe\RenderAPI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12Device.cpp">
+      <Filter>Pliki źródłowe\RenderAPI</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Source\helpers.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\pch.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Application\Application.h">
+      <Filter>Pliki nagłówkowe\Application</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\DXGI\DXGIFactory.h">
+      <Filter>Pliki nagłówkowe\DXGI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\DXGI\DXGIAdapter.h">
+      <Filter>Pliki nagłówkowe\DXGI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Renderer.h">
+      <Filter>Pliki nagłówkowe\RenderAPI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12Device.h">
+      <Filter>Pliki nagłówkowe\RenderAPI</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
