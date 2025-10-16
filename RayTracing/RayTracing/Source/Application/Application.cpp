@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Application.h"
+#include "RenderAPI/DXGI/DXGIDebug.h"
 
 using std::cout, std::cerr, std::endl;
 
@@ -91,6 +92,8 @@ void Application::OnCreate()
 void Application::OnDestroy()
 {
 	cout << "Application OnDestroy called!" << endl;
+	mRenderer.Release();
+	DXGIDebug::GetInstance().ReportLiveObjects();
 	mIsRunning = false;
 }
 

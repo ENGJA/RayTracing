@@ -19,17 +19,23 @@
     <Filter Include="Pliki źródłowe\Application">
       <UniqueIdentifier>{f3edf4f6-86a5-4833-8f6e-21ed5a95e633}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Pliki źródłowe\DXGI">
-      <UniqueIdentifier>{9ba3b6cd-c5a9-4b50-89e3-5f2454d82ccc}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Pliki nagłówkowe\DXGI">
-      <UniqueIdentifier>{c710c7aa-8201-4412-a21e-b631945be1ec}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Pliki nagłówkowe\RenderAPI">
       <UniqueIdentifier>{27d660df-aac8-44c4-af74-36df2c841c49}</UniqueIdentifier>
     </Filter>
     <Filter Include="Pliki źródłowe\RenderAPI">
       <UniqueIdentifier>{109215a2-d011-4b97-b636-d49e1ef60d1b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI\DXGI">
+      <UniqueIdentifier>{9ba3b6cd-c5a9-4b50-89e3-5f2454d82ccc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI\D3D12">
+      <UniqueIdentifier>{3fb1e6ee-2a14-4865-be7c-049b5e2d6f81}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI\D3D12">
+      <UniqueIdentifier>{c7887ff9-1166-47f8-823c-70c571ba7a03}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI\DXGI">
+      <UniqueIdentifier>{c710c7aa-8201-4412-a21e-b631945be1ec}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -43,16 +49,22 @@
       <Filter>Pliki źródłowe\Application</Filter>
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\DXGI\DXGIAdapter.cpp">
-      <Filter>Pliki źródłowe\DXGI</Filter>
+      <Filter>Pliki źródłowe\RenderAPI\DXGI</Filter>
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\DXGI\DXGIFactory.cpp">
-      <Filter>Pliki źródłowe\DXGI</Filter>
+      <Filter>Pliki źródłowe\RenderAPI\DXGI</Filter>
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\Renderer.cpp">
       <Filter>Pliki źródłowe\RenderAPI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\RenderAPI\D3D12Device.cpp">
-      <Filter>Pliki źródłowe\RenderAPI</Filter>
+    <ClCompile Include="Source\RenderAPI\DXGI\DXGIDebug.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\DXGI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12Device.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12Debug.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -66,16 +78,22 @@
       <Filter>Pliki nagłówkowe\Application</Filter>
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\DXGI\DXGIFactory.h">
-      <Filter>Pliki nagłówkowe\DXGI</Filter>
+      <Filter>Pliki nagłówkowe\RenderAPI\DXGI</Filter>
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\DXGI\DXGIAdapter.h">
-      <Filter>Pliki nagłówkowe\DXGI</Filter>
+      <Filter>Pliki nagłówkowe\RenderAPI\DXGI</Filter>
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\Renderer.h">
       <Filter>Pliki nagłówkowe\RenderAPI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\RenderAPI\D3D12Device.h">
-      <Filter>Pliki nagłówkowe\RenderAPI</Filter>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12Debug.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12Device.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\DXGI\DXGIDebug.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\DXGI</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
