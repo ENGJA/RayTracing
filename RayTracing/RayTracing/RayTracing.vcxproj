@@ -110,7 +110,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -129,11 +129,13 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Source\RenderAPI\D3D12Device.cpp">
+    <ClCompile Include="Source\RenderAPI\DXGI\DXGIDebug.cpp" />
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12Debug.cpp" />
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12Device.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
@@ -148,7 +150,9 @@
     <ClCompile Include="Source\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Source\RenderAPI\D3D12Device.h" />
+    <ClInclude Include="Source\RenderAPI\DXGI\DXGIDebug.h" />
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12Debug.h" />
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12Device.h" />
     <ClInclude Include="Source\RenderAPI\DXGI\DXGIAdapter.h" />
     <ClInclude Include="Source\RenderAPI\DXGI\DXGIFactory.h" />
     <ClInclude Include="Source\helpers.h" />

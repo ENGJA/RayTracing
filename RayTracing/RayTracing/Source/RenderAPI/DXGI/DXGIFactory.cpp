@@ -17,12 +17,6 @@ DXGIFactory::DXGIFactory()
 
 DXGIAdapter DXGIFactory::GetAdapter()
 {
-	if (!Get())
-	{
-		cerr << "DXGIFactory is not initialized." << endl;
-		throw;
-	}
-
 	DXGIAdapter adapter;
 	HRESULT hr = Get()->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
 	ASSERT_HR(hr, "EnumAdapterByGpuPreference failed.");
