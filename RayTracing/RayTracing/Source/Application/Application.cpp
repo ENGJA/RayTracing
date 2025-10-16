@@ -1,8 +1,7 @@
+#include "pch.h"
 #include "Application.h"
-#include <iostream>
 
 using std::cout, std::cerr, std::endl;
-//#include <windowsx.h>
 
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -86,6 +85,7 @@ void Application::Update()
 void Application::OnCreate()
 {
 	cout << "Application OnCreate called!" << endl;
+	mRenderer.Initialize(mHwnd);// , 1280, 720);
 }
 
 void Application::OnDestroy()
