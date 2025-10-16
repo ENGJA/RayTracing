@@ -18,7 +18,7 @@ bool DXGIDebug::Initialize()
 
 void DXGIDebug::Enable()
 {
-	if(!EnsureInitialized())
+	if (!EnsureInitialized())
 		return;
 
 	Get()->EnableLeakTrackingForThread();
