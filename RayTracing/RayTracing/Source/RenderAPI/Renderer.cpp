@@ -2,14 +2,26 @@
 
 #include "Renderer.h"
 #include "DXGI/DXGIFactory.h"
+#include "DXGI/DXGIDebug.h"
+#include "D3D12/D3D12Debug.h"
 #include "helpers.h"
 
 
 using std::wcout, std::endl;
 
 
+Renderer::~Renderer()
+{
+	Release();
+}
+
 void Renderer::Initialize(HWND hwnd)
 {
+#ifdef _DEBUG
+	D3D12Debug::GetInstance().Enable();
+	DXGIDebug::GetInstance().Enable();
+#endif
+
 	DXGIFactory factory;
 	DXGIAdapter adapter = factory.GetAdapter();
 
@@ -21,3 +33,9 @@ void Renderer::Initialize(HWND hwnd)
 
 	mDevice.Initialize(adapter.Get());
 }
+
+void Renderer::Release()
+{
+	mDevice.Reset();
+}
+
