@@ -1,8 +1,9 @@
 #pragma once
 
-class DXGIDebug : public Microsoft::WRL::ComPtr<IDXGIDebug1>
+class DXGIDebug //: public Microsoft::WRL::ComPtr<IDXGIDebug1>
 {
 private:
+	Microsoft::WRL::ComPtr<IDXGIDebug1> mDebug;
 	static DXGIDebug mInstance;
 
 	DXGIDebug() = default;

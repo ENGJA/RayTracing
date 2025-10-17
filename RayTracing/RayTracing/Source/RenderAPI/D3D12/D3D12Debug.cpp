@@ -6,12 +6,12 @@ D3D12Debug D3D12Debug::mInstance;
 
 bool D3D12Debug::EnsureInitialized()
 {
-	return Get() || Initialize();
+	return mDebug || Initialize();
 }
 
 bool D3D12Debug::Initialize()
 {
-	HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(&ptr_));
+	HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(mDebug.ReleaseAndGetAddressOf()));
 	RETURN_FAIL_HR(hr, "D3D12GetDebugInterface failed.");
 	return true;
 }
@@ -21,5 +21,5 @@ void D3D12Debug::Enable()
 	if (!EnsureInitialized())
 		return;
 
-	Get()->EnableDebugLayer();
+	mDebug->EnableDebugLayer();
 }

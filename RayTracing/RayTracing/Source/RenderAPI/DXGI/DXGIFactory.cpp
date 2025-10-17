@@ -11,14 +11,14 @@ DXGIFactory::DXGIFactory()
 	flags |= DXGI_CREATE_FACTORY_DEBUG;
 #endif
 
-	HRESULT hr = CreateDXGIFactory2(flags, IID_PPV_ARGS(&ptr_));
+	HRESULT hr = CreateDXGIFactory2(flags, IID_PPV_ARGS(mFactory.ReleaseAndGetAddressOf()));
 	ASSERT_HR(hr, "CreateDXGIFactory2 failed.");
 }
 
 DXGIAdapter DXGIFactory::GetAdapter()
 {
 	DXGIAdapter adapter;
-	HRESULT hr = Get()->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
+	HRESULT hr = mFactory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
 	ASSERT_HR(hr, "EnumAdapterByGpuPreference failed.");
 
 	return adapter;

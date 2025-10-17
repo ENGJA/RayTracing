@@ -3,12 +3,6 @@
 #include "helpers.h"
 
 
-
-D3D12CommandQueue::~D3D12CommandQueue()
-{
-	Release();
-}
-
 void D3D12CommandQueue::Initialize(ID3D12Device* pDevice)
 {
 	D3D12_COMMAND_QUEUE_DESC desc{};
@@ -17,15 +11,9 @@ void D3D12CommandQueue::Initialize(ID3D12Device* pDevice)
 	desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	desc.NodeMask = 0;
 
-	HRESULT hr = pDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&ptr_));
+	HRESULT hr = pDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(mCommandQueue.ReleaseAndGetAddressOf()));
 	ASSERT_HR(hr, "Failed to create command queue.");
 
-	hr = pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(mFence.GetAddressOf()));
+	hr = pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(mFence.ReleaseAndGetAddressOf()));
 	ASSERT_HR(hr, "Failed to create fence for command queue.");
-}
-
-void D3D12CommandQueue::Release()
-{
-	mFence.Reset();
-	Reset();
 }

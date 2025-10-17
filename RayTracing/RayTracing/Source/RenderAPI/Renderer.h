@@ -12,8 +12,6 @@ private:
 	D3D12CommandList mCommandList;
 
 public:
-	~Renderer();
 	void Initialize(HWND hwnd);
-	void Release();
 };
 
