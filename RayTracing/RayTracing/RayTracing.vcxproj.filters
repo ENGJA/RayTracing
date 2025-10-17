@@ -37,6 +37,12 @@
     <Filter Include="Pliki nagłówkowe\RenderAPI\DXGI">
       <UniqueIdentifier>{c710c7aa-8201-4412-a21e-b631945be1ec}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI\D3D12\Command">
+      <UniqueIdentifier>{42508aae-3212-4d42-b1bf-a22d7985406a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI\D3D12\Command">
+      <UniqueIdentifier>{1039a4fb-dca3-4658-8b24-33af223f7e09}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -66,6 +72,12 @@
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12Debug.cpp">
       <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\Command\D3D12CommandQueue.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\D3D12\Command</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\Command\D3D12CommandList.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\D3D12\Command</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\helpers.h">
@@ -94,6 +106,12 @@
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\DXGI\DXGIDebug.h">
       <Filter>Pliki nagłówkowe\RenderAPI\DXGI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\Command\D3D12CommandQueue.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12\Command</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\Command\D3D12CommandList.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12\Command</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
