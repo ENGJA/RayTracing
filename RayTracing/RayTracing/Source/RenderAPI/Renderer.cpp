@@ -9,12 +9,6 @@
 
 using std::wcout, std::endl;
 
-
-Renderer::~Renderer()
-{
-	Release();
-}
-
 void Renderer::Initialize(HWND hwnd)
 {
 #ifdef _DEBUG
@@ -34,12 +28,5 @@ void Renderer::Initialize(HWND hwnd)
 	mDevice.Initialize(adapter.Get());
 	mCommandQueue.Initialize(mDevice.Get());
 	mCommandList.Initialize(mDevice.Get());
-}
-
-void Renderer::Release()
-{
-	mCommandList.Release();
-	mCommandQueue.Release();
-	mDevice.Reset();
 }
 

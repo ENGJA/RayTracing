@@ -7,11 +7,9 @@ private:
 	UINT64 mCurrentFenceValue = 0;
 
 public:
-	~D3D12CommandQueue();
 	UINT64 GetCurrentFenceValue() const { return mCurrentFenceValue; }
 	ID3D12Fence* GetFence() const { return mFence.Get(); }
 
 	void Initialize(ID3D12Device* pDevice);
-	void Release();
 };
 
