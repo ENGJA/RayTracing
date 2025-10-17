@@ -133,6 +133,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\RenderAPI\D3D12\Command\D3D12CommandList.cpp" />
+    <ClCompile Include="Source\RenderAPI\D3D12\Command\D3D12CommandQueue.cpp" />
     <ClCompile Include="Source\RenderAPI\DXGI\DXGIDebug.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12Debug.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12Device.cpp">
@@ -150,6 +152,8 @@
     <ClCompile Include="Source\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\RenderAPI\D3D12\Command\D3D12CommandList.h" />
+    <ClInclude Include="Source\RenderAPI\D3D12\Command\D3D12CommandQueue.h" />
     <ClInclude Include="Source\RenderAPI\DXGI\DXGIDebug.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12Debug.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12Device.h" />

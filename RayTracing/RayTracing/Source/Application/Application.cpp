@@ -93,7 +93,9 @@ void Application::OnDestroy()
 {
 	cout << "Application OnDestroy called!" << endl;
 	mRenderer.Release();
+#ifdef _DEBUG
 	DXGIDebug::GetInstance().ReportLiveObjects();
+#endif
 	mIsRunning = false;
 }
 

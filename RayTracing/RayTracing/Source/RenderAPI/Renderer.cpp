@@ -1,10 +1,10 @@
 #include "pch.h"
 
-#include "Renderer.h"
-#include "DXGI/DXGIFactory.h"
-#include "DXGI/DXGIDebug.h"
 #include "D3D12/D3D12Debug.h"
+#include "DXGI/DXGIDebug.h"
+#include "DXGI/DXGIFactory.h"
 #include "helpers.h"
+#include "Renderer.h"
 
 
 using std::wcout, std::endl;
@@ -32,10 +32,14 @@ void Renderer::Initialize(HWND hwnd)
 	wcout << "Selected device: " << desc.Description << endl;
 
 	mDevice.Initialize(adapter.Get());
+	mCommandQueue.Initialize(mDevice.Get());
+	mCommandList.Initialize(mDevice.Get());
 }
 
 void Renderer::Release()
 {
+	mCommandList.Release();
+	mCommandQueue.Release();
 	mDevice.Reset();
 }
 
