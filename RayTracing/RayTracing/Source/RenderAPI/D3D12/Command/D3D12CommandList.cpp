@@ -4,13 +4,13 @@
 
 void D3D12CommandList::Initialize(ID3D12Device* pDevice)
 {
-	HRESULT hr = pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(mCommandAllocator.GetAddressOf()));
+	HRESULT hr = pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(mCommandAllocator.ReleaseAndGetAddressOf()));
 	ASSERT_HR(hr, "Failed to create command allocator.");
 
-	hr = pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&ptr_));
+	hr = pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(mCommandList.ReleaseAndGetAddressOf()));
 	ASSERT_HR(hr, "Failed to create command list.");
 
-	hr = Get()->Close();
+	hr = mCommandList->Close();
 	ASSERT_HR(hr, "Failed to close command list after creation.");
 }
 

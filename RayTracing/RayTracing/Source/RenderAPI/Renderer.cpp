@@ -21,7 +21,7 @@ void Renderer::Initialize(HWND hwnd)
 
 	DXGI_ADAPTER_DESC desc;
 	HRESULT hr = adapter->GetDesc(&desc);
-	ASSERT_HR(hr, "Failed to get adapter description.");
+	CHECK_HR(hr, "Failed to get adapter description.");
 
 	wcout << "Selected device: " << desc.Description << endl;
 

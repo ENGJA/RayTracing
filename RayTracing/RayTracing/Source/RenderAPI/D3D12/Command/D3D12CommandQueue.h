@@ -1,7 +1,8 @@
 #pragma once
-class D3D12CommandQueue : public Microsoft::WRL::ComPtr<ID3D12CommandQueue>
+class D3D12CommandQueue //: public Microsoft::WRL::ComPtr<ID3D12CommandQueue>
 {
 private:
+	Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue;
 	Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
 
 	UINT64 mCurrentFenceValue = 0;
