@@ -18,9 +18,10 @@ private:
 	void CreateBufferViews();
 
 public:
-	void Initialize(IDXGIFactory2* pFactory, const HWND hwnd, ID3D12CommandQueue* pCommandQueue, ID3D12Device* pDevice, UINT width, UINT height);
+	void Initialize(IDXGIFactory2* pFactory, HWND hwnd, ID3D12CommandQueue* pCommandQueue, ID3D12Device* pDevice, UINT width, UINT height);
 	void Present();
-
+	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferView() const;
+	ID3D12Resource2* GetCurrentBackBuffer() const { return mBackBuffers[mCurrentBackBufferIndex].Get(); }
 
 };
 

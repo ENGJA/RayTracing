@@ -83,6 +83,7 @@ void Application::Update()
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
+	mRenderer.Update();
 }
 
 void Application::OnCreate(HWND hwnd)

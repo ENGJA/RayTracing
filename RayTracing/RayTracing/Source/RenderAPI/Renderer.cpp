@@ -33,3 +33,48 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	mHeight = height;
 }
 
+
+
+void Renderer::Update()
+{
+	// Open command list
+	mCommandList.ResetCommandList();
+
+	// Initialize and set barrier
+	D3D12_RESOURCE_BARRIER barrier{};
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.Transition.pResource = mSwapChain.GetCurrentBackBuffer();
+	barrier.Transition.Subresource = 0;
+	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	mCommandList.Get()->ResourceBarrier(1, &barrier);
+
+	// Clear render target
+	static int frameCount = 0;
+	float red = sinf(frameCount++ * 0.01f) * 0.5f + 0.5f;
+	const FLOAT clearColor[] = { red, 0.2f, 0.4f, 1.0f };
+
+	mCommandList.Get()->ClearRenderTargetView(
+		mSwapChain.GetCurrentBackBufferView(),
+		clearColor,
+		0,
+		nullptr);
+
+	// Change barrier states and set again
+	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+	mCommandList.Get()->ResourceBarrier(1, &barrier);
+
+	// Execute command list
+	mCommandList.Get()->Close();
+	ID3D12CommandList* commandLists[] = { mCommandList.Get() };
+	mCommandQueue.ExecuteCommandLists(1, commandLists);
+
+	// Present the frame
+	mSwapChain.Present();
+
+	// Wait for GPU to finish
+	mCommandQueue.WaitForFence();
+}
+

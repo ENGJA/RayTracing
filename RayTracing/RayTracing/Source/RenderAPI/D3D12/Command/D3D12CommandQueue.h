@@ -6,12 +6,16 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
 
 	UINT64 mCurrentFenceValue = 0;
+	HANDLE mFenceEvent = nullptr;
 
 public:
+	~D3D12CommandQueue();
 	UINT64 GetCurrentFenceValue() const { return mCurrentFenceValue; }
 	ID3D12Fence* GetFence() const { return mFence.Get(); }
 	ID3D12CommandQueue* Get() const { return mCommandQueue.Get(); }
 
 	void Initialize(ID3D12Device* pDevice);
+	void ExecuteCommandLists(UINT numCommandLists, ID3D12CommandList* const* ppCommandLists);
+	void WaitForFence();
 };
 

@@ -1,6 +1,6 @@
+#include "pch.h"
 #include "DXGISwapChain.h"
 #include "helpers.h"
-#include "pch.h"
 
 void DXGISwapChain::Initialize(IDXGIFactory2* pFactory, HWND hwnd, ID3D12CommandQueue* pCommandQueue, ID3D12Device* pDevice, UINT width, UINT height)
 {
@@ -18,6 +18,13 @@ void DXGISwapChain::Present()
 	HRESULT hr = mSwapChain->Present(1, 0);
 	CHECK_HR(hr, "Failed to present swap chain.");
 	mCurrentBackBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DXGISwapChain::GetCurrentBackBufferView() const
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mRtvHeap->GetCPUDescriptorHandleForHeapStart();
+	rtvHandle.ptr += static_cast<SIZE_T>(mCurrentBackBufferIndex) * mHeapIncrementSize;
+	return rtvHandle;
 }
 
 void DXGISwapChain::CreateDescriptorHeap(ID3D12Device* pDevice)
