@@ -8,7 +8,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap;
 	Microsoft::WRL::ComPtr <ID3D12Device> mDevice;
 
-	UINT mCurrentBackBufferIndex = 0;
 	UINT mWidth = 0;
 	UINT mHeight = 0;
 	UINT mHeapIncrementSize = 0;
@@ -17,11 +16,13 @@ private:
 	void CreateSwapChain(IDXGIFactory2* pFactory, ID3D12CommandQueue* pCommandQueue, HWND hwnd);
 	void CreateBufferViews();
 
+	UINT GetCurrentBackBufferIndex() const { return mSwapChain->GetCurrentBackBufferIndex(); }
+
 public:
 	void Initialize(IDXGIFactory2* pFactory, HWND hwnd, ID3D12CommandQueue* pCommandQueue, ID3D12Device* pDevice, UINT width, UINT height);
 	void Present();
 	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferView() const;
-	ID3D12Resource2* GetCurrentBackBuffer() const { return mBackBuffers[mCurrentBackBufferIndex].Get(); }
+	ID3D12Resource2* GetCurrentBackBuffer() const { return mBackBuffers[GetCurrentBackBufferIndex()].Get(); }
 
 };
 

@@ -50,6 +50,9 @@ static ATOM RegisterWindowClass(HINSTANCE hInstance, LPCWSTR className)
 
 bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, int height)
 {
+	mWidth = width;
+	mHeight = height;
+
 	if (!RegisterWindowClass(GetModuleHandle(NULL), className))
 	{
 		cerr << "Failed to register window class. Error: " << GetLastError() << endl;
@@ -69,8 +72,6 @@ bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, i
 	ShowWindow(mHwnd, SW_SHOW);
 	UpdateWindow(mHwnd);
 
-	mWidth = width;
-	mHeight = height;
 	mIsRunning = true;
 	return true;
 }

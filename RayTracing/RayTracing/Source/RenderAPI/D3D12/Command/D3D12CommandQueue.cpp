@@ -7,7 +7,12 @@ D3D12CommandQueue::~D3D12CommandQueue()
 {
 	mCurrentFenceValue++;
 	WaitForFence();
-	CloseHandle(mFenceEvent);
+
+	if (mFenceEvent)
+	{
+		CloseHandle(mFenceEvent);
+		mFenceEvent = nullptr;
+	}
 }
 
 void D3D12CommandQueue::Initialize(ID3D12Device* pDevice)
