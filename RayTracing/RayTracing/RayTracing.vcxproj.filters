@@ -119,5 +119,8 @@
     <ClInclude Include="Source\RenderAPI\Renderer.h">
       <Filter>Pliki nagłówkowe\RenderAPI</Filter>
     </ClInclude>
+    <ClInclude Include="Source\config.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

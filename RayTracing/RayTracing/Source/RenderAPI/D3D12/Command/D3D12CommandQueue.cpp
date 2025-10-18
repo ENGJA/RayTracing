@@ -3,10 +3,28 @@
 #include "helpers.h"
 
 
+void D3D12CommandQueue::SignalFence(UINT64 value)
+{
+	HRESULT hr = mCommandQueue->Signal(mFence.Get(), value);
+	ASSERT_HR(hr, "Failed to signal fence.");
+}
+
+void D3D12CommandQueue::WaitForFence(UINT64 value)
+{
+	if (mFence->GetCompletedValue() < value)
+	{
+		HRESULT hr = mFence->SetEventOnCompletion(value, mFenceEvent);
+		ASSERT_HR(hr, "Failed to set event on fence completion.");
+		if (WaitForSingleObject(mFenceEvent, INFINITE) != WAIT_OBJECT_0)
+			ASSERT_HR(HRESULT_FROM_WIN32(GetLastError()), "Failed to wait for fence event.");
+	}
+}
+
 D3D12CommandQueue::~D3D12CommandQueue()
 {
 	mCurrentFenceValue++;
-	WaitForFence();
+	SignalFence(mCurrentFenceValue);
+	WaitForFence(mCurrentFenceValue);
 
 	if (mFenceEvent)
 	{
@@ -37,19 +55,15 @@ void D3D12CommandQueue::Initialize(ID3D12Device* pDevice)
 void D3D12CommandQueue::ExecuteCommandLists(UINT numCommandLists, ID3D12CommandList* const* ppCommandLists)
 {
 	mCommandQueue->ExecuteCommandLists(numCommandLists, ppCommandLists);
-	mCurrentFenceValue++;
 }
 
-void D3D12CommandQueue::WaitForFence()
+void D3D12CommandQueue::SignalFenceInFrame(UINT frameIndex)
 {
-	HRESULT hr = mCommandQueue->Signal(mFence.Get(), mCurrentFenceValue);
-	CHECK_HR(hr, "Failed to signal fence.");
+	SignalFence(++mCurrentFenceValue);
+	mFenceValues[frameIndex] = mCurrentFenceValue;
+}
 
-	if (mFence->GetCompletedValue() < mCurrentFenceValue)
-	{
-		hr = mFence->SetEventOnCompletion(mCurrentFenceValue, mFenceEvent);
-		CHECK_HR(hr, "Failed to set event on fence completion.");
-		if (WaitForSingleObject(mFenceEvent, INFINITE) != WAIT_OBJECT_0)
-			ASSERT_HR(HRESULT_FROM_WIN32(GetLastError()), "Failed to wait for fence event.");
-	}
+void D3D12CommandQueue::WaitForFenceInFrame(UINT frameIndex)
+{
+	WaitForFence(mFenceValues[frameIndex]);
 }

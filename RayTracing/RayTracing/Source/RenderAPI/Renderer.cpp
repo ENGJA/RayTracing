@@ -37,6 +37,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 void Renderer::Update()
 {
+	// Wait for GPU to finish with the current back buffer
+	mCommandQueue.WaitForFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
+
 	// Open command list
 	mCommandList.ResetCommandList();
 
@@ -74,7 +77,7 @@ void Renderer::Update()
 	// Present the frame
 	mSwapChain.Present();
 
-	// Wait for GPU to finish
-	mCommandQueue.WaitForFence();
+	// Signal and increment the fence value
+	mCommandQueue.SignalFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
 }
 
