@@ -10,6 +10,7 @@ private:
 public:
 	UINT64 GetCurrentFenceValue() const { return mCurrentFenceValue; }
 	ID3D12Fence* GetFence() const { return mFence.Get(); }
+	ID3D12CommandQueue* Get() const { return mCommandQueue.Get(); }
 
 	void Initialize(ID3D12Device* pDevice);
 };

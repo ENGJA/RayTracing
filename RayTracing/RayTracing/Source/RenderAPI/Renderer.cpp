@@ -9,7 +9,7 @@
 
 using std::wcout, std::endl;
 
-void Renderer::Initialize(HWND hwnd)
+void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 {
 #ifdef _DEBUG
 	D3D12Debug::GetInstance().Enable();
@@ -28,5 +28,8 @@ void Renderer::Initialize(HWND hwnd)
 	mDevice.Initialize(adapter.Get());
 	mCommandQueue.Initialize(mDevice.Get());
 	mCommandList.Initialize(mDevice.Get());
+	mSwapChain.Initialize(factory.Get(), hwnd, mCommandQueue.Get(), mDevice.Get(), width, height);
+	mWidth = width;
+	mHeight = height;
 }
 
