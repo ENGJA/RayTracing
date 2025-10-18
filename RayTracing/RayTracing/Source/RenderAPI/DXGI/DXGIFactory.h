@@ -8,5 +8,6 @@ private:
 public:
 	DXGIFactory();
 	DXGIAdapter GetAdapter();
+	IDXGIFactory7* Get() { return mFactory.Get(); }
 };
 

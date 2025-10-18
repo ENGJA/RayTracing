@@ -19,7 +19,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 	case WM_CREATE:
 	{
 		Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-		app->OnCreate();
+		app->OnCreate(hwnd);
 
 		cout << "Window created!" << endl;
 		break;
@@ -50,6 +50,9 @@ static ATOM RegisterWindowClass(HINSTANCE hInstance, LPCWSTR className)
 
 bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, int height)
 {
+	mWidth = width;
+	mHeight = height;
+
 	if (!RegisterWindowClass(GetModuleHandle(NULL), className))
 	{
 		cerr << "Failed to register window class. Error: " << GetLastError() << endl;
@@ -81,12 +84,13 @@ void Application::Update()
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
+	mRenderer.Update();
 }
 
-void Application::OnCreate()
+void Application::OnCreate(HWND hwnd)
 {
 	cout << "Application OnCreate called!" << endl;
-	mRenderer.Initialize(mHwnd);// , 1280, 720);
+	mRenderer.Initialize(hwnd, mWidth, mHeight);
 }
 
 void Application::OnDestroy()

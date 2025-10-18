@@ -14,3 +14,12 @@ void D3D12CommandList::Initialize(ID3D12Device* pDevice)
 	ASSERT_HR(hr, "Failed to close command list after creation.");
 }
 
+void D3D12CommandList::ResetCommandList()
+{
+	HRESULT hr = mCommandAllocator->Reset();
+	ASSERT_HR(hr, "Failed to reset command allocator.");
+
+	hr = mCommandList->Reset(mCommandAllocator.Get(), nullptr);
+	ASSERT_HR(hr, "Failed to reset command list.");
+}
+

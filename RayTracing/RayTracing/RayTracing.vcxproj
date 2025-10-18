@@ -133,6 +133,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\RenderAPI\DXGI\DXGISwapChain.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\Command\D3D12CommandList.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\Command\D3D12CommandQueue.cpp" />
     <ClCompile Include="Source\RenderAPI\DXGI\DXGIDebug.cpp" />
@@ -152,6 +153,8 @@
     <ClCompile Include="Source\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\config.h" />
+    <ClInclude Include="Source\RenderAPI\DXGI\DXGISwapChain.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\Command\D3D12CommandList.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\Command\D3D12CommandQueue.h" />
     <ClInclude Include="Source\RenderAPI\DXGI\DXGIDebug.h" />
