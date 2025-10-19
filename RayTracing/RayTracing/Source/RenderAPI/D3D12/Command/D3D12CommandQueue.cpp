@@ -22,15 +22,20 @@ void D3D12CommandQueue::WaitForFence(UINT64 value)
 
 D3D12CommandQueue::~D3D12CommandQueue()
 {
-	mCurrentFenceValue++;
-	SignalFence(mCurrentFenceValue);
-	WaitForFence(mCurrentFenceValue);
+	Flush();
 
 	if (mFenceEvent)
 	{
 		CloseHandle(mFenceEvent);
 		mFenceEvent = nullptr;
 	}
+}
+
+void D3D12CommandQueue::Flush()
+{
+	mCurrentFenceValue++;
+	SignalFence(mCurrentFenceValue);
+	WaitForFence(mCurrentFenceValue);
 }
 
 void D3D12CommandQueue::Initialize(ID3D12Device* pDevice)

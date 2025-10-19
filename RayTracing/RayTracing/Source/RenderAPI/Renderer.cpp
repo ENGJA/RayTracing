@@ -41,7 +41,7 @@ void Renderer::Update()
 	mCommandQueue.WaitForFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
 
 	// Open command list
-	mCommandList.ResetCommandList();
+	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
 
 	// Initialize and set barrier
 	D3D12_RESOURCE_BARRIER barrier{};

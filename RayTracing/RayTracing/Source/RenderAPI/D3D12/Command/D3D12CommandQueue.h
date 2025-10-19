@@ -14,6 +14,7 @@ private:
 	void WaitForFence(UINT64 value);
 public:
 	~D3D12CommandQueue();
+	void Flush();
 	//UINT64 GetCurrentFenceValue() const { return mCurrentFenceValue; }
 	//ID3D12Fence* GetFence() const { return mFence.Get(); }
 	ID3D12CommandQueue* Get() const { return mCommandQueue.Get(); }
