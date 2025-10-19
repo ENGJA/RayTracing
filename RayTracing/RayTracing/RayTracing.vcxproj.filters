@@ -81,6 +81,15 @@
     <ClCompile Include="Source\RenderAPI\DXGI\DXGISwapChain.cpp">
       <Filter>Pliki źródłowe\RenderAPI\DXGI</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\HLSL\HLSLCompiler.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\HLSL\HLSLShader.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12Resource.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\helpers.h">
@@ -122,5 +131,24 @@
     <ClInclude Include="Source\config.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
+    <ClInclude Include="Source\RenderAPI\HLSL\HLSLCompiler.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\HLSL\HLSLShader.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\DataTypes.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12Resource.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
+    <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>
