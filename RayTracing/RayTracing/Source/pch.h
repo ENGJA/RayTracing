@@ -5,9 +5,10 @@
 
 // directx
 #include <d3d12.h>
+#include <DirectXMath.h>
 #include <dxgi1_6.h>
 #include <dxgidebug.h>
 
 // windows
-#include <wrl.h>
 #include <windows.h>
+#include <wrl.h>
