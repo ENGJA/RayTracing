@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "D3D12/D3D12Debug.h"
+#include "DataTypes.h"
 #include "DXGI/DXGIDebug.h"
 #include "DXGI/DXGIFactory.h"
 #include "helpers.h"
@@ -31,6 +32,30 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	mSwapChain.Initialize(factory.Get(), hwnd, mCommandQueue.Get(), mDevice.Get(), width, height);
 	mWidth = width;
 	mHeight = height;
+
+
+
+	// temporary: create vertex buffer
+	mVertexBuffer.Initialize(
+		mDevice.Get(),
+		sizeof(Vertex) * 3,
+		D3D12_HEAP_TYPE_UPLOAD,
+		D3D12_RESOURCE_STATE_GENERIC_READ);
+
+	mVertexBuffer.GetResource()->SetName(L"Vertex Buffer");
+
+	const Vertex triangleVertices[] =
+	{
+		{ { 0.0f, 0.25f * mHeight, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { 0.25f * mWidth, -0.25f * mHeight, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.25f * mWidth, -0.25f * mHeight, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+	};
+	void* pData;
+	hr = mVertexBuffer.GetResource()->Map(0, nullptr, &pData);
+	ASSERT_HR(hr, "Failed to map vertex buffer.");
+	memcpy(pData, triangleVertices, sizeof(triangleVertices));
+	mVertexBuffer.GetResource()->Unmap(0, nullptr);
+	// temporary end
 }
 
 
@@ -63,6 +88,8 @@ void Renderer::Update()
 		clearColor,
 		0,
 		nullptr);
+
+
 
 	// Change barrier states and set again
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
