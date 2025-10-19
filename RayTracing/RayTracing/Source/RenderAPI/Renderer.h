@@ -9,9 +9,9 @@ class Renderer
 {
 private:
 	D3D12Device mDevice;
+	DXGISwapChain mSwapChain;
 	D3D12CommandQueue mCommandQueue;
 	D3D12CommandList mCommandList;
-	DXGISwapChain mSwapChain;
 
 	UINT mWidth = 0;
 	UINT mHeight = 0;
