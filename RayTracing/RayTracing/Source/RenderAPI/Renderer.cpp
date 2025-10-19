@@ -46,9 +46,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	const Vertex triangleVertices[] =
 	{
-		{ { 0.0f, 0.25f * mHeight, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { 0.25f * mWidth, -0.25f * mHeight, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -0.25f * mWidth, -0.25f * mHeight, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },      // Top vertex
+		{ { 0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },     // Bottom right vertex
+		{ { -0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },    // Bottom left vertex
 	};
 	void* pData;
 	hr = mVertexBuffer.GetResource()->Map(0, nullptr, &pData);
