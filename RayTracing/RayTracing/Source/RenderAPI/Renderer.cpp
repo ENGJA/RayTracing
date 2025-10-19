@@ -5,6 +5,8 @@
 #include "DXGI/DXGIDebug.h"
 #include "DXGI/DXGIFactory.h"
 #include "helpers.h"
+#include "HLSL/HLSLCompiler.h"
+#include "HLSL/HLSLShader.h"
 #include "Renderer.h"
 
 
@@ -55,6 +57,12 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	ASSERT_HR(hr, "Failed to map vertex buffer.");
 	memcpy(pData, triangleVertices, sizeof(triangleVertices));
 	mVertexBuffer.GetResource()->Unmap(0, nullptr);
+	// temporary end
+
+
+	HLSLCompiler compiler;
+	compiler.Initialize();
+	HLSLShader testShader = compiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
 	// temporary end
 }
 
