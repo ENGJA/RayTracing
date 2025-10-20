@@ -9,6 +9,7 @@ private:
 
 public:
 	void Initialize();
-	HLSLShader CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWSTR entryPoint = L"main");
+	HLSLShader CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWSTR entryPoint = L"main") const;
+	HLSLShader LoadFromCso(LPCWSTR filePath) const;
 };
 

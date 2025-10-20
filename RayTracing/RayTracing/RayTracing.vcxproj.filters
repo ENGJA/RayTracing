@@ -43,6 +43,12 @@
     <Filter Include="Pliki nagłówkowe\RenderAPI\D3D12\Command">
       <UniqueIdentifier>{1039a4fb-dca3-4658-8b24-33af223f7e09}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI\HLSL">
+      <UniqueIdentifier>{d1b64dfe-1cf0-4add-aa0e-9c23f0b14b01}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI\HLSL">
+      <UniqueIdentifier>{272178b6-6664-47b5-bc0b-089a40123c11}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -81,16 +87,19 @@
     <ClCompile Include="Source\RenderAPI\DXGI\DXGISwapChain.cpp">
       <Filter>Pliki źródłowe\RenderAPI\DXGI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\RenderAPI\HLSL\HLSLCompiler.cpp">
-      <Filter>Pliki źródłowe</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\RenderAPI\HLSL\HLSLShader.cpp">
-      <Filter>Pliki źródłowe</Filter>
-    </ClCompile>
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12RootSignature.cpp">
       <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12Resource.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\HLSL\HLSLShader.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\HLSL</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\HLSL\HLSLCompiler.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\HLSL</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12PipelineState.cpp">
       <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
   </ItemGroup>
@@ -134,12 +143,6 @@
     <ClInclude Include="Source\config.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
-    <ClInclude Include="Source\RenderAPI\HLSL\HLSLCompiler.h">
-      <Filter>Pliki nagłówkowe</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\RenderAPI\HLSL\HLSLShader.h">
-      <Filter>Pliki nagłówkowe</Filter>
-    </ClInclude>
     <ClInclude Include="Source\RenderAPI\DataTypes.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
@@ -148,6 +151,18 @@
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12Resource.h">
       <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\HLSL\HLSLCompiler.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\HLSL</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\HLSL\HLSLShader.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\HLSL</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12PipelineState.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -6,5 +6,6 @@ private:
 
 public:
 	void Initialize(ID3D12Device* pDevice);// , const D3D12_ROOT_SIGNATURE_DESC& rootSignatureDesc);
+	ID3D12RootSignature* Get() const { return mRootSignature.Get(); }
 };
 
