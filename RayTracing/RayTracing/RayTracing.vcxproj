@@ -134,6 +134,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12RootSignature.cpp" />
     <ClCompile Include="Source\RenderAPI\HLSL\HLSLCompiler.cpp" />
     <ClCompile Include="Source\RenderAPI\HLSL\HLSLShader.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12Resource.cpp" />
@@ -157,6 +158,7 @@
     <ClCompile Include="Source\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12RootSignature.h" />
     <ClInclude Include="Source\RenderAPI\HLSL\HLSLCompiler.h" />
     <ClInclude Include="Source\RenderAPI\HLSL\HLSLShader.h" />
     <ClInclude Include="Source\RenderAPI\DataTypes.h" />
