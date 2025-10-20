@@ -87,8 +87,11 @@
     <ClCompile Include="Source\RenderAPI\HLSL\HLSLShader.cpp">
       <Filter>Pliki źródłowe</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12RootSignature.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
+    </ClCompile>
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12Resource.cpp">
-      <Filter>Pliki źródłowe</Filter>
+      <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -140,8 +143,11 @@
     <ClInclude Include="Source\RenderAPI\DataTypes.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12RootSignature.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
+    </ClInclude>
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12Resource.h">
-      <Filter>Pliki nagłówkowe</Filter>
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
