@@ -39,7 +39,7 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 		0,
 		serializedRootSig->GetBufferPointer(),
 		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(mRootSignature.GetAddressOf())
+		IID_PPV_ARGS(mRootSignature.ReleaseAndGetAddressOf())
 	);
 
 	ASSERT_HR(hr, "Failed to create root signature.");

@@ -22,7 +22,7 @@ void HLSLCompiler::Initialize()
 	ASSERT_HR(hr, "Failed to create default include handler.");
 }
 
-HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWSTR entryPoint)
+HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWSTR entryPoint) const
 {
 	Microsoft::WRL::ComPtr<IDxcBlobEncoding> sourceBlob;
 	HRESULT hr = mUtils->LoadFile(
@@ -85,4 +85,17 @@ HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWS
 	wcout << "Successfully compiled shader: " << filePath << endl;
 
 	return HLSLShader(shaderBlob.Get());
+}
+
+HLSLShader HLSLCompiler::LoadFromCso(LPCWSTR filePath) const
+{
+	Microsoft::WRL::ComPtr<IDxcBlobEncoding> csoBlob;
+	HRESULT hr = mUtils->LoadFile(
+		filePath,
+		nullptr,
+		csoBlob.GetAddressOf()
+	);
+	ASSERT_HR(hr, "Failed to load CSO file: " << filePath);
+	wcout << "Successfully loaded CSO: " << filePath << endl;
+	return HLSLShader(csoBlob.Get());
 }
