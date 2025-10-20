@@ -44,9 +44,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 		D3D12_HEAP_TYPE_UPLOAD,
 		D3D12_RESOURCE_STATE_GENERIC_READ);
 
-	mVertexBuffer.GetResource()->SetName(L"Vertex Buffer");
+	auto _ = mVertexBuffer.GetResource()->SetName(L"Vertex Buffer");
 
-	const Vertex triangleVertices[] =
+	constexpr Vertex triangleVertices[] =
 	{
 		{ { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },      // Top vertex
 		{ { 0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },     // Bottom right vertex
@@ -64,6 +64,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	compiler.Initialize();
 	HLSLShader testShader = compiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
 	// temporary end
+
+	mRootSignature.Initialize(mDevice.Get());
 }
 
 
