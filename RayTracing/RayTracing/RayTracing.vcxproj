@@ -134,6 +134,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp" />
+    <ClCompile Include="Source\RenderAPI\Depth\DepthDescHeap.cpp" />
+    <ClCompile Include="Source\RenderAPI\Depth\DepthBuffer.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12PipelineState.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12RootSignature.cpp" />
     <ClCompile Include="Source\RenderAPI\HLSL\HLSLCompiler.cpp" />
@@ -159,6 +162,9 @@
     <ClCompile Include="Source\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.h" />
+    <ClInclude Include="Source\RenderAPI\Depth\DepthDescHeap.h" />
+    <ClInclude Include="Source\RenderAPI\Depth\DepthBuffer.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12PipelineState.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12RootSignature.h" />
     <ClInclude Include="Source\RenderAPI\HLSL\HLSLCompiler.h" />
