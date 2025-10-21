@@ -16,7 +16,7 @@ void D3D12PipelineState::Initialize(ID3D12Device* pDevice, HLSLShader vertexShad
 	gpsDesc.VS.BytecodeLength = mVertexShader.GetShaderBlob()->GetBufferSize();
 	gpsDesc.PS.pShaderBytecode = mPixelShader.GetShaderBlob()->GetBufferPointer();
 	gpsDesc.PS.BytecodeLength = mPixelShader.GetShaderBlob()->GetBufferSize();
-	gpsDesc.DepthStencilState.DepthEnable = TRUE; // until depth buffer is implemented
+	gpsDesc.DepthStencilState.DepthEnable = TRUE;
 	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 	gpsDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
 	gpsDesc.DSVFormat = Config::cDepthBufferFormat;
