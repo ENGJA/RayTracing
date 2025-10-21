@@ -27,5 +27,4 @@ void DepthBuffer::Initialize(ID3D12Device* pDevice, UINT width, UINT height)
 
 
 	mDescHeap.Initialize(pDevice);
-	//mDSVHandle = mDescHeap.GetDSVHandle();
 }
