@@ -6,3 +6,8 @@ struct Vertex
 	DirectX::XMFLOAT3 position;
 	DirectX::XMFLOAT4 color;
 };
+
+struct ConstantBufferData
+{
+	DirectX::XMMATRIX vpMatrix;
+};

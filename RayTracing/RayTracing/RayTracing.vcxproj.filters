@@ -102,6 +102,15 @@
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12PipelineState.cpp">
       <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Depth\DepthBuffer.cpp">
+      <Filter>Pliki źródłowe\RenderAPI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Depth\DepthDescHeap.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\helpers.h">
@@ -161,7 +170,13 @@
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12PipelineState.h">
       <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
     </ClInclude>
-    <ClInclude Include="resource.h">
+    <ClInclude Include="Source\RenderAPI\Depth\DepthBuffer.h">
+      <Filter>Pliki nagłówkowe\RenderAPI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Depth\DepthDescHeap.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "config.h"
 #include "D3D12PipelineState.h"
 #include "helpers.h"
 //#include "RenderAPI/HLSL/HLSLCompiler.h"
@@ -15,7 +16,10 @@ void D3D12PipelineState::Initialize(ID3D12Device* pDevice, HLSLShader vertexShad
 	gpsDesc.VS.BytecodeLength = mVertexShader.GetShaderBlob()->GetBufferSize();
 	gpsDesc.PS.pShaderBytecode = mPixelShader.GetShaderBlob()->GetBufferPointer();
 	gpsDesc.PS.BytecodeLength = mPixelShader.GetShaderBlob()->GetBufferSize();
-	gpsDesc.DepthStencilState.DepthEnable = FALSE; // until depth buffer is implemented
+	gpsDesc.DepthStencilState.DepthEnable = TRUE;
+	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	gpsDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	gpsDesc.DSVFormat = Config::cDepthBufferFormat;
 	gpsDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	gpsDesc.NumRenderTargets = 1;
 	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
