@@ -23,6 +23,9 @@ private:
 	// temporary
 	D3D12Resource mVertexBuffer;
 	D3D12_VERTEX_BUFFER_VIEW mVertexBufferView{};
+
+	D3D12Resource mIndexBuffer;
+	D3D12_INDEX_BUFFER_VIEW mIndexBufferView{};
 	// temporary end
 
 	DepthBuffer mDepthBuffer;
