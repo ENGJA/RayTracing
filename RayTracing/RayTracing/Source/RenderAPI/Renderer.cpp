@@ -97,7 +97,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 		{ 0.0f, 0.0f, 0.0f, 0.0f },
 		{ 0.0f, 1.0f, 0.0f, 0.0f });
 
-	// add traslaton
+	// add translation
 	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(0.0f, 0.0f, 1.0f);
 	viewMatrix = translation * viewMatrix;
 	DirectX::XMMATRIX projectionMatrix = DirectX::XMMatrixPerspectiveFovLH(1.2217304764f, 16.0f / 9.0f, 1.0f, 50.0f);
