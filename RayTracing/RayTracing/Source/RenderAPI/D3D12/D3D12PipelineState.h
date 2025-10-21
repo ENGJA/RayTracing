@@ -12,7 +12,7 @@ private:
 
 public:
 	void Initialize(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
-
-
+	ID3D12RootSignature* GetRootSignature() const { return mRootSignature.Get(); }
+	ID3D12PipelineState* Get() const { return mPipelineState.Get(); }
 };
 

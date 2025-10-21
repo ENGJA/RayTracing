@@ -20,7 +20,11 @@ private:
 
 	// temporary
 	D3D12Resource mVertexBuffer;
+	D3D12_VERTEX_BUFFER_VIEW mVertexBufferView;
 	// temporary end
+
+	D3D12_VIEWPORT mViewport;
+	D3D12_RECT mScissorRect;
 
 	D3D12CommandQueue mCommandQueue;
 public:

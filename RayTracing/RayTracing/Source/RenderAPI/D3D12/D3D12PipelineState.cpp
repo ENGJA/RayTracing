@@ -21,6 +21,7 @@ void D3D12PipelineState::Initialize(ID3D12Device* pDevice, HLSLShader vertexShad
 	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	gpsDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
 	gpsDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	gpsDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	gpsDesc.SampleMask = UINT_MAX;
 	gpsDesc.SampleDesc = { 1, 0 };
 	gpsDesc.InputLayout = inputLayoutDesc;

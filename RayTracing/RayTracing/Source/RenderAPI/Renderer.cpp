@@ -57,6 +57,10 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	ASSERT_HR(hr, "Failed to map vertex buffer.");
 	memcpy(pData, triangleVertices, sizeof(triangleVertices));
 	mVertexBuffer.GetResource()->Unmap(0, nullptr);
+
+	mVertexBufferView.BufferLocation = mVertexBuffer.GetResource()->GetGPUVirtualAddress();
+	mVertexBufferView.SizeInBytes = sizeof(triangleVertices);
+	mVertexBufferView.StrideInBytes = sizeof(Vertex);
 	// temporary end
 
 
@@ -83,6 +87,19 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 		std::move(vertexShader),
 		std::move(pixelShader),
 		inputLayoutDesc);
+
+	// set viewport and scissor rect
+	mViewport.TopLeftX = 0.0f;
+	mViewport.TopLeftY = 0.0f;
+	mViewport.Width = static_cast<FLOAT>(mWidth);
+	mViewport.Height = static_cast<FLOAT>(mHeight);
+	mViewport.MinDepth = 0.0f;
+	mViewport.MaxDepth = 1.0f;
+
+	mScissorRect.left = 0;
+	mScissorRect.top = 0;
+	mScissorRect.right = static_cast<LONG>(mWidth);
+	mScissorRect.bottom = static_cast<LONG>(mHeight);
 }
 
 
@@ -106,16 +123,28 @@ void Renderer::Update()
 	mCommandList.Get()->ResourceBarrier(1, &barrier);
 
 	// Clear render target
-	static int frameCount = 0;
-	float red = sinf(frameCount++ * 0.01f) * 0.5f + 0.5f;
-	const FLOAT clearColor[] = { red, 0.2f, 0.4f, 1.0f };
+	//static int frameCount = 0;
+	//float red = sinf(frameCount++ * 0.01f) * 0.5f + 0.5f;
+	//const FLOAT clearColor[] = { red, 0.2f, 0.4f, 1.0f };
+	const FLOAT clearColor[4] = { 0 };
 
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mSwapChain.GetCurrentBackBufferView();
 	mCommandList.Get()->ClearRenderTargetView(
-		mSwapChain.GetCurrentBackBufferView(),
+		rtvHandle,
 		clearColor,
 		0,
 		nullptr);
 
+	// Draw triangle
+	mCommandList.Get()->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+	mCommandList.Get()->RSSetViewports(1, &mViewport);
+	mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+
+	mCommandList.Get()->SetGraphicsRootSignature(mPipelineState.GetRootSignature());
+	mCommandList.Get()->SetPipelineState(mPipelineState.Get());
+	mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList.Get()->IASetVertexBuffers(0, 1, &mVertexBufferView);
+	mCommandList.Get()->DrawInstanced(3, 1, 0, 0);
 
 
 	// Change barrier states and set again
