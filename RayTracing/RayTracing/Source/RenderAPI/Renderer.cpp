@@ -32,36 +32,22 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	mCommandQueue.Initialize(mDevice.Get());
 	mCommandList.Initialize(mDevice.Get());
 	mSwapChain.Initialize(factory.Get(), hwnd, mCommandQueue.Get(), mDevice.Get(), width, height);
+
+	mDepthBuffer.Initialize(mDevice.Get(), width, height);
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
+	dsvDesc.Format = Config::cDepthBufferFormat;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+
+	mDevice.Get()->CreateDepthStencilView(
+		mDepthBuffer.GetResource(),
+		&dsvDesc,
+		mDepthBuffer.GetDSVHandle()
+	);
+
 	mWidth = width;
 	mHeight = height;
 
 
-
-	// temporary: create vertex buffer
-	mVertexBuffer.Initialize(
-		mDevice.Get(),
-		sizeof(Vertex) * 3,
-		D3D12_HEAP_TYPE_UPLOAD,
-		D3D12_RESOURCE_STATE_GENERIC_READ);
-
-	auto _ = mVertexBuffer.GetResource()->SetName(L"Vertex Buffer");
-
-	constexpr Vertex triangleVertices[] =
-	{
-		{ { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },      // Top vertex
-		{ { 0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },     // Bottom right vertex
-		{ { -0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },    // Bottom left vertex
-	};
-	void* pData;
-	hr = mVertexBuffer.GetResource()->Map(0, nullptr, &pData);
-	ASSERT_HR(hr, "Failed to map vertex buffer.");
-	memcpy(pData, triangleVertices, sizeof(triangleVertices));
-	mVertexBuffer.GetResource()->Unmap(0, nullptr);
-
-	mVertexBufferView.BufferLocation = mVertexBuffer.GetResource()->GetGPUVirtualAddress();
-	mVertexBufferView.SizeInBytes = sizeof(triangleVertices);
-	mVertexBufferView.StrideInBytes = sizeof(Vertex);
-	// temporary end
 
 
 	HLSLCompiler compiler;
@@ -100,12 +86,113 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	mScissorRect.top = 0;
 	mScissorRect.right = static_cast<LONG>(mWidth);
 	mScissorRect.bottom = static_cast<LONG>(mHeight);
+
+
+
+
+
+	// temporary: projection matrix and cube vertex buffer
+	DirectX::XMMATRIX viewMatrix = DirectX::XMMatrixLookAtLH(
+		{ 0.0f, 1.0f, -3.0f, 0.0f },
+		{ 0.0f, 0.0f, 0.0f, 0.0f },
+		{ 0.0f, 1.0f, 0.0f, 0.0f });
+
+	// add translation
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(0.0f, 0.0f, 1.0f);
+	viewMatrix = translation * viewMatrix;
+	DirectX::XMMATRIX projectionMatrix = DirectX::XMMatrixPerspectiveFovLH(1.2217304764f, 16.0f / 9.0f, 1.0f, 50.0f);
+	mConstantBufferData.vpMatrix = viewMatrix * projectionMatrix;
+
+
+	mConstantBuffer.Initialize(
+		mDevice.Get(),
+		sizeof(DirectX::XMMATRIX),
+		D3D12_HEAP_TYPE_UPLOAD,
+		D3D12_RESOURCE_STATE_GENERIC_READ);
+
+
+	// cube without index buffer
+	Vertex cube[36] =
+	{
+		// Front face
+		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		// Back face
+		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
+		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ {  0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f, 0.0f, 1.0f } },
+		// Left face
+		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
+		// Right face
+		{ { 0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { 0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f, 0.0f, 1.0f } },
+		{ { 0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { 0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { 0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { 0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		// Top face
+		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ {  0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f, 0.0f, 1.0f } },
+		{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		// Bottom face
+		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+	};
+
+	// temporary: create vertex buffer
+	mVertexBuffer.Initialize(
+		mDevice.Get(),
+		sizeof(cube),
+		D3D12_HEAP_TYPE_UPLOAD,
+		D3D12_RESOURCE_STATE_GENERIC_READ);
+
+	auto _ = mVertexBuffer.Get()->SetName(L"Vertex Buffer");
+
+	void* pData;
+	hr = mVertexBuffer.Get()->Map(0, nullptr, &pData);
+	ASSERT_HR(hr, "Failed to map vertex buffer.");
+	memcpy(pData, cube, sizeof(cube));
+	mVertexBuffer.Get()->Unmap(0, nullptr);
+
+	mVertexBufferView.BufferLocation = mVertexBuffer.Get()->GetGPUVirtualAddress();
+	mVertexBufferView.SizeInBytes = sizeof(cube);
+	mVertexBufferView.StrideInBytes = sizeof(Vertex);
+	// temporary end
 }
 
 
 
 void Renderer::Update()
 {
+	static float angle = 0.0f;
+	angle += 0.01f;
+	DirectX::XMMATRIX rotationMatrix = DirectX::XMMatrixRotationY(angle);
+	DirectX::XMMATRIX worldViewProj = rotationMatrix * mConstantBufferData.vpMatrix;
+	void* pData;
+	mConstantBuffer.Get()->Map(0, nullptr, &pData);
+	memcpy(pData, &worldViewProj, sizeof(DirectX::XMMATRIX));
+	mConstantBuffer.Get()->Unmap(0, nullptr);
+
+
 	// Wait for GPU to finish with the current back buffer
 	mCommandQueue.WaitForFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
 
@@ -129,14 +216,13 @@ void Renderer::Update()
 	const FLOAT clearColor[4] = { 0 };
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mSwapChain.GetCurrentBackBufferView();
-	mCommandList.Get()->ClearRenderTargetView(
-		rtvHandle,
-		clearColor,
-		0,
-		nullptr);
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = mDepthBuffer.GetDSVHandle();
+
+	mCommandList.Get()->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	mCommandList.Get()->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	// Draw triangle
-	mCommandList.Get()->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+	mCommandList.Get()->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 	mCommandList.Get()->RSSetViewports(1, &mViewport);
 	mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
@@ -144,7 +230,14 @@ void Renderer::Update()
 	mCommandList.Get()->SetPipelineState(mPipelineState.Get());
 	mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	mCommandList.Get()->IASetVertexBuffers(0, 1, &mVertexBufferView);
-	mCommandList.Get()->DrawInstanced(3, 1, 0, 0);
+
+
+	mCommandList.Get()->SetGraphicsRootConstantBufferView(
+		0,
+		mConstantBuffer.Get()->GetGPUVirtualAddress());
+
+	mCommandList.Get()->DrawInstanced(36, 1, 0, 0);
+
 
 
 	// Change barrier states and set again

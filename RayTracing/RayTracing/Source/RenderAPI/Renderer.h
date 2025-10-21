@@ -5,6 +5,8 @@
 #include "D3D12/D3D12Device.h"
 #include "D3D12/D3D12PipelineState.h"
 #include "D3D12/D3D12Resource.h"
+#include "DataTypes.h"
+#include "Depth/DepthBuffer.h"
 #include "DXGI/DXGISwapChain.h"
 
 class Renderer
@@ -20,11 +22,16 @@ private:
 
 	// temporary
 	D3D12Resource mVertexBuffer;
-	D3D12_VERTEX_BUFFER_VIEW mVertexBufferView;
+	D3D12_VERTEX_BUFFER_VIEW mVertexBufferView{};
 	// temporary end
 
-	D3D12_VIEWPORT mViewport;
-	D3D12_RECT mScissorRect;
+	DepthBuffer mDepthBuffer;
+
+	D3D12_VIEWPORT mViewport{};
+	D3D12_RECT mScissorRect{};
+
+	ConstantBufferData mConstantBufferData{};
+	D3D12Resource mConstantBuffer;
 
 	D3D12CommandQueue mCommandQueue;
 public:
