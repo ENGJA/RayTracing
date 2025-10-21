@@ -98,7 +98,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 		{ 0.0f, 1.0f, 0.0f, 0.0f });
 
 	// add translation
-	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(0.0f, 0.0f, 1.0f);
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(0.0f, -1.0f, 1.0f);
 	viewMatrix = translation * viewMatrix;
 	DirectX::XMMATRIX projectionMatrix = DirectX::XMMatrixPerspectiveFovLH(1.2217304764f, 16.0f / 9.0f, 1.0f, 50.0f);
 	mConstantBufferData.vpMatrix = viewMatrix * projectionMatrix;
@@ -111,52 +111,56 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 		D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-	// cube without index buffer
-	Vertex cube[36] =
+	// cube with index buffer
+	Vertex cube[] =
 	{
 		// Front face
-		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
-		{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -1.0f, -1.0f, -1.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -1.0f,  1.0f, -1.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ {  1.0f,  1.0f, -1.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ {  1.0f, -1.0f, -1.0f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
 		// Back face
-		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
-		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
-		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
-		{ {  0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -1.0f, -1.0f, 1.0f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ {  1.0f, -1.0f, 1.0f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
+		{ {  1.0f,  1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -1.0f,  1.0f, 1.0f }, { 0.5f, 0.5f, 0.5f, 1.0f } },
 		// Left face
-		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -1.0f, -1.0f,  1.0f }, { 1.0f, 0.5f, 0.5f, 1.0f } },
+		{ { -1.0f,  1.0f,  1.0f }, { 0.5f, 1.0f, 0.5f, 1.0f } },
+		{ { -1.0f,  1.0f, -1.0f }, { 0.5f, 0.5f, 1.0f, 1.0f } },
+		{ { -1.0f, -1.0f, -1.0f }, { 1.0f, 1.0f, 0.5f, 1.0f } },
 		// Right face
-		{ { 0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
-		{ { 0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f, 0.0f, 1.0f } },
-		{ { 0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
-		{ { 0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
-		{ { 0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
-		{ { 0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { 1.0f, -1.0f, -1.0f }, { 0.2f, 0.8f, 0.2f, 1.0f } },
+		{ { 1.0f,  1.0f, -1.0f }, { 0.2f, 0.2f, 0.8f, 1.0f } },
+		{ { 1.0f,  1.0f,  1.0f }, { 0.8f, 0.2f, 0.2f, 1.0f } },
+		{ { 1.0f, -1.0f,  1.0f }, { 0.8f, 0.8f, 0.2f, 1.0f } },
 		// Top face
-		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ {  0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f, 0.0f, 1.0f } },
-		{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -1.0f, 1.0f, -1.0f }, { 0.2f, 0.8f, 0.8f, 1.0f } },
+		{ { -1.0f, 1.0f,  1.0f }, { 0.8f, 0.2f, 0.8f, 1.0f } },
+		{ {  1.0f, 1.0f,  1.0f }, { 0.8f, 0.8f, 0.8f, 1.0f } },
+		{ {  1.0f, 1.0f, -1.0f }, { 0.3f, 0.3f, 0.3f, 1.0f } },
 		// Bottom face
-		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -1.0f, -1.0f,  1.0f }, { 0.4f, 0.6f, 0.4f, 1.0f } },
+		{ { -1.0f, -1.0f, -1.0f }, { 0.6f, 0.4f, 0.6f, 1.0f } },
+		{ {  1.0f, -1.0f, -1.0f }, { 0.6f, 0.6f, 0.4f, 1.0f } },
+		{ {  1.0f, -1.0f,  1.0f }, { 0.4f, 0.4f, 0.6f, 1.0f } },
 	};
+
+	UINT indices[] = {
+		// Front face
+		0, 1, 2, 0, 2, 3,
+		// Back face
+		4, 5, 6, 4, 6, 7,
+		// Left face
+		8, 9, 10, 8, 10, 11,
+		// Right face
+		12, 13, 14, 12, 14, 15,
+		// Top face
+		16, 17, 18, 16, 18, 19,
+		// Bottom face
+		20, 21, 22, 20, 22, 23
+	};
+
 
 	// temporary: create vertex buffer
 	mVertexBuffer.Initialize(
@@ -176,6 +180,17 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	mVertexBufferView.BufferLocation = mVertexBuffer.Get()->GetGPUVirtualAddress();
 	mVertexBufferView.SizeInBytes = sizeof(cube);
 	mVertexBufferView.StrideInBytes = sizeof(Vertex);
+
+	// temporary: create index buffer
+	mIndexBuffer.Initialize(mDevice.Get(), sizeof(indices), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
+	hr = mIndexBuffer.Get()->Map(0, nullptr, &pData);
+	ASSERT_HR(hr, "Failed to map index buffer.");
+	memcpy(pData, indices, sizeof(indices));
+	mIndexBuffer.Get()->Unmap(0, nullptr);
+
+	mIndexBufferView.BufferLocation = mIndexBuffer.Get()->GetGPUVirtualAddress();
+	mIndexBufferView.SizeInBytes = sizeof(indices);
+	mIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
 	// temporary end
 }
 
@@ -230,13 +245,14 @@ void Renderer::Update()
 	mCommandList.Get()->SetPipelineState(mPipelineState.Get());
 	mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	mCommandList.Get()->IASetVertexBuffers(0, 1, &mVertexBufferView);
+	mCommandList.Get()->IASetIndexBuffer(&mIndexBufferView);
 
 
 	mCommandList.Get()->SetGraphicsRootConstantBufferView(
 		0,
 		mConstantBuffer.Get()->GetGPUVirtualAddress());
 
-	mCommandList.Get()->DrawInstanced(36, 1, 0, 0);
+	mCommandList.Get()->DrawIndexedInstanced(36, 1, 0, 0, 0);
 
 
 
