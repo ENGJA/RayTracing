@@ -2,6 +2,9 @@
 #include "D3D12RootSignature.h"
 #include "RenderAPI/HLSL/HLSLShader.h"
 
+/**
+* @brief Wrapper for D3D12 pipeline state object (PSO) with associated shaders and root signature.
+*/
 class D3D12PipelineState
 {
 private:
@@ -11,8 +14,21 @@ private:
 	HLSLShader mPixelShader;
 
 public:
+	/**
+	 * @brief Builds a PSO for the provided shaders and input layout.
+	 * @param pDevice D3D12 device.
+	 * @param vertexShader Compiled vertex shader.
+	 * @param pixelShader Compiled pixel shader.
+	 * @param inputLayoutDesc Input layout description for vertex buffers.
+	 */
 	void Initialize(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
+	/**
+	 * @brief Returns the native root signature pointer.
+	 */
 	ID3D12RootSignature* GetRootSignature() const { return mRootSignature.Get(); }
+	/**
+	 * @brief Returns the native pipeline state pointer.
+	 */
 	ID3D12PipelineState* Get() const { return mPipelineState.Get(); }
 };
 
