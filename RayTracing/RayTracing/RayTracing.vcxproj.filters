@@ -49,6 +49,12 @@
     <Filter Include="Pliki źródłowe\RenderAPI\HLSL">
       <UniqueIdentifier>{272178b6-6664-47b5-bc0b-089a40123c11}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI\Depth">
+      <UniqueIdentifier>{757a608c-50e8-401c-b73a-fe28ad1ed45a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI\Depth">
+      <UniqueIdentifier>{5ea80aec-d733-492d-b742-b466a4803d22}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -103,13 +109,13 @@
       <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\Depth\DepthBuffer.cpp">
-      <Filter>Pliki źródłowe\RenderAPI</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp">
-      <Filter>Pliki źródłowe</Filter>
+      <Filter>Pliki źródłowe\RenderAPI\Depth</Filter>
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\Depth\DepthDescHeap.cpp">
-      <Filter>Pliki źródłowe</Filter>
+      <Filter>Pliki źródłowe\RenderAPI\Depth</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -170,14 +176,14 @@
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12PipelineState.h">
       <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
     </ClInclude>
-    <ClInclude Include="Source\RenderAPI\Depth\DepthBuffer.h">
-      <Filter>Pliki nagłówkowe\RenderAPI</Filter>
-    </ClInclude>
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.h">
-      <Filter>Pliki nagłówkowe</Filter>
+      <Filter>Pliki nagłówkowe\RenderAPI\D3D12</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Depth\DepthBuffer.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\Depth</Filter>
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\Depth\DepthDescHeap.h">
-      <Filter>Pliki nagłówkowe</Filter>
+      <Filter>Pliki nagłówkowe\RenderAPI\Depth</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

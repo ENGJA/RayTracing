@@ -9,6 +9,9 @@
 #include "Depth/DepthBuffer.h"
 #include "DXGI/DXGISwapChain.h"
 
+/**
+ * @brief High level renderer that wires up D3D12 device, swap chain, pipeline, and per-frame resources.
+ */
 class Renderer
 {
 private:
@@ -38,7 +41,16 @@ private:
 
 	D3D12CommandQueue mCommandQueue;
 public:
+	/**
+	 * @brief Creates device/swap chain and initializes resources.
+	 * @param hwnd Window handle.
+	 * @param width Client width.
+	 * @param height Client height.
+	 */
 	void Initialize(HWND hwnd, UINT width, UINT height);
+	/**
+	 * @brief Records and submits commands for one frame and presents.
+	 */
 	void Update();
 };
 
