@@ -71,6 +71,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(SolutionDir)\Includes;$(IncludePath)</IncludePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -134,6 +137,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\ResourceManager\Model.cpp" />
+    <ClCompile Include="Source\ResourceManager\Mesh.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp" />
     <ClCompile Include="Source\RenderAPI\Depth\DepthDescHeap.cpp" />
     <ClCompile Include="Source\RenderAPI\Depth\DepthBuffer.cpp" />
@@ -160,8 +165,12 @@
     <ClCompile Include="Source\RenderAPI\Renderer.cpp" />
     <ClCompile Include="Source\Application\Application.cpp" />
     <ClCompile Include="Source\main.cpp" />
+    <ClCompile Include="Source\ResourceManager\Texture.cpp" />
+    <ClCompile Include="Source\ResourceManager\Vertex.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\ResourceManager\Model.h" />
+    <ClInclude Include="Source\ResourceManager\Mesh.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.h" />
     <ClInclude Include="Source\RenderAPI\Depth\DepthDescHeap.h" />
     <ClInclude Include="Source\RenderAPI\Depth\DepthBuffer.h" />
@@ -184,6 +193,8 @@
     <ClInclude Include="Source\RenderAPI\Renderer.h" />
     <ClInclude Include="Source\Application\Application.h" />
     <ClInclude Include="Source\pch.h" />
+    <ClInclude Include="Source\ResourceManager\Texture.h" />
+    <ClInclude Include="Source\ResourceManager\Vertex.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl">
