@@ -1,10 +1,10 @@
-#include "assimp/Importer.hpp"
-#include "assimp/postprocess.h"
+#include "pch.h"
+
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
 
 #include "Model.h"
-#include "pch.h"
-#include "Model.h"
-using namespace std;
+using std::string, std::vector, std::cerr, std::endl;
 
 void Model::loadModel(const string& path)
 {
@@ -40,7 +40,7 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 	vector<Texture> textures;
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 	{
-		Vertex vertex;
+		Vertex vertex{};
 		DirectX::XMFLOAT3 vec3;
 		vec3.x = mesh->mVertices[i].x;
 		vec3.y = mesh->mVertices[i].y;
@@ -87,6 +87,8 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 	{
 		textures.insert(textures.end(), textureList.begin(), textureList.end());
 	}
+
+	return Mesh(vertices, indices, textures);
 }
 
 std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType type, const std::string& typeName)
@@ -115,4 +117,5 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType 
 			mLoadedTextures.push_back(texture);
 		}
 	}
+	return textures;
 }

@@ -8,6 +8,9 @@
 #include "DataTypes.h"
 #include "Depth/DepthBuffer.h"
 #include "DXGI/DXGISwapChain.h"
+#include "ResourceManager/Model.h"
+#include "ResourceManager/TextureLoader.h"
+#include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
 
 /**
  * @brief High level renderer that wires up D3D12 device, swap chain, pipeline, and per-frame resources.
@@ -23,14 +26,6 @@ private:
 	UINT mWidth = 0;
 	UINT mHeight = 0;
 
-	// temporary
-	D3D12Resource mVertexBuffer;
-	D3D12_VERTEX_BUFFER_VIEW mVertexBufferView{};
-
-	D3D12Resource mIndexBuffer;
-	D3D12_INDEX_BUFFER_VIEW mIndexBufferView{};
-	// temporary end
-
 	DepthBuffer mDepthBuffer;
 
 	D3D12_VIEWPORT mViewport{};
@@ -40,6 +35,23 @@ private:
 	D3D12Resource mConstantBuffer;
 
 	D3D12CommandQueue mCommandQueue;
+
+	// GPU descriptors and textures
+	ShaderVisibleDescriptorHeap mSrvHeap;
+	TextureLoader mTextureLoader;
+
+	// A single model instance loaded from CPU-side Model class
+	std::unique_ptr<Model> mModel;
+
+	// GPU buffers for the current mesh (interleaved vertex: pos/normal/uv)
+	D3D12Resource mVB;
+	D3D12_VERTEX_BUFFER_VIEW mVBV{};
+	D3D12Resource mIB;
+	D3D12_INDEX_BUFFER_VIEW mIBV{};
+
+	// Texture bound to t0
+	GPUTexture mAlbedo;
+
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.

@@ -73,6 +73,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>$(SolutionDir)\Includes;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)\Libs;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -114,7 +115,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -137,6 +138,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.cpp" />
     <ClCompile Include="Source\ResourceManager\Model.cpp" />
     <ClCompile Include="Source\ResourceManager\Mesh.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp" />
@@ -166,9 +168,11 @@
     <ClCompile Include="Source\Application\Application.cpp" />
     <ClCompile Include="Source\main.cpp" />
     <ClCompile Include="Source\ResourceManager\Texture.cpp" />
+    <ClCompile Include="Source\ResourceManager\TextureLoader.cpp" />
     <ClCompile Include="Source\ResourceManager\Vertex.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h" />
     <ClInclude Include="Source\ResourceManager\Model.h" />
     <ClInclude Include="Source\ResourceManager\Mesh.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.h" />
@@ -194,6 +198,7 @@
     <ClInclude Include="Source\Application\Application.h" />
     <ClInclude Include="Source\pch.h" />
     <ClInclude Include="Source\ResourceManager\Texture.h" />
+    <ClInclude Include="Source\ResourceManager\TextureLoader.h" />
     <ClInclude Include="Source\ResourceManager\Vertex.h" />
   </ItemGroup>
   <ItemGroup>
@@ -219,6 +224,9 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

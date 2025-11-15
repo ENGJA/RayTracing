@@ -3,6 +3,7 @@
 // standard
 #include <iostream>
 #include <vector>
+#include <unordered_map>
 
 // directx
 #include <d3d12.h>
@@ -14,3 +15,6 @@
 // windows
 #include <windows.h>
 #include <wrl.h>
+#include <wincodec.h>
+
+#pragma comment(lib, "windowscodecs.lib")
