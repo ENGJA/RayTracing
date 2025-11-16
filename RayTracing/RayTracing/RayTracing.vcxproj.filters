@@ -117,6 +117,27 @@
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp">
       <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceManager\Model.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceManager\Mesh.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceManager\Texture.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceManager\TextureLoader.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceManager\Vertex.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\UploadHeap.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\helpers.h">
@@ -185,6 +206,27 @@
     <ClInclude Include="Source\RenderAPI\Depth\DepthDescHeap.h">
       <Filter>Pliki nagłówkowe\RenderAPI\Depth</Filter>
     </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceManager\Model.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceManager\Mesh.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceManager\Texture.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceManager\TextureLoader.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceManager\Vertex.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\UploadHeap.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
@@ -192,5 +234,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll" />
   </ItemGroup>
 </Project>

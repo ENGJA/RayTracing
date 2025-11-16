@@ -5,12 +5,23 @@
 #include "D3D12/D3D12Device.h"
 #include "D3D12/D3D12PipelineState.h"
 #include "D3D12/D3D12Resource.h"
+#include "D3D12/UploadHeap.h"
 #include "DataTypes.h"
 #include "Depth/DepthBuffer.h"
 #include "DXGI/DXGISwapChain.h"
 #include "ResourceManager/Model.h"
 #include "ResourceManager/TextureLoader.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include <unordered_map>
+
+struct MeshGpuData
+{
+	D3D12Resource vb;
+	D3D12_VERTEX_BUFFER_VIEW vbv{};
+	D3D12Resource ib;
+	D3D12_INDEX_BUFFER_VIEW ibv{};
+	DescriptorAllocation materialTable; // contiguous descriptors for material textures (t0-t4)
+};
 
 /**
  * @brief High level renderer that wires up D3D12 device, swap chain, pipeline, and per-frame resources.
@@ -34,23 +45,24 @@ private:
 	ConstantBufferData mConstantBufferData{};
 	D3D12Resource mConstantBuffer;
 
-	D3D12CommandQueue mCommandQueue;
-
 	// GPU descriptors and textures
 	ShaderVisibleDescriptorHeap mSrvHeap;
 	TextureLoader mTextureLoader;
+	UploadHeap mUploadHeap; // shared staging heap
 
-	// A single model instance loaded from CPU-side Model class
-	std::unique_ptr<Model> mModel;
+	// Texture cache by path
+	std::unordered_map<std::string, GPUTexture> mTextureCache;
 
-	// GPU buffers for the current mesh (interleaved vertex: pos/normal/uv)
-	D3D12Resource mVB;
-	D3D12_VERTEX_BUFFER_VIEW mVBV{};
-	D3D12Resource mIB;
-	D3D12_INDEX_BUFFER_VIEW mIBV{};
+	// Multiple models
+	std::vector<std::unique_ptr<Model>> mModels;
+	// Per-mesh GPU data packed after loading
+	std::vector<MeshGpuData> mMeshGpu;
 
-	// Texture bound to t0
-	GPUTexture mAlbedo;
+	// HAS to be last to ensure proper destruction order
+	D3D12CommandQueue mCommandQueue;
+
+	GPUTexture LoadOrGetTexture(const std::string& path);
+	void BuildMeshGpuData();
 
 public:
 	/**

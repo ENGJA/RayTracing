@@ -7,10 +7,10 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 {
 	// Root parameters:
 	// 0: CBV b0
-	// 1: Descriptor table with 1 SRV (t0)
+	// 1: Descriptor table with 5 SRVs (t0 - t4) for material textures
 	D3D12_DESCRIPTOR_RANGE1 srvRange{};
 	srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-	srvRange.NumDescriptors = 1;
+	srvRange.NumDescriptors = 5; // baseColor, normal, metalness, roughness, emissive
 	srvRange.BaseShaderRegister = 0; // t0
 	srvRange.RegisterSpace = 0;
 	srvRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;

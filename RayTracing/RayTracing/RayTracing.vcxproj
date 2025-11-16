@@ -138,6 +138,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\RenderAPI\D3D12\UploadHeap.cpp" />
     <ClCompile Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.cpp" />
     <ClCompile Include="Source\ResourceManager\Model.cpp" />
     <ClCompile Include="Source\ResourceManager\Mesh.cpp" />
@@ -172,6 +173,7 @@
     <ClCompile Include="Source\ResourceManager\Vertex.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\RenderAPI\D3D12\UploadHeap.h" />
     <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h" />
     <ClInclude Include="Source\ResourceManager\Model.h" />
     <ClInclude Include="Source\ResourceManager\Mesh.h" />

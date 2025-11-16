@@ -4,10 +4,13 @@
 
 using Microsoft::WRL::ComPtr;
 
-void TextureLoader::Initialize(ID3D12Device* device, ShaderVisibleDescriptorHeap* heap)
+void TextureLoader::Initialize(ID3D12Device* device, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap)
 {
     mDevice = device;
     mHeap = heap;
+    mQueue = queue;
+    mCmdList = cmdList;
+    mUploadHeap = uploadHeap;
     HRESULT hr = CoCreateInstance(
         CLSID_WICImagingFactory,
         nullptr,
@@ -27,7 +30,7 @@ static void CreateSRV(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT for
     device->CreateShaderResourceView(res, &srv, out.cpuHandle);
 }
 
-GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path)
+GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex)
 {
     GPUTexture gpuTex{};
 
@@ -58,7 +61,6 @@ GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path)
         ASSERT_HR(hr, L"Failed to init format converter");
     }
 
-    // Read into CPU buffer
     const UINT bpp = 4; // RGBA8
     const UINT rowPitch = width * bpp;
     std::vector<BYTE> pixels(size_t(rowPitch) * height);
@@ -70,7 +72,6 @@ GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path)
         hr = frame->CopyPixels(&rect, rowPitch, (UINT)pixels.size(), pixels.data());
     ASSERT_HR(hr, L"Failed to copy pixels");
 
-    // Create GPU resource in DEFAULT heap
     D3D12_RESOURCE_DESC desc{};
     desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     desc.Width = width;
@@ -84,79 +85,48 @@ GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path)
 
     gpuTex.resource.Initialize(mDevice, desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
 
-    // Upload heap and copy
-    UINT64 uploadSize = 0;
-    mDevice->GetCopyableFootprints(&desc, 0, 1, 0, nullptr, nullptr, nullptr, &uploadSize);
-
-    D3D12Resource upload;
-    upload.Initialize(mDevice, (unsigned int)uploadSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
-
-    D3D12_SUBRESOURCE_DATA sub{};
-    sub.pData = pixels.data();
-    sub.RowPitch = rowPitch;
-    sub.SlicePitch = size_t(rowPitch) * height;
-
-    // Create a temporary command list to upload
-    ComPtr<ID3D12CommandAllocator> alloc;
-    mDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(alloc.ReleaseAndGetAddressOf()));
-    ComPtr<ID3D12GraphicsCommandList> cmd;
-    mDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(cmd.ReleaseAndGetAddressOf()));
-
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-    UINT numRows = 0; UINT64 rowSize = 0; UINT64 total = 0;
-    mDevice->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, &numRows, &rowSize, &total);
+    UINT numRows = 0; UINT64 rowSize = 0; UINT64 totalBytes = 0;
+    mDevice->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, &numRows, &rowSize, &totalBytes);
 
-    BYTE* mapped = nullptr;
-    D3D12_RANGE range{ 0, 0 };
-    upload.Get()->Map(0, &range, reinterpret_cast<void**>(&mapped));
+	mUploadHeap->Reset();
+    auto alloc = mUploadHeap->Allocate(totalBytes, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+    if (!alloc.cpuPtr) throw std::runtime_error("Upload heap out of space for texture.");
+
+    BYTE* dst = reinterpret_cast<BYTE*>(alloc.cpuPtr);
+    footprint.Offset = alloc.offset;
     for (UINT y = 0; y < height; ++y)
     {
-        memcpy(mapped + y * footprint.Footprint.RowPitch, pixels.data() + y * rowPitch, rowPitch);
+        memcpy(dst + y * footprint.Footprint.RowPitch, pixels.data() + y * rowPitch, rowPitch);
     }
-    upload.Get()->Unmap(0, nullptr);
 
-    D3D12_TEXTURE_COPY_LOCATION dst{};
-    dst.pResource = gpuTex.resource.Get();
-    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    dst.SubresourceIndex = 0;
+    mCmdList->ResetCommandList(frameIndex);
 
-    D3D12_TEXTURE_COPY_LOCATION src{};
-    src.pResource = upload.Get();
-    src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    src.PlacedFootprint = footprint;
+    D3D12_TEXTURE_COPY_LOCATION dstLoc{};
+    dstLoc.pResource = gpuTex.resource.Get();
+    dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dstLoc.SubresourceIndex = 0;
 
-    cmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    D3D12_TEXTURE_COPY_LOCATION srcLoc{};
+    srcLoc.pResource = mUploadHeap->GetResource();
+    srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    srcLoc.PlacedFootprint = footprint;
 
-    // Transition to PIXEL_SHADER_RESOURCE
+    mCmdList->Get()->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = gpuTex.resource.Get();
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    cmd->ResourceBarrier(1, &barrier);
+    mCmdList->Get()->ResourceBarrier(1, &barrier);
 
-    cmd->Close();
+    mCmdList->Get()->Close();
+    ID3D12CommandList* lists[] = { mCmdList->Get() };
+    mQueue->ExecuteCommandLists(1, lists);
+    mQueue->Flush();
 
-    // Execute and wait using a transient queue
-    ComPtr<ID3D12CommandQueue> queue;
-    D3D12_COMMAND_QUEUE_DESC qd{}; qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    mDevice->CreateCommandQueue(&qd, IID_PPV_ARGS(queue.ReleaseAndGetAddressOf()));
-    ID3D12CommandList* lists[] = { cmd.Get() };
-    queue->ExecuteCommandLists(1, lists);
-
-    ComPtr<ID3D12Fence> fence; UINT64 fv = 1;
-    mDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.ReleaseAndGetAddressOf()));
-    HANDLE e = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    queue->Signal(fence.Get(), fv);
-    if (fence->GetCompletedValue() < fv)
-    {
-        fence->SetEventOnCompletion(fv, e);
-        WaitForSingleObject(e, INFINITE);
-    }
-    CloseHandle(e);
-
-    // Create SRV in shader visible heap
     CreateSRV(mDevice, gpuTex.resource.Get(), desc.Format, mHeap, gpuTex.srv);
     return gpuTex;
 }

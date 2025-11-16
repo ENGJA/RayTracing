@@ -78,6 +78,7 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 	vector<vector<Texture>> loadedTextures =
 	{
 		loadMaterialTextures(material, aiTextureType_BASE_COLOR, "texture_albedo"),
+		loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_albedo"),
 		loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal"),
 		loadMaterialTextures(material, aiTextureType_METALNESS, "texture_metalness"),
 		loadMaterialTextures(material, aiTextureType_DIFFUSE_ROUGHNESS, "texture_roughness"),
