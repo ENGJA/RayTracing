@@ -7,7 +7,7 @@
 class DepthDescHeap
 {
 private:
-	D3D12DescriptorHeap mDescriptorHeap;
+	D3D12DescriptorHeap mDescriptorHeap; ///< Underlying DSV descriptor heap.
 
 public:
 	/**

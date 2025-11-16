@@ -115,7 +115,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;assimp-vc143-mt.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -138,10 +138,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\paths.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\UploadHeap.cpp" />
     <ClCompile Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.cpp" />
-    <ClCompile Include="Source\ResourceManager\Model.cpp" />
-    <ClCompile Include="Source\ResourceManager\Mesh.cpp" />
+    <ClCompile Include="Source\ResourceLoading\Model.cpp" />
+    <ClCompile Include="Source\ResourceLoading\Mesh.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp" />
     <ClCompile Include="Source\RenderAPI\Depth\DepthDescHeap.cpp" />
     <ClCompile Include="Source\RenderAPI\Depth\DepthBuffer.cpp" />
@@ -168,15 +169,16 @@
     <ClCompile Include="Source\RenderAPI\Renderer.cpp" />
     <ClCompile Include="Source\Application\Application.cpp" />
     <ClCompile Include="Source\main.cpp" />
-    <ClCompile Include="Source\ResourceManager\Texture.cpp" />
-    <ClCompile Include="Source\ResourceManager\TextureLoader.cpp" />
-    <ClCompile Include="Source\ResourceManager\Vertex.cpp" />
+    <ClCompile Include="Source\ResourceLoading\Texture.cpp" />
+    <ClCompile Include="Source\ResourceLoading\TextureLoader.cpp" />
+    <ClCompile Include="Source\ResourceLoading\Vertex.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\paths.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\UploadHeap.h" />
     <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h" />
-    <ClInclude Include="Source\ResourceManager\Model.h" />
-    <ClInclude Include="Source\ResourceManager\Mesh.h" />
+    <ClInclude Include="Source\ResourceLoading\Model.h" />
+    <ClInclude Include="Source\ResourceLoading\Mesh.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.h" />
     <ClInclude Include="Source\RenderAPI\Depth\DepthDescHeap.h" />
     <ClInclude Include="Source\RenderAPI\Depth\DepthBuffer.h" />
@@ -199,9 +201,9 @@
     <ClInclude Include="Source\RenderAPI\Renderer.h" />
     <ClInclude Include="Source\Application\Application.h" />
     <ClInclude Include="Source\pch.h" />
-    <ClInclude Include="Source\ResourceManager\Texture.h" />
-    <ClInclude Include="Source\ResourceManager\TextureLoader.h" />
-    <ClInclude Include="Source\ResourceManager\Vertex.h" />
+    <ClInclude Include="Source\ResourceLoading\Texture.h" />
+    <ClInclude Include="Source\ResourceLoading\TextureLoader.h" />
+    <ClInclude Include="Source\ResourceLoading\Vertex.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl">

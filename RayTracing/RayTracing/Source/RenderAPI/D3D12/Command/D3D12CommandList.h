@@ -7,8 +7,8 @@
 class D3D12CommandList
 {
 private:
-	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mCommandAllocators[Config::cBufferCount];
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList; ///< Graphics command list.
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mCommandAllocators[Config::cBufferCount]; ///< Per-frame command allocators.
 public:
 	/**
 	 * @brief Creates the command list and allocators.

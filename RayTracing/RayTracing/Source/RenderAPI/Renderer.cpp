@@ -11,18 +11,16 @@
 #include "ResourceManager/TextureLoader.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
 #include "Renderer.h"
+#include "paths.h"
 
 using std::wcout, std::endl, std::string, std::wstring, std::vector;
 
-// Map texture type string to descriptor slot index
-static int TextureTypeToSlot(const string& type)
+/**
+* @brief Maps TextureType enum to descriptor slot index.
+*/
+static int TextureTypeToSlot(TextureType type)
 {
-    if (type == "texture_albedo") return 0; // BASE_COLOR
-    if (type == "texture_normal") return 1;
-    if (type == "texture_metalness") return 2;
-    if (type == "texture_roughness") return 3;
-    if (type == "texture_emissive") return 4;
-    return -1;
+    return static_cast<int>(type);
 }
 
 GPUTexture Renderer::LoadOrGetTexture(const string& path)
@@ -51,7 +49,10 @@ void Renderer::BuildMeshGpuData()
 			mUploadHeap.Reset();
             auto vbAlloc = mUploadHeap.Allocate(vbSize);
             auto ibAlloc = mUploadHeap.Allocate(ibSize);
-            if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr) throw std::runtime_error("Upload heap out of space for mesh buffers.");
+
+            if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr) 
+                throw std::runtime_error("Upload heap out of space for mesh buffers.");
+
             memcpy(vbAlloc.cpuPtr, mesh.mVertices.data(), vbSize);
             memcpy(ibAlloc.cpuPtr, mesh.mIndices.data(), ibSize);
 
@@ -89,8 +90,7 @@ void Renderer::BuildMeshGpuData()
             for (const Texture& cpuTex : mesh.mTextures)
             {
                 int slot = TextureTypeToSlot(cpuTex.mType);
-                if (slot < 0) continue;
-                GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "/" + cpuTex.mPath);
+                GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + cpuTex.mPath);
                 D3D12_CPU_DESCRIPTOR_HANDLE dst = gpu.materialTable.cpuHandle;
                 dst.ptr += SIZE_T(slot) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
                 mDevice.Get()->CopyDescriptorsSimple(1, dst, gpuTex.srv.cpuHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -194,8 +194,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_HEAP_TYPE_UPLOAD,
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
-    // Load multiple models (example: load same sphere twice to exercise texture sharing)
-    const std::string modelPath = "C:/Users/adria/Source/Repos/GK1/OpenGLDemo/Resources/objects/sphere/sphere.obj";
+
+    const std::string modelPath = GetResourcePath("Objects\\sphere\\sphere.obj").string();
     auto modelA = std::make_unique<Model>();
     modelA->loadModel(modelPath);
     if (modelA->mMeshes.empty())
@@ -211,20 +211,20 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     }
     mModels.push_back(std::move(modelA));
 
-    auto modelB = std::make_unique<Model>();
-    modelB->loadModel(modelPath); // same path to test cache
-    if (modelB->mMeshes.empty())
-    {
-        vector<::Vertex> cpuVerts = {
-            { { -0.5f, -0.5f, 0 }, {0,0,1}, {0,1} },
-            { { -0.5f,  0.5f, 0 }, {0,0,1}, {0,0} },
-            { {  0.5f,  0.5f, 0 }, {0,0,1}, {1,0} },
-            { {  0.5f, -0.5f, 0 }, {0,0,1}, {1,1} },
-        };
-        vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
-        modelB->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-    }
-    mModels.push_back(std::move(modelB));
+    //auto modelB = std::make_unique<Model>();
+    //modelB->loadModel(modelPath); // same path to test cache
+    //if (modelB->mMeshes.empty())
+    //{
+    //    vector<::Vertex> cpuVerts = {
+    //        { { -0.5f, -0.5f, 0 }, {0,0,1}, {0,1} },
+    //        { { -0.5f,  0.5f, 0 }, {0,0,1}, {0,0} },
+    //        { {  0.5f,  0.5f, 0 }, {0,0,1}, {1,0} },
+    //        { {  0.5f, -0.5f, 0 }, {0,0,1}, {1,1} },
+    //    };
+    //    vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
+    //    modelB->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
+    //}
+    //mModels.push_back(std::move(modelB));
 
     // Build GPU buffers and material descriptor tables
     BuildMeshGpuData();

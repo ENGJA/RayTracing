@@ -6,7 +6,7 @@
 class D3D12DescriptorHeap
 {
 private:
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDescriptorHeap;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDescriptorHeap; ///< COM pointer to native descriptor heap.
 public:
 	/**
 	 * @brief Creates the descriptor heap.

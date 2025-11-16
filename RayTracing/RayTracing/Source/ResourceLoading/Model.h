@@ -29,7 +29,7 @@ private:
 	 * @param typeName String name to tag the texture type.
 	 * @return List of loaded textures.
 	 */
-	std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, const std::string& typeName);
+	std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType aiType, TextureType type);
 
 public:
 	/**< Cache of already loaded textures to deduplicate by path. */

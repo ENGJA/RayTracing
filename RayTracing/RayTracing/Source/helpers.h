@@ -1,5 +1,6 @@
 #pragma once
 #include <iostream>
+#include <filesystem>
 
 /**
  * @brief Helper macros for HRESULT error handling and logging.
@@ -16,3 +17,5 @@
 #define ASSERT_HR(hr, msg) HANDLE_HR(hr, msg, throw)
 
 //#define ASSERT_HR(hr, msg) if (FAILED(hr)) { std::cerr << msg << " Error: " << std::hex << hr << std::endl; throw; } 
+
+

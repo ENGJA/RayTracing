@@ -21,10 +21,10 @@ struct DescriptorAllocation
 class ShaderVisibleDescriptorHeap
 {
 private:
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mHeap;
-    UINT mIncrementSize = 0;
-    UINT mCapacity = 0;
-    UINT mAllocated = 0;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mHeap; ///< Underlying descriptor heap COM pointer.
+    UINT mIncrementSize = 0; ///< Descriptor handle increment size for this heap type.
+    UINT mCapacity = 0; ///< Total number of descriptors available.
+    UINT mAllocated = 0; ///< Number of descriptors already allocated linearly.
 public:
     /**
      * @brief Creates a shader-visible descriptor heap with the given capacity.
