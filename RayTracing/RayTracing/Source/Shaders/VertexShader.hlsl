@@ -1,14 +1,14 @@
-
 struct VSInput
 {
     float3 pos : POSITION;
-    float4 color : COLOR;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
 };
 
 struct VSOutput
 {
-    float4 pos : SV_POSITION; // Must always be here
-    float4 color : COLOR; // Passing color
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD0;
 };
 
 struct CBData
@@ -22,6 +22,6 @@ VSOutput main(VSInput input)
 {
     VSOutput output;
     output.pos = mul(cb.vpMatrix, float4(input.pos, 1.0f));
-    output.color = input.color;
+    output.uv  = input.uv;
     return output;
 }

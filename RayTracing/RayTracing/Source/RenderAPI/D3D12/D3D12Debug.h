@@ -6,10 +6,10 @@
 class D3D12Debug
 {
 private:
-	Microsoft::WRL::ComPtr<ID3D12Debug6> mDebug;
-	static D3D12Debug mInstance;
+	Microsoft::WRL::ComPtr<ID3D12Debug6> mDebug; ///< Debug layer interface pointer.
+	static D3D12Debug mInstance; ///< Singleton instance storage.
 
-	D3D12Debug() = default;
+	D3D12Debug() = default; ///< Private default constructor for singleton.
 	/**
 	 * @brief Ensures the debug layer interface is initialized.
 	 * @return true on success, false otherwise.

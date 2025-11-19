@@ -7,13 +7,12 @@
 class Application
 {
 private:
-	Renderer mRenderer;
+	Renderer mRenderer; ///< High level renderer instance.
 
-	HWND mHwnd = nullptr;
-	bool mIsRunning = true;
-	UINT mWidth = 0;
-	UINT mHeight = 0;
-
+	HWND mHwnd = nullptr; ///< Native Win32 window handle.
+	bool mIsRunning = true; ///< Main loop running flag.
+	UINT mWidth = 0; ///< Current client area width in pixels.
+	UINT mHeight = 0; ///< Current client area height in pixels.
 
 public:
 	/**

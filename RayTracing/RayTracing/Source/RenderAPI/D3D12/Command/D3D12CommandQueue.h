@@ -7,12 +7,12 @@
 class D3D12CommandQueue
 {
 private:
-	Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue;
-	Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
+	Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue; ///< Graphics command queue.
+	Microsoft::WRL::ComPtr<ID3D12Fence> mFence; ///< Fence used for GPU/CPU synchronization.
 
-	UINT64 mFenceValues[Config::cBufferCount] = {};
-	UINT64 mCurrentFenceValue = 0;
-	HANDLE mFenceEvent = nullptr;
+	UINT64 mFenceValues[Config::cBufferCount] = {}; ///< Per-frame fence values.
+	UINT64 mCurrentFenceValue = 0; ///< Last signaled fence value.
+	HANDLE mFenceEvent = nullptr; ///< Event handle used to wait for fence completion.
 
 	/**
 	 * @brief Signals the fence with the specified value.

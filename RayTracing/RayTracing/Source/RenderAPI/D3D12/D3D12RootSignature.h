@@ -5,7 +5,7 @@
 class D3D12RootSignature
 {
 private:
-	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRootSignature;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRootSignature; ///< Root signature COM pointer.
 
 public:
 	/**
