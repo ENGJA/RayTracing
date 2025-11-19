@@ -28,7 +28,7 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 	rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	// Static sampler at s0 (use version 1.2 structure)
-	D3D12_STATIC_SAMPLER_DESC1 staticSampler{};
+	D3D12_STATIC_SAMPLER_DESC staticSampler{};
 	staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 	staticSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -50,6 +50,7 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 	rootSignatureDesc.Desc_1_1.pParameters = rootParameters;
 	rootSignatureDesc.Desc_1_1.NumStaticSamplers = 1;
 	rootSignatureDesc.Desc_1_1.pStaticSamplers = &staticSampler;
+
 
 	Microsoft::WRL::ComPtr<ID3DBlob> serializedRootSig;
 	Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
