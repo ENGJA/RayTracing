@@ -55,6 +55,12 @@
     <Filter Include="Pliki źródłowe\RenderAPI\Depth">
       <UniqueIdentifier>{5ea80aec-d733-492d-b742-b466a4803d22}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki nagłówkowe\ResourceLoading">
+      <UniqueIdentifier>{7c148fb3-b1b6-4f0a-bac5-40a3445d38d5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\ResourceLoading">
+      <UniqueIdentifier>{3a864bb5-369e-4124-808d-aec4a7706ac9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -116,6 +122,30 @@
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\D3D12\D3D12DescriptorHeap.cpp">
       <Filter>Pliki źródłowe\RenderAPI\D3D12</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\paths.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\Mesh.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\Model.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\Texture.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\TextureLoader.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\D3D12\UploadHeap.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\Vertex.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -185,6 +215,30 @@
     <ClInclude Include="Source\RenderAPI\Depth\DepthDescHeap.h">
       <Filter>Pliki nagłówkowe\RenderAPI\Depth</Filter>
     </ClInclude>
+    <ClInclude Include="Source\paths.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\Texture.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\TextureLoader.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\D3D12\UploadHeap.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\Vertex.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\Model.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\Mesh.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
@@ -192,5 +246,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll" />
   </ItemGroup>
 </Project>

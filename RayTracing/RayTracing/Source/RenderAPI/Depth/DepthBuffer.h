@@ -8,8 +8,8 @@
 class DepthBuffer
 {
 private:
-	D3D12Resource mDepthStencilBuffer;
-	DepthDescHeap mDescHeap;
+	D3D12Resource mDepthStencilBuffer; ///< Depth-stencil texture resource.
+	DepthDescHeap mDescHeap; ///< Descriptor heap containing one DSV.
 
 public:
 	/**
