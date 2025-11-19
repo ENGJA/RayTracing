@@ -44,12 +44,12 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 	staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc{};
-	rootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_2;
-	rootSignatureDesc.Desc_1_2.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	rootSignatureDesc.Desc_1_2.NumParameters = _countof(rootParameters);
-	rootSignatureDesc.Desc_1_2.pParameters = rootParameters;
-	rootSignatureDesc.Desc_1_2.NumStaticSamplers = 1;
-	rootSignatureDesc.Desc_1_2.pStaticSamplers = &staticSampler;
+	rootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+	rootSignatureDesc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	rootSignatureDesc.Desc_1_1.NumParameters = _countof(rootParameters);
+	rootSignatureDesc.Desc_1_1.pParameters = rootParameters;
+	rootSignatureDesc.Desc_1_1.NumStaticSamplers = 1;
+	rootSignatureDesc.Desc_1_1.pStaticSamplers = &staticSampler;
 
 	Microsoft::WRL::ComPtr<ID3DBlob> serializedRootSig;
 	Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
