@@ -1,5 +1,6 @@
 #pragma once
 #include "RenderAPI/Renderer.h"
+#include "RenderAPI/Camera/CameraManager.h"
 
 /**
  * @brief Application bootstrap that owns the window and resources.
@@ -8,11 +9,15 @@ class Application
 {
 private:
 	Renderer mRenderer; ///< High level renderer instance.
+	CameraManager mCameraManager; ///< Camera manager for view/projection matrices.
 
 	HWND mHwnd = nullptr; ///< Native Win32 window handle.
 	bool mIsRunning = true; ///< Main loop running flag.
 	UINT mWidth = 0; ///< Current client area width in pixels.
 	UINT mHeight = 0; ///< Current client area height in pixels.
+
+	LARGE_INTEGER mPrevCounter{}; ///< Previous frame timestamp.
+	double mSecondsPerCount = 0.0; ///< Seconds per performance counter tick.
 
 public:
 	/**
