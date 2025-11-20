@@ -61,6 +61,18 @@
     <Filter Include="Pliki źródłowe\ResourceLoading">
       <UniqueIdentifier>{3a864bb5-369e-4124-808d-aec4a7706ac9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki nagłówkowe\Input">
+      <UniqueIdentifier>{feba921a-ffc0-49bc-a14d-1b5469722753}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\Input">
+      <UniqueIdentifier>{7256153b-7fac-4fbb-9fd3-400e1ff7037b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI\Camera">
+      <UniqueIdentifier>{29477cd0-7d95-44da-902e-9a89f84bedfb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI\Camera">
+      <UniqueIdentifier>{fdd6b1f0-84a8-42ad-8f61-4feb27975aa0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -146,6 +158,15 @@
     </ClCompile>
     <ClCompile Include="Source\ResourceLoading\Vertex.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Input\InputManager.cpp">
+      <Filter>Pliki źródłowe\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Camera\Camera.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Camera\CameraManager.cpp">
+      <Filter>Pliki źródłowe\RenderAPI\Camera</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -238,6 +259,15 @@
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Input\InputManager.h">
+      <Filter>Pliki nagłówkowe\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Camera\Camera.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Camera\CameraManager.h">
+      <Filter>Pliki nagłówkowe\RenderAPI\Camera</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
