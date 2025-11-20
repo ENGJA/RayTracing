@@ -6,6 +6,7 @@
 #include "D3D12/D3D12PipelineState.h"
 #include "D3D12/D3D12Resource.h"
 #include "D3D12/UploadHeap.h"
+#include "Camera.h"
 #include "DataTypes.h"
 #include "Depth/DepthBuffer.h"
 #include "DXGI/DXGISwapChain.h"
@@ -58,6 +59,15 @@ private:
 	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.
 
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
+
+
+	// Cameras: support multiple; index selects active one
+	std::vector<Camera> mCameras;
+	size_t mActiveCameraIndex = 0;
+
+	// timing
+	LARGE_INTEGER mPrevCounter{};
+	double mSecondsPerCount = 0.0;
 
 	/**
 	 * @brief Loads a texture from disk or returns cached GPU texture.

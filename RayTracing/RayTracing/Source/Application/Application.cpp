@@ -1,11 +1,14 @@
 #include "pch.h"
 #include "Application.h"
 #include "RenderAPI/DXGI/DXGIDebug.h"
+#include "Input/InputManager.h"
 
 using std::cout, std::cerr, std::endl;
 
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	InputManager::Get().OnWindowMessage(uMsg, wParam, lParam);
+
 	switch (uMsg)
 	{
 	case WM_NCCREATE:
@@ -78,6 +81,8 @@ bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, i
 
 void Application::Update()
 {
+	InputManager::Get().BeginFrame();
+
 	MSG msg;
 	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 	{
@@ -90,6 +95,7 @@ void Application::Update()
 void Application::OnCreate(HWND hwnd)
 {
 	cout << "Application OnCreate called!" << endl;
+	InputManager::Get().Initialize(hwnd);
 	mRenderer.Initialize(hwnd, mWidth, mHeight);
 }
 

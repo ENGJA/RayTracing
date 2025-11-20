@@ -61,6 +61,12 @@
     <Filter Include="Pliki źródłowe\ResourceLoading">
       <UniqueIdentifier>{3a864bb5-369e-4124-808d-aec4a7706ac9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki nagłówkowe\Input">
+      <UniqueIdentifier>{feba921a-ffc0-49bc-a14d-1b5469722753}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\Input">
+      <UniqueIdentifier>{7256153b-7fac-4fbb-9fd3-400e1ff7037b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -146,6 +152,12 @@
     </ClCompile>
     <ClCompile Include="Source\ResourceLoading\Vertex.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Camera.cpp">
+      <Filter>Pliki źródłowe\RenderAPI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Input\InputManager.cpp">
+      <Filter>Pliki źródłowe\Input</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -238,6 +250,12 @@
     </ClInclude>
     <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Camera.h">
+      <Filter>Pliki nagłówkowe\RenderAPI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Input\InputManager.h">
+      <Filter>Pliki nagłówkowe\Input</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
