@@ -240,7 +240,8 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj)
     mPrevCounter = now;
 
     static float angle = 0.0f;
-    angle += 0.01f;
+    const float angularSpeed = 2.0f; // radians per second 
+    angle += angularSpeed * static_cast<float>(dt);
     DirectX::XMMATRIX rotationMatrix = DirectX::XMMatrixRotationY(angle);
     DirectX::XMMATRIX worldViewProj = rotationMatrix * viewProj;
     void* pData;

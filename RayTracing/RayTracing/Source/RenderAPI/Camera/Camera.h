@@ -62,16 +62,6 @@ public:
     void InitializeFree(DirectX::XMFLOAT3 pos, float yaw, float pitch, float fovY, float aspect, float nearZ, float farZ);
 
     /**
-     * @brief Update camera state from input for one frame.
-     * @param dt    Delta time in seconds since last update.
-     * @param input Reference to InputManager (keyboard/mouse state).
-     *
-     * In fixed mode this is a no-op. In free mode this updates yaw/pitch, position
-     * and FOV according to input (movement keys, mouse delta, wheel, etc.).
-     */
-    void Update(float dt, const InputManager& input);
-
-    /**
      * @brief Returns combined view-projection matrix depending on current mode.
      * @return XMMATRIX = view * proj
      *
@@ -79,4 +69,12 @@ public:
      * from position and yaw/pitch (using XMMatrixLookToLH) and multiplies by mProj.
      */
     DirectX::XMMATRIX GetViewProjection() const;
+
+    //
+    // Granular mutation API used by callbacks
+    //
+    void AddYaw(float delta);                 // add yaw (radians)
+    void AddPitch(float delta);               // add pitch (radians) - clamped
+    void MoveLocal(float forward, float right, float up); // move relative to camera orientation
+    void ChangeFov(float delta);              // change fov (radians), clamped
 };

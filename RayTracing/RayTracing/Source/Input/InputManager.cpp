@@ -4,11 +4,7 @@
 
 using namespace DirectX;
 
-InputManager& InputManager::Get()
-{
-	static InputManager instance;
-	return instance;
-}
+InputManager& InputManager::Instance = InputManager::get_instance();
 
 void InputManager::Initialize(HWND hwnd)
 {
@@ -31,34 +27,6 @@ void InputManager::BeginFrame()
     mMouseWheelDelta = 0;
     std::fill(mKeyPressedThisFrame.begin(), mKeyPressedThisFrame.end(), false);
     std::fill(mKeyReleasedThisFrame.begin(), mKeyReleasedThisFrame.end(), false);
-}
-
-bool InputManager::IsKeyDown(int vkey) const
-{
-    if (vkey < 0 || vkey >= 256) return false;
-    return mKeyDown[vkey];
-}
-
-bool InputManager::WasKeyPressed(int vkey) const
-{
-    if (vkey < 0 || vkey >= 256) return false;
-    return mKeyPressedThisFrame[vkey];
-}
-
-bool InputManager::WasKeyReleased(int vkey) const
-{
-    if (vkey < 0 || vkey >= 256) return false;
-    return mKeyReleasedThisFrame[vkey];
-}
-
-XMFLOAT2 InputManager::GetMouseDelta() const
-{
-    return XMFLOAT2(mMouseDeltaX, mMouseDeltaY);
-}
-
-int InputManager::GetMouseWheelDelta() const
-{
-    return mMouseWheelDelta;
 }
 
 void InputManager::OnWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
@@ -120,5 +88,79 @@ void InputManager::OnWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
         break;
     default:
         break;
+    }
+}
+
+void InputManager::RegisterKeyPressedCallback(int vkey, KeyPressedCallback cb)
+{
+    mKeyPressedCallbacks[vkey].push_back(std::move(cb));
+}
+
+void InputManager::RegisterKeyDownCallback(int vkey, KeyDownCallback cb)
+{
+    mKeyDownCallbacks[vkey].push_back(std::move(cb));
+}
+
+void InputManager::RegisterMouseMoveCallback(MouseMoveCallback cb)
+{
+    mMouseMoveCallbacks.push_back(std::move(cb));
+}
+
+void InputManager::RegisterMouseWheelCallback(MouseWheelCallback cb)
+{
+    mMouseWheelCallbacks.push_back(std::move(cb));
+}
+
+void InputManager::ProcessCallbacks(float dt)
+{
+    // Edge callbacks: keys pressed this frame
+    for (auto& pair : mKeyPressedCallbacks)
+    {
+        int vkey = pair.first;
+        if (vkey < 0 || vkey >= 256) continue;
+        if (mKeyPressedThisFrame[vkey])
+        {
+            for (auto& cb : pair.second)
+            {
+                if (cb) cb();
+            }
+        }
+    }
+
+    // Continuous callbacks: keys held down
+    for (auto& pair : mKeyDownCallbacks)
+    {
+        int vkey = pair.first;
+        if (vkey < 0 || vkey >= 256) continue;
+        if (mKeyDown[vkey])
+        {
+            for (auto& cb : pair.second)
+            {
+                if (cb) cb(dt);
+            }
+        }
+    }
+
+    // Mouse move callbacks (pass accumulated delta)
+    if (!mMouseMoveCallbacks.empty())
+    {
+        XMFLOAT2 delta(mMouseDeltaX, mMouseDeltaY);
+        if (delta.x != 0.0f || delta.y != 0.0f)
+        {
+            for (auto& cb : mMouseMoveCallbacks)
+            {
+                if (cb) cb(delta);
+            }
+        }
+    }
+
+    // Mouse wheel callbacks
+    if (!mMouseWheelCallbacks.empty() && mMouseWheelDelta != 0)
+    {
+        int wheel = mMouseWheelDelta;
+        for (auto& cb : mMouseWheelCallbacks)
+        {
+            if (cb) cb(wheel);
+        }
     }
 }

@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <array>
 #include <DirectXMath.h>
+#include <functional>
 
 class InputManager
 {
@@ -22,12 +23,32 @@ private:
 
     bool mHasLastPos = false; ///< True if mLastMousePos contains a valid previous position.
 
+	using KeyPressedCallback = std::function<void()>; ///< Callback type for key-pressed (edge) events.
+	using KeyDownCallback = std::function<void(float dt)>; ///< Callback type for key-down (continuous) events.
+
+	std::unordered_map<int, std::vector<KeyPressedCallback>> mKeyPressedCallbacks; ///< Callbacks for key-pressed events.
+	std::unordered_map<int, std::vector<KeyDownCallback>> mKeyDownCallbacks; ///< Callbacks for key-down events.
+
+	using MouseMoveCallback = std::function<void(DirectX::XMFLOAT2 delta)>; ///< Callback type for mouse move events.
+	using MouseWheelCallback = std::function<void(int wheelDelta)>; ///< Callback type for mouse wheel events.
+
+	std::vector<MouseMoveCallback> mMouseMoveCallbacks; ///< Registered mouse move callbacks.
+	std::vector<MouseWheelCallback> mMouseWheelCallbacks; ///< Registered mouse wheel callbacks.
+
 public:
     /**
-     * @brief Returns the singleton instance.
-     * @return Reference to global InputManager.
-     */
-    static InputManager& Get();
+	* @brief Singleton instance of InputManager.
+    */
+    static InputManager& Instance;
+
+    /**
+	* @brief Returns the only instance of InputManager.
+    */
+    static InputManager& get_instance()
+    {
+        static InputManager inst;
+        return inst;
+    }
 
     /**
      * @brief Initialize the input manager with the application window handle.
@@ -58,38 +79,37 @@ public:
     void BeginFrame();
 
     /**
-     * @brief Check whether a virtual-key is currently down.
-     * @param vkey Virtual-key code (VK_*, ASCII letter, etc.).
-     * @return true if the key is currently held down.
-     */
-    bool IsKeyDown(int vkey) const;
-
-    /**
-     * @brief Edge query: was the key pressed this frame?
-     * @param vkey Virtual-key code.
-     * @return true if the key transitioned from up->down during the current frame.
-     */
-    bool WasKeyPressed(int vkey) const;   // edge: pressed this frame
-
-    /**
-     * @brief Edge query: was the key released this frame?
-     * @param vkey Virtual-key code.
-     * @return true if the key transitioned from down->up during the current frame.
-     */
-    bool WasKeyReleased(int vkey) const;  // edge: released this frame
-
-    /**
-     * @brief Get accumulated mouse movement since BeginFrame().
-     * @return XMFLOAT2 where x=deltaX, y=deltaY in client pixels.
+     * @brief Process registered callbacks.
+     * @param dt Delta time for key-down (continuous) callbacks.
      *
-     * Mouse movement accumulates WM_MOUSEMOVE deltas. For high-resolution
-     * raw input use WM_INPUT and adapt this manager accordingly.
+     * Should be called once per frame (e.g. from CameraManager::Update).
      */
-    DirectX::XMFLOAT2 GetMouseDelta() const; // delta since last frame (pixels)
+    void ProcessCallbacks(float dt);
 
     /**
-     * @brief Get accumulated mouse wheel delta since BeginFrame().
-     * @return Wheel delta in WHEEL_DELTA units (typically ±120 per notch).
+    * @brief Register a callback invoked once when key is pressed (edge).
+    * @param vkey Virtual-key code.
+    * @param cb Callback invoked when key was pressed this frame.
+    */
+    void RegisterKeyPressedCallback(int vkey, KeyPressedCallback cb);
+
+    /**
+     * @brief Register a callback invoked every frame while key is down.
+     * @param vkey Virtual-key code.
+     * @param cb Callback invoked with dt while key is held.
      */
-    int GetMouseWheelDelta() const;
+    void RegisterKeyDownCallback(int vkey, KeyDownCallback cb);
+
+
+    /**
+     * @brief Register a callback invoked every frame with current mouse delta.
+     * @param cb Callback receiving accumulated mouse delta since BeginFrame().
+     */
+    void RegisterMouseMoveCallback(MouseMoveCallback cb);
+
+    /**
+     * @brief Register a callback invoked when mouse wheel delta is present (per ProcessCallbacks).
+     * @param cb Callback receiving wheel delta in WHEEL_DELTA units.
+     */
+    void RegisterMouseWheelCallback(MouseWheelCallback cb);
 };
