@@ -89,13 +89,30 @@ void Application::Update()
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
-	mRenderer.Update();
+
+	LARGE_INTEGER now;
+	QueryPerformanceCounter(&now);
+	double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
+	mPrevCounter = now;
+
+	mCameraManager.Update(static_cast<float>(dt));
+
+	DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
+	mRenderer.Update(vp);
 }
 
 void Application::OnCreate(HWND hwnd)
 {
 	cout << "Application OnCreate called!" << endl;
 	InputManager::Get().Initialize(hwnd);
+
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	mSecondsPerCount = 1.0 / static_cast<double>(freq.QuadPart);
+	QueryPerformanceCounter(&mPrevCounter);
+
+	mCameraManager.Initialize(mWidth, mHeight);
+
 	mRenderer.Initialize(hwnd, mWidth, mHeight);
 }
 

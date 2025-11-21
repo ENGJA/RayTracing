@@ -185,27 +185,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     mScissorRect.right = static_cast<LONG>(mWidth);
     mScissorRect.bottom = static_cast<LONG>(mHeight);
 
-    // View-projection matrix
-    DirectX::XMMATRIX viewMatrix = DirectX::XMMatrixLookAtLH(
-        { 0.0f, 1.0f, -3.0f, 0.0f },
-        { 0.0f, 0.0f, 0.0f, 0.0f },
-        { 0.0f, 1.0f, 0.0f, 0.0f });
-    DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(0.0f, -1.0f, 1.0f);
-    viewMatrix = translation * viewMatrix;
-    DirectX::XMMATRIX projectionMatrix = DirectX::XMMatrixPerspectiveFovLH(1.2217304764f, 16.0f / 9.0f, 1.0f, 50.0f);
-    mConstantBufferData.vpMatrix = viewMatrix * projectionMatrix;
 
-    mCameras.clear();
-    mCameras.emplace_back();
-    mCameras[0].InitializeFixed(viewMatrix, projectionMatrix);
-
-    mCameras.emplace_back();
-    mCameras[1].InitializeFree({ 3.0f, 1.0f, -3.0f }, /*yaw*/2.5f, /*pitch*/0.0f,
-        /*fovY*/1.3217304764f,
-        static_cast<float>(mWidth) / static_cast<float>(mHeight),
-        1.0f, 50.0f);
-
-    mActiveCameraIndex = 0;
+	// view-projection matrix (will be updated each frame)
+    mConstantBufferData.vpMatrix = DirectX::XMMatrixIdentity();
 
     mConstantBuffer.Initialize(
         mDevice.Get(),
@@ -249,7 +231,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     BuildMeshGpuData();
 }
 
-void Renderer::Update()
+void Renderer::Update(const DirectX::XMMATRIX& viewProj)
 {
     // compute delta time
     LARGE_INTEGER now;
@@ -257,22 +239,10 @@ void Renderer::Update()
     double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
     mPrevCounter = now;
 
-    // Allow Application/InputManager to start frame and feed messages.
-    // Toggle active camera with 'C' (edge detection from InputManager)
-    if (InputManager::Get().WasKeyPressed('C'))
-    {
-        if (!mCameras.empty())
-            mActiveCameraIndex = (mActiveCameraIndex + 1) % mCameras.size();
-    }
-
-    // update active camera (only free cameras respond to input inside Camera::Update)
-    if (!mCameras.empty())
-        mCameras[mActiveCameraIndex].Update(static_cast<float>(dt), InputManager::Get());
-
     static float angle = 0.0f;
     angle += 0.01f;
     DirectX::XMMATRIX rotationMatrix = DirectX::XMMatrixRotationY(angle);
-    DirectX::XMMATRIX worldViewProj = rotationMatrix * mCameras[mActiveCameraIndex].GetViewProjection();
+    DirectX::XMMATRIX worldViewProj = rotationMatrix * viewProj;
     void* pData;
     mConstantBuffer.Get()->Map(0, nullptr, &pData);
     memcpy(pData, &worldViewProj, sizeof(DirectX::XMMATRIX));

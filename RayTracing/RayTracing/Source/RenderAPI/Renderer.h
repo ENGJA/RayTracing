@@ -6,7 +6,7 @@
 #include "D3D12/D3D12PipelineState.h"
 #include "D3D12/D3D12Resource.h"
 #include "D3D12/UploadHeap.h"
-#include "Camera.h"
+#include "Camera/Camera.h"
 #include "DataTypes.h"
 #include "Depth/DepthBuffer.h"
 #include "DXGI/DXGISwapChain.h"
@@ -60,11 +60,6 @@ private:
 
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
 
-
-	// Cameras: support multiple; index selects active one
-	std::vector<Camera> mCameras;
-	size_t mActiveCameraIndex = 0;
-
 	// timing
 	LARGE_INTEGER mPrevCounter{};
 	double mSecondsPerCount = 0.0;
@@ -90,7 +85,8 @@ public:
 	void Initialize(HWND hwnd, UINT width, UINT height);
 	/**
 	 * @brief Records and submits commands for one frame and presents.
+	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
 	 */
-	void Update();
+	void Update(const DirectX::XMMATRIX& viewProj);
 };
 

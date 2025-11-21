@@ -140,7 +140,8 @@
   <ItemGroup>
     <ClCompile Include="Source\Input\InputManager.cpp" />
     <ClCompile Include="Source\paths.cpp" />
-    <ClCompile Include="Source\RenderAPI\Camera.cpp" />
+    <ClCompile Include="Source\RenderAPI\Camera\Camera.cpp" />
+    <ClCompile Include="Source\RenderAPI\Camera\CameraManager.cpp" />
     <ClCompile Include="Source\RenderAPI\D3D12\UploadHeap.cpp" />
     <ClCompile Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.cpp" />
     <ClCompile Include="Source\ResourceLoading\Model.cpp" />
@@ -178,7 +179,8 @@
   <ItemGroup>
     <ClInclude Include="Source\Input\InputManager.h" />
     <ClInclude Include="Source\paths.h" />
-    <ClInclude Include="Source\RenderAPI\Camera.h" />
+    <ClInclude Include="Source\RenderAPI\Camera\Camera.h" />
+    <ClInclude Include="Source\RenderAPI\Camera\CameraManager.h" />
     <ClInclude Include="Source\RenderAPI\D3D12\UploadHeap.h" />
     <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h" />
     <ClInclude Include="Source\ResourceLoading\Model.h" />
