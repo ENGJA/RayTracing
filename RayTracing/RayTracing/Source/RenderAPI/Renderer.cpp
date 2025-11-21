@@ -7,6 +7,7 @@
 #include "helpers.h"
 #include "HLSL/HLSLCompiler.h"
 #include "HLSL/HLSLShader.h"
+#include "Input/InputManager.h"
 #include "ResourceLoading/Model.h"
 #include "ResourceLoading/TextureLoader.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
@@ -135,6 +136,12 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     mWidth = width;
     mHeight = height;
 
+    // setup timer for delta time
+    LARGE_INTEGER freq;
+    QueryPerformanceFrequency(&freq);
+    mSecondsPerCount = 1.0 / static_cast<double>(freq.QuadPart);
+    QueryPerformanceCounter(&mPrevCounter);
+
     // Shader-visible SRV heap for textures (increase capacity for many material descriptors)
     mSrvHeap.Initialize(mDevice.Get(), 4096);
 
@@ -178,15 +185,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     mScissorRect.right = static_cast<LONG>(mWidth);
     mScissorRect.bottom = static_cast<LONG>(mHeight);
 
-    // View-projection matrix
-    DirectX::XMMATRIX viewMatrix = DirectX::XMMatrixLookAtLH(
-        { 0.0f, 1.0f, -3.0f, 0.0f },
-        { 0.0f, 0.0f, 0.0f, 0.0f },
-        { 0.0f, 1.0f, 0.0f, 0.0f });
-    DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(0.0f, -1.0f, 1.0f);
-    viewMatrix = translation * viewMatrix;
-    DirectX::XMMATRIX projectionMatrix = DirectX::XMMatrixPerspectiveFovLH(1.2217304764f, 16.0f / 9.0f, 1.0f, 50.0f);
-    mConstantBufferData.vpMatrix = viewMatrix * projectionMatrix;
+
+	// view-projection matrix (will be updated each frame)
+    mConstantBufferData.vpMatrix = DirectX::XMMatrixIdentity();
 
     mConstantBuffer.Initialize(
         mDevice.Get(),
@@ -230,12 +231,19 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     BuildMeshGpuData();
 }
 
-void Renderer::Update()
+void Renderer::Update(const DirectX::XMMATRIX& viewProj)
 {
+    // compute delta time
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
+    mPrevCounter = now;
+
     static float angle = 0.0f;
-    angle += 0.01f;
+    const float angularSpeed = 2.0f; // radians per second 
+    angle += angularSpeed * static_cast<float>(dt);
     DirectX::XMMATRIX rotationMatrix = DirectX::XMMatrixRotationY(angle);
-    DirectX::XMMATRIX worldViewProj = rotationMatrix * mConstantBufferData.vpMatrix;
+    DirectX::XMMATRIX worldViewProj = rotationMatrix * viewProj;
     void* pData;
     mConstantBuffer.Get()->Map(0, nullptr, &pData);
     memcpy(pData, &worldViewProj, sizeof(DirectX::XMMATRIX));

@@ -1,11 +1,14 @@
 #include "pch.h"
 #include "Application.h"
 #include "RenderAPI/DXGI/DXGIDebug.h"
+#include "Input/InputManager.h"
 
 using std::cout, std::cerr, std::endl;
 
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	InputManager::Instance.OnWindowMessage(uMsg, wParam, lParam);
+
 	switch (uMsg)
 	{
 	case WM_NCCREATE:
@@ -78,18 +81,38 @@ bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, i
 
 void Application::Update()
 {
+	InputManager::Instance.BeginFrame();
+
 	MSG msg;
 	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 	{
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
-	mRenderer.Update();
+
+	LARGE_INTEGER now;
+	QueryPerformanceCounter(&now);
+	double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
+	mPrevCounter = now;
+
+	mCameraManager.Update(static_cast<float>(dt));
+
+	DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
+	mRenderer.Update(vp);
 }
 
 void Application::OnCreate(HWND hwnd)
 {
 	cout << "Application OnCreate called!" << endl;
+	InputManager::Instance.Initialize(hwnd);
+
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	mSecondsPerCount = 1.0 / static_cast<double>(freq.QuadPart);
+	QueryPerformanceCounter(&mPrevCounter);
+
+	mCameraManager.Initialize(mWidth, mHeight);
+
 	mRenderer.Initialize(hwnd, mWidth, mHeight);
 }
 

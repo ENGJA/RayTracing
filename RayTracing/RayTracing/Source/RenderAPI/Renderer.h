@@ -6,6 +6,7 @@
 #include "D3D12/D3D12PipelineState.h"
 #include "D3D12/D3D12Resource.h"
 #include "D3D12/UploadHeap.h"
+#include "Camera/Camera.h"
 #include "DataTypes.h"
 #include "Depth/DepthBuffer.h"
 #include "DXGI/DXGISwapChain.h"
@@ -59,6 +60,10 @@ private:
 
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
 
+	// timing
+	LARGE_INTEGER mPrevCounter{};
+	double mSecondsPerCount = 0.0;
+
 	/**
 	 * @brief Loads a texture from disk or returns cached GPU texture.
 	 * @param path Absolute or relative texture file path.
@@ -80,7 +85,8 @@ public:
 	void Initialize(HWND hwnd, UINT width, UINT height);
 	/**
 	 * @brief Records and submits commands for one frame and presents.
+	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
 	 */
-	void Update();
+	void Update(const DirectX::XMMATRIX& viewProj);
 };
 
