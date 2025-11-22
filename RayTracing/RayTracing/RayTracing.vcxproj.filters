@@ -273,6 +273,7 @@
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
     <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
+    <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
