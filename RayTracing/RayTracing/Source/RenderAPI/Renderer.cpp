@@ -101,11 +101,11 @@ void Renderer::BuildMeshGpuData()
                 if (it != textureMap.end())
                 {
                     GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second);
-					CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels, dst);
+					CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
                 }
                 else
                 {
-					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1, dst);
+					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
                 }              
             }
 
@@ -121,7 +121,7 @@ void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D
     srvDesc.Format = format;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = mipLevels;
-    mDevice.Get()->CreateShaderResourceView(resource, &srvDesc, dst);
+    mDevice.Get()->CreateShaderResourceView(resource, &srvDesc, handle);
 }
 
 void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
