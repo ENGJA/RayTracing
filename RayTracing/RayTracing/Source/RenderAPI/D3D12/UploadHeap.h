@@ -1,7 +1,4 @@
 #pragma once
-#include <cstdint>
-#include <stdexcept>
-#include <iostream>
 #include "D3D12Resource.h"
 #include "helpers.h"
 
@@ -30,18 +27,7 @@ public:
      * @param device D3D12 device.
      * @param sizeBytes Size in bytes to allocate.
      */
-    void Initialize(ID3D12Device* device, uint64_t sizeBytes)
-    {
-        mSize = sizeBytes;
-        mResource.Initialize(device, (unsigned int)sizeBytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
-        // Map once
-        D3D12_RANGE range{ 0, 0 };
-        void* ptr = nullptr;
-        HRESULT hr = mResource.Get()->Map(0, &range, &ptr);
-		ASSERT_HR(hr, "Failed to map upload heap.");
-        mMapped = reinterpret_cast<uint8_t*>(ptr);
-        mOffset = 0;
-    }
+    void Initialize(ID3D12Device* device, uint64_t sizeBytes);
 
     /**
      * @brief Resets the linear offset to start reusing memory (caller must ensure GPU finished).
@@ -57,17 +43,7 @@ public:
      * @param alignment Alignment in bytes (default 256 for constant buffer/texture requirements).
      * @return Allocation info (empty if out of space).
      */
-    Allocation Allocate(uint64_t size, uint64_t alignment = 256)
-    {
-        // Align offset
-        uint64_t aligned = (mOffset + (alignment - 1)) & ~(alignment - 1);
-        if (aligned + size > mSize) return {}; // Out of space
-        Allocation alloc;
-        alloc.offset = aligned; 
-        alloc.cpuPtr = mMapped + aligned; 
-        mOffset = aligned + size; 
-        return alloc;
-    }
+    Allocation Allocate(uint64_t size, uint64_t alignment = 256);
 
     /**
      * @brief Returns the underlying upload heap resource pointer.

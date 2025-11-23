@@ -44,8 +44,8 @@ void Renderer::BuildMeshGpuData()
             MeshGpuData gpu{};
             const UINT vbSize = (UINT)(mesh.mVertices.size() * sizeof(::Vertex));
             const UINT ibSize = (UINT)(mesh.mIndices.size() * sizeof(unsigned int));
-            gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
-            gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
+            gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+            gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
 			mUploadHeap.Reset();
             auto vbAlloc = mUploadHeap.Allocate(vbSize);
