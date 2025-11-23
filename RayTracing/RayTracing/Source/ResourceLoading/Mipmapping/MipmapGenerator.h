@@ -17,8 +17,23 @@ class MipmapGenerator
 	void InitializeDescriptorHeap();
 
 public:
+	/**
+	 * @brief Initializes the mipmap generator with required D3D12 resources.
+	 * @param pDevice D3D12 device.
+	 * @param computeShader Compute shader for mipmap generation.
+	 * @param commandList Command list for recording commands.
+	 * @param commandQueue Command queue for executing commands.
+	 */
 	void Initialize(ID3D12Device* pDevice, HLSLShader computeShader, D3D12CommandList* commandList, D3D12CommandQueue* commandQueue);
-	void GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, UINT frameIndex);
 
+	/**
+	 * @brief Generates mipmaps for the given texture resource.
+	 * @param textureResource Texture resource with mip levels to generate.
+	 * @param width Width of the top mip level.
+	 * @param height Height of the top mip level.
+	 * @param mipLevels Total number of mip levels in the texture.
+	 * @param frameIndex Current frame index for command list recording.
+	 */
+	void GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, UINT frameIndex);
 };
 

@@ -21,28 +21,25 @@ void MipmapGenerator::Initialize(ID3D12Device* pDevice, HLSLShader computeShader
 	InitializeDescriptorHeap();
 }
 
-void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, UINT frameIndex)
+void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, UINT frameIndex)
 {
 	mCommandList->ResetCommandList(frameIndex);
 	ID3D12GraphicsCommandList* cmdList = mCommandList->Get();
-
 	
 	cmdList->SetPipelineState(mPipelineState.Get());
 	cmdList->SetComputeRootSignature(mPipelineState.GetRootSignature());
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mDescriptorHeap.Get() };
 	cmdList->SetDescriptorHeaps(1, descriptorHeaps);
 
-	const DXGI_FORMAT format = textureResource->GetDesc().Format;
-
 
 	{
-		D3D12_RESOURCE_BARRIER barrier{};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Transition.pResource = textureResource;
-		barrier.Transition.Subresource = 0;
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE; // typowy stan wejœciowy po za³adowaniu
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-		cmdList->ResourceBarrier(1, &barrier);
+		D3D12_RESOURCE_BARRIER b{};
+		b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		b.Transition.pResource = textureResource;
+		b.Transition.Subresource = 0;
+		b.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE; // typically the state after upload and before generating mips
+		b.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		cmdList->ResourceBarrier(1, &b);
 	}
 
 	UINT srcWidth = width, srcHeight = height;
@@ -51,7 +48,6 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 	{
 		UINT dstWidth = std::max(1u, srcWidth >> 1);
 		UINT dstHeight = std::max(1u, srcHeight >> 1);
-
 
 		// Transition current mip (destination) to UAV
 		{
@@ -64,26 +60,10 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 			cmdList->ResourceBarrier(1, &b);
 		}
 
-		// If not first mip, transition previous mip from UAV to SRV
-		//if (mip == 1)
-		//{
-		//	D3D12_RESOURCE_BARRIER b{};
-		//	b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		//	b.Transition.pResource = textureResource;
-		//	b.Transition.Subresource = mip - 1;
-		//	b.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE; //D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-		//	b.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-		//	cmdList->ResourceBarrier(1, &b);
-		//}
-
 		// Create / update descriptors
 		UINT descriptorIndex = (mip - 1) * 2;
 		D3D12_CPU_DESCRIPTOR_HANDLE cpuStart = mDescriptorHeap.Get()->GetCPUDescriptorHandleForHeapStart();
-		D3D12_GPU_DESCRIPTOR_HANDLE gpuStart = mDescriptorHeap.Get()->GetGPUDescriptorHandleForHeapStart();
-		//D3D12_CPU_DESCRIPTOR_HANDLE cpuSRV = cpuStart;
-		//D3D12_CPU_DESCRIPTOR_HANDLE cpuUAV{ cpuStart.ptr + SIZE_T(mDescriptorSize) };
-		//D3D12_GPU_DESCRIPTOR_HANDLE gpuSRV = gpuStart;
-		//D3D12_GPU_DESCRIPTOR_HANDLE gpuUAV{ gpuStart.ptr + UINT64(mDescriptorSize) };
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuStart = mDescriptorHeap.Get()->GetGPUDescriptorHandleForHeapStart();	
 		D3D12_CPU_DESCRIPTOR_HANDLE cpuSRV{ cpuStart.ptr + SIZE_T(descriptorIndex * mDescriptorSize) };
 		D3D12_CPU_DESCRIPTOR_HANDLE cpuUAV{ cpuStart.ptr + SIZE_T((descriptorIndex + 1) * mDescriptorSize) };
 		D3D12_GPU_DESCRIPTOR_HANDLE gpuSRV{ gpuStart.ptr + UINT64(descriptorIndex * mDescriptorSize) };
@@ -140,10 +120,7 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 			b.Transition.pResource = textureResource;
 			b.Transition.Subresource = mip;
 			b.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-			b.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE; 
-			//(mip == mipLevels - 1)
-			//	? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-			//	: D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+			b.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 			cmdList->ResourceBarrier(1, &b);
 		}
 
@@ -152,6 +129,7 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 		srcHeight = dstHeight;
 	}
 
+	// Transition entire resource to PIXEL_SHADER_RESOURCE state for sampling
 	{
 		D3D12_RESOURCE_BARRIER b{};
 		b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -168,4 +146,3 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 	mCommandQueue->ExecuteCommandLists(1, lists);
 	mCommandQueue->Flush();
 }
-////////////////////////

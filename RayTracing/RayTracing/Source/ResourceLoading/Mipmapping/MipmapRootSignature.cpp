@@ -47,28 +47,5 @@ void MipmapRootSignature::Initialize(ID3D12Device* pDevice)
 	rootSignatureDesc.Desc_1_1.NumParameters = _countof(params);
 	rootSignatureDesc.Desc_1_1.pParameters = params;
 
-	ComPtr<ID3DBlob> serializedRootSig;
-	ComPtr<ID3DBlob> errorBlob;
-    HRESULT hr = D3D12SerializeVersionedRootSignature(
-        &rootSignatureDesc,
-        serializedRootSig.GetAddressOf(),
-        errorBlob.GetAddressOf()
-	);
-
-    if (FAILED(hr))
-    {
-        wcerr << "Failed to serialize root signature. Error: " << std::hex << hr << endl;
-        if (errorBlob)
-            wcerr << static_cast<const char*>(errorBlob->GetBufferPointer()) << endl;
-        throw;
-    }
-
-    hr = pDevice->CreateRootSignature(
-        0,
-        serializedRootSig->GetBufferPointer(),
-        serializedRootSig->GetBufferSize(),
-        IID_PPV_ARGS(mRootSignature.ReleaseAndGetAddressOf())
-	);
-
-	ASSERT_HR(hr, "Failed to create root signature.");
+	CreateRootSignature(pDevice, rootSignatureDesc, mRootSignature);
 }

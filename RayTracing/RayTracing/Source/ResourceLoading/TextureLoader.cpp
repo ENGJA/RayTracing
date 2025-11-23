@@ -147,7 +147,7 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	mQueue->ExecuteCommandLists(1, lists);
 	mQueue->Flush();
 
-	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(),img.width, img.height, mipLevels, frameIndex);
+	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex);
 	// Create the shader resource view
 	CreateSRV(mDevice, gpuTex.resource.Get(), desc.Format, mHeap, gpuTex.srv);
 
