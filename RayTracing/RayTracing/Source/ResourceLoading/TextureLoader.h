@@ -6,6 +6,7 @@
 #include "RenderAPI/D3D12/Command/D3D12CommandQueue.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandList.h"
 #include "RenderAPI/D3D12/UploadHeap.h"
+#include "Mipmapping/MipmapGenerator.h"
 
 struct GPUTexture
 {
@@ -36,7 +37,7 @@ public:
 	* @param cmdList Command list for recording copy commands.
 	* @param uploadHeap Upload heap for staging texture data.    
     */
-    void Initialize(ID3D12Device* device, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap);
+	void Initialize(ID3D12Device* device, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader);
 
 	/**
 	* @brief Loads a 2D texture from file and uploads it to GPU.
@@ -64,6 +65,10 @@ private:
 	/** <Upload heap for staging texture data. */
     UploadHeap* mUploadHeap = nullptr; // shared staging heap
 
+	MipmapGenerator mMipmapGenerator; ///< Mipmap generator for generating mipmaps on GPU.
+
+
+
     /**
 	* @brief Decodes an image file into RGBA8 pixel data.
 	* @param path File path to the image.
@@ -84,7 +89,7 @@ private:
 	* @param width Texture width.
 	* @param height Texture height.
 	*/
-	static D3D12_RESOURCE_DESC CreateTexture2DDesc(UINT width, UINT height);
+	static D3D12_RESOURCE_DESC CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels);
 
 	/**
 	* @brief Creates a default transition barrier for a texture resource (COPY_DEST to PIXEL_SHADER_RESOURCE).

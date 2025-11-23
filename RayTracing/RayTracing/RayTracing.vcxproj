@@ -138,6 +138,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\ResourceLoading\Mipmapping\MipmapGenerator.cpp" />
+    <ClCompile Include="Source\ResourceLoading\Mipmapping\MipmapPipeineState.cpp" />
+    <ClCompile Include="Source\ResourceLoading\Mipmapping\MipmapRootSignature.cpp" />
     <ClCompile Include="Source\Input\InputManager.cpp" />
     <ClCompile Include="Source\paths.cpp" />
     <ClCompile Include="Source\RenderAPI\Camera\Camera.cpp" />
@@ -177,6 +180,9 @@
     <ClCompile Include="Source\ResourceLoading\Vertex.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\ResourceLoading\Mipmapping\MipmapGenerator.h" />
+    <ClInclude Include="Source\ResourceLoading\Mipmapping\MipmapPipeineState.h" />
+    <ClInclude Include="Source\ResourceLoading\Mipmapping\MipmapRootSignature.h" />
     <ClInclude Include="Source\Input\InputManager.h" />
     <ClInclude Include="Source\paths.h" />
     <ClInclude Include="Source\RenderAPI\Camera\Camera.h" />

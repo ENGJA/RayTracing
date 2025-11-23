@@ -148,13 +148,15 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     // Shared upload heap (64 MB)
     mUploadHeap.Initialize(mDevice.Get(), 64ull * 1024ull * 1024ull);
 
-    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap);
 
     HLSLCompiler compiler;
     compiler.Initialize();
 
     HLSLShader vertexShader = compiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
     HLSLShader pixelShader  = compiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl",  L"ps_6_0");
+	HLSLShader mipmapShader = compiler.CompileFromFile(L"Source/Shaders/MipmapShader.hlsl", L"cs_6_0");
+
+    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
 
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
     {

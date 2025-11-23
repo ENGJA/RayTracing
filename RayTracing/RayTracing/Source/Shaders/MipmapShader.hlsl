@@ -9,7 +9,8 @@
 cbuffer MipConstants : register(b0)
 {
     uint2 SrcSize;       // Size of the source mip level (width,height)
-    uint  SrcMipLevel;   // Mip level index of the source being read
+    //uint  SrcMipLevel;   // Mip level index of the source being read
+    uint2 DstSize; // Size of the destination mip level (width,height)
     uint  _Padding;      // Unused padding for 16-byte alignment
 };
 
@@ -23,9 +24,9 @@ RWTexture2D<float4> gDst : register(u0);
 void main(uint3 DTid : SV_DispatchThreadID)
 {
     // Derive destination size from source (each mip halves, but minimum 1)
-    uint2 dstSize = uint2(max(SrcSize.x >> 1, 1), max(SrcSize.y >> 1, 1));
+    //uint2 dstSize = uint2(max(SrcSize.x >> 1, 1), max(SrcSize.y >> 1, 1));
 
-    if (DTid.x >= dstSize.x || DTid.y >= dstSize.y)
+    if (DTid.x >= DstSize.x || DTid.y >= DstSize.y)
         return; // Out of bounds for this mip
 
     uint2 baseSrc = DTid.xy * 2; // Top-left of 2x2 block in source mip
@@ -37,10 +38,10 @@ void main(uint3 DTid : SV_DispatchThreadID)
     uint2 p01 = min(baseSrc + uint2(0,1), srcMax);
     uint2 p11 = min(baseSrc + uint2(1,1), srcMax);
 
-    float4 c00 = gSrc.Load(int3(p00, SrcMipLevel));
-    float4 c10 = gSrc.Load(int3(p10, SrcMipLevel));
-    float4 c01 = gSrc.Load(int3(p01, SrcMipLevel));
-    float4 c11 = gSrc.Load(int3(p11, SrcMipLevel));
+    float4 c00 = gSrc.Load(int3(p00, 0));
+    float4 c10 = gSrc.Load(int3(p10, 0));
+    float4 c01 = gSrc.Load(int3(p01, 0));
+    float4 c11 = gSrc.Load(int3(p11, 0));
 
     float4 avg = (c00 + c10 + c01 + c11) * 0.25f;
 
