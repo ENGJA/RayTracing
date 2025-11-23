@@ -8,11 +8,11 @@ class MipmapGenerator
 {
 	MipmapPipeineState mPipelineState;
 
-	ID3D12Device* mDevice;
-	D3D12CommandList* mCommandList;
-	D3D12CommandQueue* mCommandQueue;
-	D3D12DescriptorHeap mDescriptorHeap;
-	UINT mDescriptorSize;
+	ID3D12Device* mDevice;					///< D3D12 device pointer
+	D3D12CommandList* mCommandList;			///< Command list for recording commands
+	D3D12CommandQueue* mCommandQueue;		///< Command queue for executing commands
+	D3D12DescriptorHeap mDescriptorHeap;	///< Descriptor heap for SRV/UAV
+	UINT mDescriptorSize;					///< Descriptor handle increment size
 
 	void InitializeDescriptorHeap();
 

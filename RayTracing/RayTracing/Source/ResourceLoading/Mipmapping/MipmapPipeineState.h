@@ -1,6 +1,10 @@
 #pragma once
 #include "RenderAPI/HLSL/HLSLShader.h"
 #include "ResourceLoading/Mipmapping/MipmapRootSignature.h"
+
+/**
+ * @brief Pipeline state object for mipmap generation compute shader.
+ */
 class MipmapPipeineState
 {
 private:

@@ -75,6 +75,16 @@ private:
 	 */
 	void BuildMeshGpuData();
 
+
+	/**
+	 * @brief Creates a shader resource view for a texture resource.
+	 * @param resource Texture resource.
+	 * @param format Texture format.
+	 * @param handle CPU descriptor handle where to create the SRV.
+	 * @param mipLevels Number of mip levels in the texture.
+	 */
+	void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
+
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.

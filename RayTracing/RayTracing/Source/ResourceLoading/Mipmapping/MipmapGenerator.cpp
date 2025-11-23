@@ -6,7 +6,7 @@ void MipmapGenerator::InitializeDescriptorHeap()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	heapDesc.NumDescriptors = 64;// 2; // SRV + UAV per mip level, adjust as needed (max 32 mip levels supported here)
+	heapDesc.NumDescriptors = 64; // SRV + UAV per mip level, adjust as needed (max 32 mip levels supported here)
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	mDescriptorHeap.Initialize(mDevice, heapDesc);
 	mDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(heapDesc.Type);

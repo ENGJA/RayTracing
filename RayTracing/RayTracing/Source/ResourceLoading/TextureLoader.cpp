@@ -20,17 +20,6 @@ void TextureLoader::Initialize(ID3D12Device* pDevice, ShaderVisibleDescriptorHea
 	ASSERT_HR(hr, L"Failed to create WIC factory");
 }
 
-static void CreateSRV(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, ShaderVisibleDescriptorHeap* heap, DescriptorAllocation& out)
-{
-	out = heap->Allocate(1);
-	D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-	srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srv.Format = res->GetDesc().Format;
-	srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srv.Texture2D.MipLevels = res->GetDesc().MipLevels;
-	device->CreateShaderResourceView(res, &srv, out.cpuHandle);
-}
-
 static UINT CalculateMipLevels(UINT width, UINT height)
 {
 	//return 1;
@@ -93,13 +82,14 @@ DecodedImage TextureLoader::DecodeImageRGBA8(const std::wstring& path)
 
 GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex)
 {
-	GPUTexture gpuTex{};
-	gpuTex.width = img.width;
-	gpuTex.height = img.height;
-
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
 	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(img.width, img.height, mipLevels);
+	GPUTexture gpuTex{};
+	gpuTex.width = img.width;
+	gpuTex.height = img.height;
+	gpuTex.format = desc.Format;
+	gpuTex.mipLevels = mipLevels;
 	gpuTex.resource.Initialize(mDevice, desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
 
 	// Define the layout of the subresource data
@@ -148,8 +138,6 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	mQueue->Flush();
 
 	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex);
-	// Create the shader resource view
-	CreateSRV(mDevice, gpuTex.resource.Get(), desc.Format, mHeap, gpuTex.srv);
 
 	return gpuTex;
 }

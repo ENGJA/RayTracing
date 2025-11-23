@@ -11,7 +11,8 @@
 struct GPUTexture
 {
     D3D12Resource resource;
-    DescriptorAllocation srv;
+	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+	UINT mipLevels = 0;
     UINT width = 0;
     UINT height = 0;
 };
