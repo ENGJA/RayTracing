@@ -5,7 +5,7 @@
 #include "D3D12/D3D12Device.h"
 #include "D3D12/D3D12PipelineState.h"
 #include "D3D12/D3D12Resource.h"
-#include "D3D12/UploadHeap.h"
+#include "ResourceLoading/UploadHeap.h"
 #include "Camera/Camera.h"
 #include "DataTypes.h"
 #include "Depth/DepthBuffer.h"
@@ -74,6 +74,16 @@ private:
 	 * @brief Builds GPU buffers and material descriptor tables for all loaded meshes.
 	 */
 	void BuildMeshGpuData();
+
+
+	/**
+	 * @brief Creates a shader resource view for a texture resource.
+	 * @param resource Texture resource.
+	 * @param format Texture format.
+	 * @param handle CPU descriptor handle where to create the SRV.
+	 * @param mipLevels Number of mip levels in the texture.
+	 */
+	void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
 
 public:
 	/**

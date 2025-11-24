@@ -73,6 +73,12 @@
     <Filter Include="Pliki źródłowe\RenderAPI\Camera">
       <UniqueIdentifier>{fdd6b1f0-84a8-42ad-8f61-4feb27975aa0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki źródłowe\ResourceLoading\Mipmapping">
+      <UniqueIdentifier>{bcc5ac23-b02a-4ff7-8641-52d7d0253320}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\ResourceLoading\Mipmapping">
+      <UniqueIdentifier>{ae5caa4d-f804-4d30-8814-a28440e5ab78}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -153,7 +159,7 @@
     <ClCompile Include="Source\ResourceLoading\TextureLoader.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
-    <ClCompile Include="Source\RenderAPI\D3D12\UploadHeap.cpp">
+    <ClCompile Include="Source\ResourceLoading\UploadHeap.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
     <ClCompile Include="Source\ResourceLoading\Vertex.cpp">
@@ -167,6 +173,18 @@
     </ClCompile>
     <ClCompile Include="Source\RenderAPI\Camera\CameraManager.cpp">
       <Filter>Pliki źródłowe\RenderAPI\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\Mipmapping\MipmapGenerator.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading\Mipmapping</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\Mipmapping\MipmapPipeineState.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading\Mipmapping</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\Mipmapping\MipmapRootSignature.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading\Mipmapping</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\helpers.cpp">
+      <Filter>Pliki źródłowe</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -245,7 +263,7 @@
     <ClInclude Include="Source\ResourceLoading\TextureLoader.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
-    <ClInclude Include="Source\RenderAPI\D3D12\UploadHeap.h">
+    <ClInclude Include="Source\ResourceLoading\UploadHeap.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
     <ClInclude Include="Source\ResourceLoading\Vertex.h">
@@ -269,10 +287,20 @@
     <ClInclude Include="Source\RenderAPI\Camera\CameraManager.h">
       <Filter>Pliki nagłówkowe\RenderAPI\Camera</Filter>
     </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\Mipmapping\MipmapGenerator.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading\Mipmapping</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\Mipmapping\MipmapPipeineState.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading\Mipmapping</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\Mipmapping\MipmapRootSignature.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading\Mipmapping</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
     <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
+    <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
