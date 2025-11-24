@@ -5,7 +5,7 @@
 #include "D3D12/D3D12Device.h"
 #include "D3D12/D3D12PipelineState.h"
 #include "D3D12/D3D12Resource.h"
-#include "D3D12/UploadHeap.h"
+#include "ResourceLoading/UploadHeap.h"
 #include "Camera/Camera.h"
 #include "DataTypes.h"
 #include "Depth/DepthBuffer.h"

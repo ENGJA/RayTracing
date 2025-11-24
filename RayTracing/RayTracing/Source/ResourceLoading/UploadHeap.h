@@ -1,5 +1,5 @@
 #pragma once
-#include "D3D12Resource.h"
+#include "RenderAPI/D3D12/D3D12Resource.h"
 #include "helpers.h"
 
 /**

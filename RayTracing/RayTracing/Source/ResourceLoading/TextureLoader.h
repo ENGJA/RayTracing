@@ -5,7 +5,7 @@
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandQueue.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandList.h"
-#include "RenderAPI/D3D12/UploadHeap.h"
+#include "ResourceLoading/UploadHeap.h"
 #include "Mipmapping/MipmapGenerator.h"
 
 struct GPUTexture

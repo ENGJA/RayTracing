@@ -159,7 +159,7 @@
     <ClCompile Include="Source\ResourceLoading\TextureLoader.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
-    <ClCompile Include="Source\RenderAPI\D3D12\UploadHeap.cpp">
+    <ClCompile Include="Source\ResourceLoading\UploadHeap.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
     <ClCompile Include="Source\ResourceLoading\Vertex.cpp">
@@ -182,6 +182,9 @@
     </ClCompile>
     <ClCompile Include="Source\ResourceLoading\Mipmapping\MipmapRootSignature.cpp">
       <Filter>Pliki źródłowe\ResourceLoading\Mipmapping</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\helpers.cpp">
+      <Filter>Pliki źródłowe</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -260,7 +263,7 @@
     <ClInclude Include="Source\ResourceLoading\TextureLoader.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
-    <ClInclude Include="Source\RenderAPI\D3D12\UploadHeap.h">
+    <ClInclude Include="Source\ResourceLoading\UploadHeap.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
     <ClInclude Include="Source\ResourceLoading\Vertex.h">
