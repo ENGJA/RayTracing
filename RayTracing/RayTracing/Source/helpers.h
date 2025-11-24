@@ -18,4 +18,6 @@
 
 //#define ASSERT_HR(hr, msg) if (FAILED(hr)) { std::cerr << msg << " Error: " << std::hex << hr << std::endl; throw; } 
 
+void CreateRootSignature(ID3D12Device * pDevice, D3D12_VERSIONED_ROOT_SIGNATURE_DESC & rootSignatureDesc, Microsoft::WRL::ComPtr<ID3D12RootSignature>&mRootSignature);
+
 

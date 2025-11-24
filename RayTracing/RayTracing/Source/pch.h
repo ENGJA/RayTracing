@@ -1,10 +1,11 @@
 #pragma once
-
+#define NOMINMAX
 // standard
 #include <iostream>
 #include <vector>
 #include <unordered_map>
 #include <filesystem>
+#include <cmath>
 
 // directx
 #include <d3d12.h>
@@ -14,6 +15,7 @@
 #include <dxgidebug.h>
 
 // windows
+
 #include <windows.h>
 #include <wrl.h>
 #include <wincodec.h>

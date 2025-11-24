@@ -1,6 +1,5 @@
 #pragma once
-#include <wrl.h>
-#include <d3d12.h>
+#include "RenderAPI/D3D12/D3D12DescriptorHeap.h"
 
 /**
  * @brief Descriptor allocation metadata with CPU/GPU handles and heap index.
@@ -21,7 +20,7 @@ struct DescriptorAllocation
 class ShaderVisibleDescriptorHeap
 {
 private:
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mHeap; ///< Underlying descriptor heap COM pointer.
+    D3D12DescriptorHeap mHeap; ///< Underlying descriptor heap COM pointer.
     UINT mIncrementSize = 0; ///< Descriptor handle increment size for this heap type.
     UINT mCapacity = 0; ///< Total number of descriptors available.
     UINT mAllocated = 0; ///< Number of descriptors already allocated linearly.

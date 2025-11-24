@@ -14,7 +14,7 @@
 #include "Renderer.h"
 #include "paths.h"
 
-using std::wcout, std::endl, std::string, std::wstring, std::vector;
+using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map;
 
 /**
 * @brief Maps TextureType enum to descriptor slot index.
@@ -44,8 +44,8 @@ void Renderer::BuildMeshGpuData()
             MeshGpuData gpu{};
             const UINT vbSize = (UINT)(mesh.mVertices.size() * sizeof(::Vertex));
             const UINT ibSize = (UINT)(mesh.mIndices.size() * sizeof(unsigned int));
-            gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
-            gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
+            gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+            gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
 			mUploadHeap.Reset();
             auto vbAlloc = mUploadHeap.Allocate(vbSize);
@@ -88,17 +88,40 @@ void Renderer::BuildMeshGpuData()
             gpu.ibv.Format = DXGI_FORMAT_R32_UINT;
 
             gpu.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
+
+            unordered_map<int, string> textureMap;
             for (const Texture& cpuTex : mesh.mTextures)
+                textureMap[TextureTypeToSlot(cpuTex.mType)] = cpuTex.mPath;
+
+            for (int i = 0; i < Config::cNumberOfTextureSlots; i++)
             {
-                int slot = TextureTypeToSlot(cpuTex.mType);
-                GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + cpuTex.mPath);
                 D3D12_CPU_DESCRIPTOR_HANDLE dst = gpu.materialTable.cpuHandle;
-                dst.ptr += SIZE_T(slot) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-                mDevice.Get()->CopyDescriptorsSimple(1, dst, gpuTex.srv.cpuHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                dst.ptr += SIZE_T(i) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                auto it = textureMap.find(i);
+                if (it != textureMap.end())
+                {
+                    GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second);
+					CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
+                }
+                else
+                {
+					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
+                }              
             }
+
             mMeshGpu.push_back(std::move(gpu));
         }
     }
+}
+
+void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels)
+{
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = format;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels = mipLevels;
+    mDevice.Get()->CreateShaderResourceView(resource, &srvDesc, handle);
 }
 
 void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
@@ -143,19 +166,22 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     QueryPerformanceCounter(&mPrevCounter);
 
     // Shader-visible SRV heap for textures (increase capacity for many material descriptors)
-    mSrvHeap.Initialize(mDevice.Get(), 4096);
+    mSrvHeap.Initialize(mDevice.Get(), Config::cNumberOfSrvDescriptors);
 
     // Shared upload heap (64 MB)
     mUploadHeap.Initialize(mDevice.Get(), 64ull * 1024ull * 1024ull);
-
-    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap);
 
     HLSLCompiler compiler;
     compiler.Initialize();
 
     HLSLShader vertexShader = compiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
     HLSLShader pixelShader  = compiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl",  L"ps_6_0");
+	HLSLShader mipmapShader = compiler.CompileFromFile(L"Source/Shaders/MipmapShader.hlsl", L"cs_6_0");
 
+	// Initialize texture loader
+    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
+
+	// Create pipeline state
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
     {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
