@@ -222,7 +222,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-    const std::string modelPath = GetResourcePath("Objects\\sphere\\sphere.obj").string();
+    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
     auto modelA = std::make_unique<Model>();
     modelA->loadModel(modelPath);
     if (modelA->mMeshes.empty())
@@ -265,14 +265,9 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj)
     double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
     mPrevCounter = now;
 
-    static float angle = 0.0f;
-    const float angularSpeed = 2.0f; // radians per second 
-    angle += angularSpeed * static_cast<float>(dt);
-    DirectX::XMMATRIX rotationMatrix = DirectX::XMMatrixRotationY(angle);
-    DirectX::XMMATRIX worldViewProj = rotationMatrix * viewProj;
     void* pData;
     mConstantBuffer.Get()->Map(0, nullptr, &pData);
-    memcpy(pData, &worldViewProj, sizeof(DirectX::XMMATRIX));
+    memcpy(pData, &viewProj, sizeof(DirectX::XMMATRIX));
     mConstantBuffer.Get()->Unmap(0, nullptr);
 
     // Wait for GPU to finish with the current back buffer

@@ -6,51 +6,89 @@
 #include "Model.h"
 using std::string, std::vector, std::cerr, std::endl;
 
+static DirectX::XMMATRIX AiToXMMatrix(const aiMatrix4x4& m)
+{
+	return DirectX::XMMATRIX(
+		(float)m.a1, (float)m.a2, (float)m.a3, (float)m.a4,
+		(float)m.b1, (float)m.b2, (float)m.b3, (float)m.b4,
+		(float)m.c1, (float)m.c2, (float)m.c3, (float)m.c4,
+		(float)m.d1, (float)m.d2, (float)m.d3, (float)m.d4
+	);
+}
+
 void Model::loadModel(const string& path)
 {
 	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+	const unsigned int flags =
+		aiProcess_Triangulate |
+		aiProcess_FlipUVs |
+		aiProcess_GenSmoothNormals |
+		aiProcess_CalcTangentSpace |
+		aiProcess_JoinIdenticalVertices |
+		aiProcess_PreTransformVertices;
+	const aiScene* scene = importer.ReadFile(path, flags);
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
 		cerr << "ERROR::ASSIMP:: " << importer.GetErrorString() << endl;
 		return;
 	}
 
-	mDirectory = path.substr(0, path.find_last_of('\\'));
-	processNode(scene->mRootNode, scene);
+	try
+	{
+		std::filesystem::path p(path);
+		mDirectory = p.parent_path().string();
+	}
+	catch (...)
+	{
+		mDirectory = path.substr(0, path.find_last_of('\\'));
+	}
+	aiMatrix4x4 identity;
+	processNode(scene->mRootNode, scene, identity);
 }
 
-void Model::processNode(aiNode* node, const aiScene* scene)
+void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& parentTransform)
 {
+	aiMatrix4x4 currentTransform = parentTransform * node->mTransformation;
+
 	for (unsigned int i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		mMeshes.push_back(processMesh(mesh, scene));
+		mMeshes.push_back(processMesh(mesh, scene, currentTransform));
 	}
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
-		processNode(node->mChildren[i], scene);
+		processNode(node->mChildren[i], scene, currentTransform);
 }
 
-Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
+Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform)
 {
 	vector<Vertex> vertices;
 	vector<unsigned int> indices;
 	vector<Texture> textures;
+
+	DirectX::XMMATRIX xmTransform = AiToXMMatrix(transform);
+
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 	{
 		Vertex vertex{};
-		DirectX::XMFLOAT3 vec3{};
-		vec3.x = mesh->mVertices[i].x;
-		vec3.y = mesh->mVertices[i].y;
-		vec3.z = mesh->mVertices[i].z;
-		vertex.mPosition = vec3;
+		// position
+		DirectX::XMVECTOR pos = DirectX::XMVectorSet(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
+		pos = XMVector3TransformCoord(pos, xmTransform);
+		XMStoreFloat3(&vertex.mPosition, pos);
+
+		// normal (transform with inverse-transpose of 3x3 or use TransformNormal)
 		if (mesh->mNormals)
 		{
-			vec3.x = mesh->mNormals[i].x;
-			vec3.y = mesh->mNormals[i].y;
-			vec3.z = mesh->mNormals[i].z;
-			vertex.mNormal = vec3;
+			DirectX::XMVECTOR n = DirectX::XMVectorSet(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z, 0.0f);
+			n = XMVector3TransformNormal(n, xmTransform);
+			n = DirectX::XMVector3Normalize(n);
+			XMStoreFloat3(&vertex.mNormal, n);
 		}
+		else
+		{
+			vertex.mNormal = DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };
+		}
+
+		// texcoords
 		if (mesh->mTextureCoords[0])
 		{
 			DirectX::XMFLOAT2 vec2{};
@@ -62,6 +100,7 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 		{
 			vertex.mTexCoords = DirectX::XMFLOAT2(0.0f, 0.0f);
 		}
+
 		vertices.push_back(vertex);
 	}
 	for (unsigned int i = 0; i < mesh->mNumFaces; i++)
@@ -96,7 +135,54 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType 
 	{
 		aiString str;
 		mat->GetTexture(aiType, i, &str);
-		bool skip = false;
+		std::string texRef = str.C_Str();
+
+		if (!texRef.empty() && texRef.rfind("./", 0) == 0)
+			texRef = texRef.substr(2);
+
+		if (!texRef.empty() && texRef[0] == '*')
+		{
+			std::cerr << "Embedded texture reference found (" << texRef << "). Embedded textures not handled here." << std::endl;
+			continue;
+		}
+
+		std::string finalPath = texRef;
+		std::filesystem::path pTex(texRef);
+		bool found = false;
+
+		if (pTex.is_absolute())
+		{
+			if (std::filesystem::exists(pTex))
+			{
+				finalPath = pTex.string();
+				found = true;
+			}
+		}
+		else
+		{
+			std::filesystem::path cand = std::filesystem::path(mDirectory) / pTex;
+			if (std::filesystem::exists(cand))
+			{
+				finalPath = std::filesystem::relative(cand, std::filesystem::path(mDirectory)).string();
+				found = true;
+			}
+			else
+			{
+				std::filesystem::path cand2 = std::filesystem::path(mDirectory) / "textures" / pTex;
+				if (std::filesystem::exists(cand2))
+				{
+					finalPath = std::filesystem::relative(cand2, std::filesystem::path(mDirectory)).string();
+					found = true;
+				}
+			}
+		}
+
+		if (!found)
+		{
+			finalPath = texRef;
+			std::cerr << "Warning: texture file not found for reference '" << texRef << "'; using literal path." << std::endl;
+		}
+
 		auto it = std::find_if(mLoadedTextures.begin(), mLoadedTextures.end(), [&str] (const Texture& tex)
 		{
 				return tex.mPath == str.C_Str();
