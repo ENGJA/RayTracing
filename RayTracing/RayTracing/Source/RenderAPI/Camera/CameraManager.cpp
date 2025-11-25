@@ -143,3 +143,17 @@ DirectX::XMMATRIX CameraManager::GetActiveViewProjection() const
         return DirectX::XMMatrixIdentity();
     return mCameras[mActiveIndex].GetViewProjection();
 }
+
+DirectX::XMFLOAT3 CameraManager::GetActiveCameraPosition() const
+{
+    if (mCameras.empty())
+        return DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };
+    return mCameras[mActiveIndex].GetPosition();
+}
+
+DirectX::XMFLOAT3 CameraManager::GetActiveCameraForward() const
+{
+    if (mCameras.empty())
+        return DirectX::XMFLOAT3{ 0.0f, 0.0f, 1.0f };
+    return mCameras[mActiveIndex].GetForward();
+}

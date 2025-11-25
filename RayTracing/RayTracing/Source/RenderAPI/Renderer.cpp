@@ -47,11 +47,11 @@ void Renderer::BuildMeshGpuData()
             gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
             gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
-			mUploadHeap.Reset();
+            mUploadHeap.Reset();
             auto vbAlloc = mUploadHeap.Allocate(vbSize);
             auto ibAlloc = mUploadHeap.Allocate(ibSize);
 
-            if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr) 
+            if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr)
                 throw std::runtime_error("Upload heap out of space for mesh buffers.");
 
             memcpy(vbAlloc.cpuPtr, mesh.mVertices.data(), vbSize);
@@ -101,12 +101,12 @@ void Renderer::BuildMeshGpuData()
                 if (it != textureMap.end())
                 {
                     GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second);
-					CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
+                    CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
                 }
                 else
                 {
-					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
-                }              
+                    CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
+                }
             }
 
             mMeshGpu.push_back(std::move(gpu));
@@ -217,7 +217,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     mConstantBuffer.Initialize(
         mDevice.Get(),
-        sizeof(DirectX::XMMATRIX),
+        sizeof(ConstantBufferData),
         D3D12_HEAP_TYPE_UPLOAD,
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
@@ -257,7 +257,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     BuildMeshGpuData();
 }
 
-void Renderer::Update(const DirectX::XMMATRIX& viewProj)
+void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward)
 {
     // compute delta time
     LARGE_INTEGER now;
@@ -265,9 +265,23 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj)
     double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
     mPrevCounter = now;
 
+    mConstantBufferData.vpMatrix = viewProj;
+    mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
+
+    mConstantBufferData.numLights = 1;
+    const float distant = 1000.0f;
+    mConstantBufferData.lights[0].position = DirectX::XMFLOAT4(
+        cameraPos.x + cameraForward.x * distant,
+        cameraPos.y + cameraForward.y * distant,
+        cameraPos.z + cameraForward.z * distant,
+        1.0f);
+
+    mConstantBufferData.lights[0].color = DirectX::XMFLOAT4(1.f, 1.f, 1.f, 1.0f);
+    mConstantBufferData.lights[0].dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f);
+
     void* pData;
     mConstantBuffer.Get()->Map(0, nullptr, &pData);
-    memcpy(pData, &viewProj, sizeof(DirectX::XMMATRIX));
+    memcpy(pData, &mConstantBufferData, sizeof(ConstantBufferData));
     mConstantBuffer.Get()->Unmap(0, nullptr);
 
     // Wait for GPU to finish with the current back buffer

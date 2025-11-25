@@ -4,6 +4,7 @@
 #include <assimp/postprocess.h>
 
 #include "Model.h"
+#include <RenderAPI/DataTypes.h>
 using std::string, std::vector, std::cerr, std::endl;
 
 static DirectX::XMMATRIX AiToXMMatrix(const aiMatrix4x4& m)
@@ -116,10 +117,6 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 	{
 		loadMaterialTextures(material, aiTextureType_BASE_COLOR, TextureType::Albedo),
 		loadMaterialTextures(material, aiTextureType_DIFFUSE, TextureType::Albedo), // fallback if BASE_COLOR not present
-		loadMaterialTextures(material, aiTextureType_NORMALS, TextureType::Normal),
-		loadMaterialTextures(material, aiTextureType_METALNESS, TextureType::Metalness),
-		loadMaterialTextures(material, aiTextureType_DIFFUSE_ROUGHNESS, TextureType::Roughness),
-		loadMaterialTextures(material, aiTextureType_EMISSIVE, TextureType::Emissive),
 	};
 
 	for (const auto& textureList : loadedTextures)

@@ -37,7 +37,17 @@ public:
     void Update(float dt);
 
     /**
+     * @brief Returns position of the active camera.
+    */
+    DirectX::XMFLOAT3 GetActiveCameraPosition() const;
+
+    /**
      * @brief Returns view-projection matrix of the active camera.
      */
     DirectX::XMMATRIX GetActiveViewProjection() const;
+
+    /**
+     * @brief Returns normalized forward vector of the active camera (world-space).
+     */
+    DirectX::XMFLOAT3 GetActiveCameraForward() const;
 };

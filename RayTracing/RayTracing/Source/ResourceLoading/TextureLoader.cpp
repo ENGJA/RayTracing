@@ -83,7 +83,7 @@ DecodedImage TextureLoader::DecodeImageRGBA8(const std::wstring& path)
 GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex)
 {
 	// Describe and create the texture resource
-	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
+	const UINT mipLevels = 1;//CalculateMipLevels(img.width, img.height);
 	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(img.width, img.height, mipLevels);
 	GPUTexture gpuTex{};
 	gpuTex.width = img.width;
@@ -137,7 +137,7 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	mQueue->ExecuteCommandLists(1, lists);
 	mQueue->Flush();
 
-	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex);
+	//mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex);
 
 	return gpuTex;
 }
