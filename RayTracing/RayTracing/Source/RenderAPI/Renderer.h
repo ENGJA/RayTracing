@@ -117,6 +117,8 @@ public:
 	/**
 	 * @brief Records and submits commands for one frame and presents.
 	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
+	 * @param cameraPos Camera world position.
+	 * @param cameraForward Camera forward vector.
 	 */
 	void Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
 };
