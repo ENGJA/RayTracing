@@ -13,6 +13,7 @@
 #include "ResourceLoading/Model.h"
 #include "ResourceLoading/TextureLoader.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include "RenderAPI/HLSL/HLSLCompiler.h"
 #include <unordered_map>
 
 /**
@@ -58,6 +59,8 @@ private:
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.
 
+	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
+
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
 
 	// timing
@@ -85,6 +88,16 @@ private:
 	 */
 	void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
 
+
+	/**
+	 * @brief Initializes or re-initializes the graphics pipeline state and root signature.
+	 */
+	void InitializePipelineState();
+
+	/**
+	 * @brief Initializes the texture loader with required D3D12 resources.
+	 */
+	void InitializeTextureLoader();
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.

@@ -124,6 +124,7 @@ void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D
     mDevice.Get()->CreateShaderResourceView(resource, &srvDesc, handle);
 }
 
+
 void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 {
 #ifdef _DEBUG
@@ -171,32 +172,11 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     // Shared upload heap (64 MB)
     mUploadHeap.Initialize(mDevice.Get(), 64ull * 1024ull * 1024ull);
 
-    HLSLCompiler compiler;
-    compiler.Initialize();
+	mShaderCompiler.Initialize();
 
-    HLSLShader vertexShader = compiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
-    HLSLShader pixelShader  = compiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl",  L"ps_6_0");
-	HLSLShader mipmapShader = compiler.CompileFromFile(L"Source/Shaders/MipmapShader.hlsl", L"cs_6_0");
+    InitializeTextureLoader();
 
-	// Initialize texture loader
-    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
-
-	// Create pipeline state
-    D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-    };
-    D3D12_INPUT_LAYOUT_DESC inputLayoutDesc{};
-    inputLayoutDesc.pInputElementDescs = inputElementDescs;
-    inputLayoutDesc.NumElements = _countof(inputElementDescs);
-
-    mPipelineState.Initialize(
-        mDevice.Get(),
-        std::move(vertexShader),
-        std::move(pixelShader),
-        inputLayoutDesc);
+    InitializePipelineState();
 
     // set viewport and scissor rect
     mViewport.TopLeftX = 0.0f;
@@ -255,6 +235,41 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     // Build GPU buffers and material descriptor tables
     BuildMeshGpuData();
+
+
+	// For debugging: recompile shaders on 'G' key press
+	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
+}
+
+void Renderer::InitializePipelineState()
+{
+    HLSLShader vertexShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
+    HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
+
+    constexpr D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    };
+    D3D12_INPUT_LAYOUT_DESC inputLayoutDesc
+    {
+        .pInputElementDescs = inputElementDescs,
+        .NumElements = _countof(inputElementDescs),
+    };
+
+	mCommandQueue.Flush();
+    mPipelineState.Initialize(
+        mDevice.Get(),
+        std::move(vertexShader),
+        std::move(pixelShader),
+        inputLayoutDesc);
+}
+
+void Renderer::InitializeTextureLoader()
+{
+    HLSLShader mipmapShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/MipmapShader.hlsl", L"cs_6_0");
+    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
 }
 
 void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward)
