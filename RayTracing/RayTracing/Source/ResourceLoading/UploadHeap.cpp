@@ -26,3 +26,14 @@ UploadHeap::Allocation UploadHeap::Allocate(uint64_t size, uint64_t alignment)
     mOffset = aligned + size;
     return alloc;
 }
+
+bool UploadHeap::CanAllocate(size_t size) const
+{
+    return (mOffset + size) <= mSize; // mOffset – bie¿¹cy pointer, mSize – ca³kowita pojemnoœæ
+}
+
+bool UploadHeap::CanAllocate(uint64_t size, uint64_t alignment) const
+{
+    const uint64_t aligned = (mOffset + (alignment - 1)) & ~(alignment - 1);
+    return (aligned + size) <= mSize;
+}

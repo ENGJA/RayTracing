@@ -80,7 +80,8 @@ DecodedImage TextureLoader::DecodeImageRGBA8(const std::wstring& path)
 	return img;
 }
 
-GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex)
+
+GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex, const std::function<void()>& executeQueue)
 {
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
@@ -94,13 +95,16 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 
 	// Define the layout of the subresource data
 	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-	UINT numRows = 0; 
-	UINT64 rowSize = 0; 
+	UINT numRows = 0;
+	UINT64 rowSize = 0;
 	UINT64 totalBytes = 0;
 	mDevice->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, &numRows, &rowSize, &totalBytes);
 
+
 	// Allocate upload heap space and copy data
-	mUploadHeap->Reset();
+	if (!mUploadHeap->CanAllocate(totalBytes, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT))
+		executeQueue();
+
 	auto alloc = mUploadHeap->Allocate(totalBytes, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
 	if (!alloc.cpuPtr) throw std::runtime_error("Upload heap out of space for texture.");
 
@@ -112,9 +116,6 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	{
 		memcpy(dst + y * footprint.Footprint.RowPitch, img.pixels.data() + y * srcRowPitch, srcRowPitch);
 	}
-
-	// Record copy commands
-	mCmdList->ResetCommandList(frameIndex);
 
 	D3D12_TEXTURE_COPY_LOCATION dstLoc{};
 	dstLoc.pResource = gpuTex.resource.Get();
@@ -131,13 +132,7 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
-	// Execute the command list and wait for completion
-	mCmdList->Get()->Close();
-	ID3D12CommandList* lists[] = { mCmdList->Get() };
-	mQueue->ExecuteCommandLists(1, lists);
-	mQueue->Flush();
-
-	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex);
+	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex, executeQueue);
 
 	return gpuTex;
 }
@@ -174,8 +169,9 @@ D3D12_RESOURCE_BARRIER TextureLoader::CreateTextureTransitionBarrier(ID3D12Resou
 }
 
 
-GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex)
+
+GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex, const std::function<void()>& executeQueue)
 {
 	DecodedImage img = DecodeImageRGBA8(path);
-	return CreateTextureFromDecodedImage(img, frameIndex);
+	return CreateTextureFromDecodedImage(img, frameIndex, executeQueue);
 }

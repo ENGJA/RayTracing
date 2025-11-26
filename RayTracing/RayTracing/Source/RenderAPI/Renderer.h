@@ -72,9 +72,10 @@ private:
 	/**
 	 * @brief Loads a texture from disk or returns cached GPU texture.
 	 * @param path Absolute or relative texture file path.
+	 * @param executeQueue Function to execute the command queue when needed.
 	 * @return GPU texture wrapper with resource and SRV descriptor.
 	 */
-	GPUTexture LoadOrGetTexture(const std::string& path);
+	GPUTexture LoadOrGetTexture(const std::string& path, const std::function<void()>& executeQueue);
 	/**
 	 * @brief Builds GPU buffers and material descriptor tables for all loaded meshes.
 	 */

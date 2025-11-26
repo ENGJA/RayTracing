@@ -1,5 +1,5 @@
 #include "pch.h"
-
+#include <chrono>
 #include "D3D12/D3D12Debug.h"
 #include "DataTypes.h"
 #include "DXGI/DXGIDebug.h"
@@ -14,7 +14,7 @@
 #include "Renderer.h"
 #include "paths.h"
 
-using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map;
+using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function;
 
 /**
 * @brief Maps TextureType enum to descriptor slot index.
@@ -24,44 +24,61 @@ static int TextureTypeToSlot(TextureType type)
     return static_cast<int>(type);
 }
 
-GPUTexture Renderer::LoadOrGetTexture(const string& path)
+GPUTexture Renderer::LoadOrGetTexture(const string& path, const function<void()>& executeQueue)
 {
     auto it = mTextureCache.find(path);
     if (it != mTextureCache.end()) return it->second;
 	wstring wpath(path.begin(), path.end());
-    GPUTexture tex = mTextureLoader.LoadTexture2DFromFile(wpath, mSwapChain.GetCurrentBackBufferIndex());
+    GPUTexture tex = mTextureLoader.LoadTexture2DFromFile(wpath, mSwapChain.GetCurrentBackBufferIndex(), executeQueue);
     mTextureCache.emplace(path, tex);
     return tex;
 }
 
 void Renderer::BuildMeshGpuData()
 {
+    mUploadHeap.Reset();
+    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+
+    auto executeBatch = [&]()
+    {
+        mCommandList.Get()->Close();
+        ID3D12CommandList* lists[] = { mCommandList.Get() };
+        mCommandQueue.ExecuteCommandLists(1, lists);
+        mCommandQueue.Flush();
+
+        mUploadHeap.Reset();
+        mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+        mTextureLoader.Reset();
+    };
+
     for (const auto& modelPtr : mModels)
     {
         const Model& model = *modelPtr;
         for (const Mesh& mesh : model.mMeshes)
         {
+            const UINT vbSize = static_cast<UINT>(mesh.mVertices.size() * sizeof(::Vertex));
+            const UINT ibSize = static_cast<UINT>(mesh.mIndices.size() * sizeof(unsigned int));
+            const size_t needed = vbSize + ibSize;
+
+            if (!mUploadHeap.CanAllocate(needed))
+                executeBatch();            
+
             MeshGpuData gpu{};
-            const UINT vbSize = (UINT)(mesh.mVertices.size() * sizeof(::Vertex));
-            const UINT ibSize = (UINT)(mesh.mIndices.size() * sizeof(unsigned int));
             gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
             gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
-            mUploadHeap.Reset();
             auto vbAlloc = mUploadHeap.Allocate(vbSize);
             auto ibAlloc = mUploadHeap.Allocate(ibSize);
-
             if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr)
-                throw std::runtime_error("Upload heap out of space for mesh buffers.");
+                throw std::runtime_error("Upload heap out of space for mesh buffers batch.");
 
             memcpy(vbAlloc.cpuPtr, mesh.mVertices.data(), vbSize);
             memcpy(ibAlloc.cpuPtr, mesh.mIndices.data(), ibSize);
 
-            mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
             mCommandList.Get()->CopyBufferRegion(gpu.vb.Get(), 0, mUploadHeap.GetResource(), vbAlloc.offset, vbSize);
             mCommandList.Get()->CopyBufferRegion(gpu.ib.Get(), 0, mUploadHeap.GetResource(), ibAlloc.offset, ibSize);
 
-            D3D12_RESOURCE_BARRIER barriers[2]{};
+            D3D12_RESOURCE_BARRIER barriers[2] = {};
             barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barriers[0].Transition.pResource = gpu.vb.Get();
             barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -75,10 +92,6 @@ void Renderer::BuildMeshGpuData()
             barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
 
             mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
-            mCommandList.Get()->Close();
-            ID3D12CommandList* lists[] = { mCommandList.Get() };
-            mCommandQueue.ExecuteCommandLists(1, lists);
-            mCommandQueue.Flush();
 
             gpu.vbv.BufferLocation = gpu.vb.Get()->GetGPUVirtualAddress();
             gpu.vbv.SizeInBytes = vbSize;
@@ -100,7 +113,7 @@ void Renderer::BuildMeshGpuData()
                 auto it = textureMap.find(i);
                 if (it != textureMap.end())
                 {
-                    GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second);
+                    GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second, executeBatch);
                     CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
                 }
                 else
@@ -112,6 +125,9 @@ void Renderer::BuildMeshGpuData()
             mMeshGpu.push_back(std::move(gpu));
         }
     }
+
+    executeBatch();
+    mCommandList.Get()->Close();
 }
 
 void Renderer::CollectStaticLights()
@@ -228,7 +244,11 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
     auto modelA = std::make_unique<Model>();
+
+	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
     modelA->loadModel(modelPath);
+	std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
+	std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
     if (modelA->mMeshes.empty())
     {
         vector<::Vertex> cpuVerts = {
@@ -240,25 +260,17 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
         modelA->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
     }
+    else
+	    wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+
     mModels.push_back(std::move(modelA));
 
-    //auto modelB = std::make_unique<Model>();
-    //modelB->loadModel(modelPath); // same path to test cache
-    //if (modelB->mMeshes.empty())
-    //{
-    //    vector<::Vertex> cpuVerts = {
-    //        { { -0.5f, -0.5f, 0 }, {0,0,1}, {0,1} },
-    //        { { -0.5f,  0.5f, 0 }, {0,0,1}, {0,0} },
-    //        { {  0.5f,  0.5f, 0 }, {0,0,1}, {1,0} },
-    //        { {  0.5f, -0.5f, 0 }, {0,0,1}, {1,1} },
-    //    };
-    //    vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
-    //    modelB->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-    //}
-    //mModels.push_back(std::move(modelB));
-
+	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
     // Build GPU buffers and material descriptor tables
     BuildMeshGpuData();
+	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
 
     // Collect static lights once after models are loaded
     CollectStaticLights();

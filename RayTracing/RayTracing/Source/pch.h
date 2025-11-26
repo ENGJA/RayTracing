@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <filesystem>
 #include <cmath>
+#include <functional>
 
 // directx
 #include <d3d12.h>
