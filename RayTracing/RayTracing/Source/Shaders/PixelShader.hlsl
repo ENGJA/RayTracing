@@ -1,5 +1,9 @@
-Texture2D    gAlbedo    : register(t0);
-SamplerState gSampler   : register(s0);
+Texture2D    gAlbedo              : register(t0);
+Texture2D    gMetalness           : register(t1);
+Texture2D    gRoughness           : register(t2); 
+Texture2D    gMetalnessRoughness  : register(t3);
+Texture2D    gEmissive            : register(t4);
+SamplerState gSampler             : register(s0);
 
 struct PSInput
 {
@@ -7,6 +11,7 @@ struct PSInput
     float2 uv  : TEXCOORD0;
     float3 worldPos : TEXCOORD1;
     float3 normalWS : TEXCOORD2;
+    float2 materialProps : TEXCOORD3;
 };
 
 // Light struct matching C++ ConstantBufferData::LightData (position,color,dirType)
@@ -30,13 +35,25 @@ float4 main(PSInput input) : SV_TARGET
 {
     float3 albedo = gAlbedo.Sample(gSampler, input.uv).rgb;
 
+    float texMetal = gMetalness.Sample(gSampler, input.uv).r;
+    float texRough = gRoughness.Sample(gSampler, input.uv).r;
+
+    float metalness = texMetal;
+    float roughness = texRough;
+
+    if (metalness == 0.0f)
+        metalness = saturate(input.materialProps.x);
+
+    float shininessFromRough = lerp(8.0f, 2048.0f, 1.0f - saturate(roughness));
+    float shininess = (input.materialProps.y > 0.0f) ? input.materialProps.y : shininessFromRough;
+
     float3 N = normalize(input.normalWS);
     float3 V = normalize(viewPos.xyz - input.worldPos);
 
     float3 finalColor = float3(0.0, 0.0, 0.0);
 
     // ambient
-    const float ambientStrength = 0.4f;
+    const float ambientStrength = 0.2f;
     float3 ambient = ambientStrength * albedo;
     finalColor += ambient;
 
@@ -47,12 +64,10 @@ float4 main(PSInput input) : SV_TARGET
         // jeœli dirType.w == 1 => directional; dirType.xyz to kierunek promieni (gdzie promienie lec¹)
         if (lights[i].dirType.w > 0.5f)
         {
-            // L ma byæ wektorem od powierzchni do Ÿród³a: to minus kierunku promieni
             L = normalize(-lights[i].dirType.xyz);
         }
         else
         {
-            // standardowe punktowe Ÿród³o
             L = normalize(lights[i].position.xyz - input.worldPos);
         }
 
@@ -63,10 +78,14 @@ float4 main(PSInput input) : SV_TARGET
         float NdotL = saturate(dot(N, L));
         float3 diffuse = NdotL * albedo * lightCol;
 
+        float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, saturate(metalness));
+
+        float shininess = lerp(8.0f, 2048.0f, 1.0f - saturate(roughness));
+
         // Phong specular
         float3 R = reflect(-L, N);
-        float spec = pow(saturate(dot(V, R)), 32.0f);
-        float3 specular = spec * lightCol;
+        float specFactor = pow(saturate(dot(V, R)), shininess);
+        float3 specular = specFactor * F0 * lightCol;
 
         finalColor += diffuse + specular;
     }

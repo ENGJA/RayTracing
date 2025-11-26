@@ -30,7 +30,7 @@ void CameraManager::Initialize(UINT width, UINT height)
     mCameras[1].InitializeFree({ 3.0f, 1.0f, -3.0f }, /*yaw*/2.5f, /*pitch*/0.0f,
         /*fovY*/1.3217304764f,
         static_cast<float>(width) / static_cast<float>(height),
-        1.0f, 50.0f);
+        0.1f, 50.0f);
 
     mActiveIndex = 0;
 

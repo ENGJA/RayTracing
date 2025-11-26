@@ -54,6 +54,17 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 	for (unsigned int i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+
+		aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
+		const float alphaThreshold = 0.999f; 
+
+		aiColor4D diffuseColor;
+		if (AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
+		{
+			if (diffuseColor.a < alphaThreshold)
+				continue;
+		}
+
 		mMeshes.push_back(processMesh(mesh, scene, currentTransform));
 	}
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
@@ -67,6 +78,21 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 	vector<Texture> textures;
 
 	DirectX::XMMATRIX xmTransform = AiToXMMatrix(transform);
+
+	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+	float matMetalness = 0.0f;
+	float matShininess = 32.0f;
+
+	if (material)
+	{
+		ai_real mf = 0.0;
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_METALLIC_FACTOR, &mf))
+			matMetalness = static_cast<float>(mf);
+
+		ai_real sf = 0.0;
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_SHININESS, &sf))
+			matShininess = static_cast<float>(sf);
+	}
 
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 	{
@@ -112,11 +138,13 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 	}
 
 	// get PBR material textures
-	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
 	vector<vector<Texture>> loadedTextures =
 	{
 		loadMaterialTextures(material, aiTextureType_BASE_COLOR, TextureType::Albedo),
 		loadMaterialTextures(material, aiTextureType_DIFFUSE, TextureType::Albedo), // fallback if BASE_COLOR not present
+		loadMaterialTextures(material, aiTextureType_NORMALS, TextureType::Normal),
+		loadMaterialTextures(material, aiTextureType_METALNESS, TextureType::Metalness),
+		loadMaterialTextures(material, aiTextureType_DIFFUSE_ROUGHNESS, TextureType::Roughness)
 	};
 
 	for (const auto& textureList : loadedTextures)
