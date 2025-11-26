@@ -1,7 +1,7 @@
 #pragma once
 #include "pch.h"
 
-static constexpr int cMaxLights = 8;
+static constexpr int cMaxLights = 25;
 
 struct LightData
 {
@@ -15,9 +15,9 @@ struct LightData
  */
 struct ConstantBufferData
 {
-	DirectX::XMMATRIX vpMatrix; ///< View-Projection matrix
-	DirectX::XMFLOAT4 viewPos;                  ///< world-space camera position (w .xyz)
-	int numLights;                              ///< liczba aktywnych œwiate³
-	float _pad[3];                              ///< wyrównanie
+	DirectX::XMMATRIX vpMatrix;		///< View-Projection matrix
+	DirectX::XMFLOAT4 viewPos;		///< world-space camera position (w .xyz)
+	int numLights;					///< liczba aktywnych œwiate³
+	float _pad[3];					///< wyrównanie
 	LightData lights[cMaxLights];
 };

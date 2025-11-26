@@ -284,16 +284,39 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     mConstantBufferData.vpMatrix = viewProj;
     mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
 
-    mConstantBufferData.numLights = 1;
-    const float distant = 1000.0f;
-    mConstantBufferData.lights[0].position = DirectX::XMFLOAT4(
-        cameraPos.x + cameraForward.x * distant,
-        cameraPos.y + cameraForward.y * distant,
-        cameraPos.z + cameraForward.z * distant,
-        1.0f);
+    // --- collect scene lights from loaded models (use these as primary lights) ---
+    std::vector<LightData> sceneLights;
+    for (const auto& modelPtr : mModels)
+    {
+        if (!modelPtr) continue;
+        for (const auto& l : modelPtr->mLights)
+        {
+            sceneLights.push_back(l);
+            if (sceneLights.size() >= cMaxLights) break;
+        }
+        if (sceneLights.size() >= cMaxLights) break;
+    }
 
-    mConstantBufferData.lights[0].color = DirectX::XMFLOAT4(1.f, 1.f, 1.f, 1.0f);
-    mConstantBufferData.lights[0].dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f);
+    // light camera light
+    const float cameraLightIntensity = 0.15f;
+    if (sceneLights.size() < cMaxLights)
+    {
+        LightData camLight{};
+        camLight.position = DirectX::XMFLOAT4(
+            cameraPos.x + cameraForward.x * 1000.0f,
+            cameraPos.y + cameraForward.y * 1000.0f,
+            cameraPos.z + cameraForward.z * 1000.0f,
+            1.0f);
+        camLight.color = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
+        camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
+        sceneLights.push_back(camLight);
+    }
+
+    // copy lights into constant buffer data (limit to cMaxLights)
+    int activeLights = static_cast<int>(std::min<size_t>(sceneLights.size(), cMaxLights));
+    mConstantBufferData.numLights = activeLights;
+    for (int i = 0; i < activeLights; ++i)
+        mConstantBufferData.lights[i] = sceneLights[i];
 
     void* pData;
     mConstantBuffer.Get()->Map(0, nullptr, &pData);

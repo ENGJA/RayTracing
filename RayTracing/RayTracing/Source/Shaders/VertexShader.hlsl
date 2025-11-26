@@ -29,7 +29,7 @@ cbuffer CBData : register(b0)
     float4 viewPos; // not used in VS, but layout must match PS
     int numLights;
     float3 _pad;
-    Light lights[8];
+    Light lights[25];
 };
 
 VSOutput main(VSInput input)

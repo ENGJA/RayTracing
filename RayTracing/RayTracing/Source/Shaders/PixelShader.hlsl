@@ -28,7 +28,7 @@ cbuffer CBData : register(b0)
     float4 viewPos;
     int numLights;
     float3 _pad;
-    Light lights[8];
+    Light lights[25];
 };
 
 float4 main(PSInput input) : SV_TARGET
@@ -57,12 +57,13 @@ float4 main(PSInput input) : SV_TARGET
     float3 ambient = ambientStrength * albedo;
     finalColor += ambient;
 
-    int active = min(numLights, 8);
+    int active = min(numLights, 25);
     for (int i = 0; i < active; ++i)
     {
         float3 L;
-        // jeœli dirType.w == 1 => directional; dirType.xyz to kierunek promieni (gdzie promienie lec¹)
-        if (lights[i].dirType.w > 0.5f)
+        bool isDirectional = (lights[i].dirType.w > 0.5f);
+
+        if (isDirectional)
         {
             L = normalize(-lights[i].dirType.xyz);
         }
@@ -74,6 +75,23 @@ float4 main(PSInput input) : SV_TARGET
         float intensity = lights[i].color.w;
         float3 baseLightCol = lights[i].color.xyz;
         float3 lightCol = baseLightCol * intensity;
+
+        // Attenuation for point lights
+        float attenuation = 1.0f;
+        if (!isDirectional)
+        {
+            // Tunable constants (constant, linear, quadratic)
+            const float kConst = 1.0f;
+            const float kLinear = 0.5f;
+            const float kQuadratic = 0.2f;
+
+            float dist = length(lights[i].position.xyz - input.worldPos);
+            float denom = kConst + kLinear * dist + kQuadratic * dist * dist;
+            attenuation = 1.0f / max(denom, 1e-4f);
+            // Optional: clamp to avoid extremely bright values
+            attenuation = saturate(attenuation * 1.0f);
+            lightCol *= attenuation;
+        }
 
         float NdotL = saturate(dot(N, L));
         float3 diffuse = NdotL * albedo * lightCol;

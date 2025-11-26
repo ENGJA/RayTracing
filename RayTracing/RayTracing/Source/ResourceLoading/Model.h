@@ -2,6 +2,7 @@
 
 #include <assimp/scene.h>
 #include "Mesh.h"
+#include "RenderAPI/DataTypes.h"
 
 /**
  * @brief CPU-side model loader that builds meshes and textures from Assimp scenes.
@@ -38,6 +39,8 @@ public:
 	std::vector<Texture> mLoadedTextures;
 	/**< Meshes contained in the model. */
 	std::vector<Mesh> mMeshes;
+	/**< Lights contained in the model. */
+	std::vector<LightData> mLights;
 	/**< Directory of the source model, used to resolve relative textures. */
 	std::string mDirectory;
 	/**
