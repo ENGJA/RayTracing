@@ -114,6 +114,30 @@ void Renderer::BuildMeshGpuData()
     }
 }
 
+void Renderer::CollectStaticLights()
+{
+    mStaticLights.clear();
+    for (const auto& modelPtr : mModels)
+    {
+        if (!modelPtr) continue;
+        for (const auto& l : modelPtr->mLights)
+        {
+            mStaticLights.push_back(l);
+            if (mStaticLights.size() >= cMaxLights) break;
+        }
+        if (mStaticLights.size() >= cMaxLights) break;
+    }
+
+    // Copy static lights once into CPU-side constant buffer data so Update doesn't have to re-create them.
+    const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
+    for (int i = 0; i < staticCount; ++i)
+    {
+        mConstantBufferData.lights[i] = mStaticLights[i];
+    }
+    // Set numLights to static count for now; Update will adjust (append camera light) each frame if needed.
+    mConstantBufferData.numLights = staticCount;
+}
+
 void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels)
 {
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
@@ -236,6 +260,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     // Build GPU buffers and material descriptor tables
     BuildMeshGpuData();
 
+    // Collect static lights once after models are loaded
+    CollectStaticLights();
 
 	// For debugging: recompile shaders on 'G' key press
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
@@ -284,22 +310,12 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     mConstantBufferData.vpMatrix = viewProj;
     mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
 
-    // --- collect scene lights from loaded models (use these as primary lights) ---
-    std::vector<LightData> sceneLights;
-    for (const auto& modelPtr : mModels)
-    {
-        if (!modelPtr) continue;
-        for (const auto& l : modelPtr->mLights)
-        {
-            sceneLights.push_back(l);
-            if (sceneLights.size() >= cMaxLights) break;
-        }
-        if (sceneLights.size() >= cMaxLights) break;
-    }
+    // --- use cached static lights, avoid re-scanning models each frame ---
+    const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
 
     // light camera light
     const float cameraLightIntensity = 0.15f;
-    if (sceneLights.size() < cMaxLights)
+    if (staticCount < cMaxLights)
     {
         LightData camLight{};
         camLight.position = DirectX::XMFLOAT4(
@@ -309,14 +325,14 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
             1.0f);
         camLight.color = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
         camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
-        sceneLights.push_back(camLight);
+        mConstantBufferData.lights[staticCount] = camLight;
+        mConstantBufferData.numLights = staticCount + 1;
     }
-
-    // copy lights into constant buffer data (limit to cMaxLights)
-    int activeLights = static_cast<int>(std::min<size_t>(sceneLights.size(), cMaxLights));
-    mConstantBufferData.numLights = activeLights;
-    for (int i = 0; i < activeLights; ++i)
-        mConstantBufferData.lights[i] = sceneLights[i];
+    else
+    {
+        // static lights already fill the limit; do not append camera light
+        mConstantBufferData.numLights = staticCount;
+    }
 
     void* pData;
     mConstantBuffer.Get()->Map(0, nullptr, &pData);

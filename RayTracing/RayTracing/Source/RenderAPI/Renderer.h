@@ -59,6 +59,8 @@ private:
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.
 
+	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
+
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
@@ -78,6 +80,11 @@ private:
 	 */
 	void BuildMeshGpuData();
 
+
+	/**
+	 * @brief Collects static lights from loaded models into mStaticLights.
+	 */
+	void CollectStaticLights();
 
 	/**
 	 * @brief Creates a shader resource view for a texture resource.
