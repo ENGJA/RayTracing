@@ -1,6 +1,4 @@
 #pragma once
-#include <string>
-#include <vector>
 #include "RenderAPI/D3D12/D3D12Resource.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandQueue.h"
@@ -44,9 +42,16 @@ public:
 	* @brief Loads a 2D texture from file and uploads it to GPU.
 	* @param path File path to the image.
 	* @param frameIndex Current frame index for command list recording.
+	* @param executeQueue Function to execute the command queue when needed.
 	* @return Uploaded GPU texture with resource and SRV.
     */
-    GPUTexture LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex = 0);
+	GPUTexture LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex, const std::function<void()>& executeQueue);
+
+	/**
+	* @brief Resets internal state, such as the mipmap generator.
+	*/
+	void Reset() { mMipmapGenerator.Reset(); }
+
 private:
     /** <WIC imaging factory for image decoding. */
     Microsoft::WRL::ComPtr<IWICImagingFactory> mWIC;
@@ -68,7 +73,8 @@ private:
 
 	MipmapGenerator mMipmapGenerator; ///< Mipmap generator for generating mipmaps on GPU.
 
-
+	/** Fallback 1x1 black texture returned when material lacks emissive / other maps. */
+	GPUTexture mFallbackTexture;
 
     /**
 	* @brief Decodes an image file into RGBA8 pixel data.
@@ -81,9 +87,11 @@ private:
 	* @brief Creates a GPU texture from decoded image data.
 	* @param img Decoded image data.
 	* @param frameIndex Current frame index for command list recording.
+	* @param executeQueue Function to execute the command queue when needed.
 	* @return Created GPU texture with resource and SRV.
 	*/
-	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex);
+	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex, const std::function<void()>& executeQueue);
+
 
 	/**
 	* @brief Creates a 2D texture resource description.

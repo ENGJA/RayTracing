@@ -98,7 +98,9 @@ void Application::Update()
 	mCameraManager.Update(static_cast<float>(dt));
 
 	DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
-	mRenderer.Update(vp);
+	DirectX::XMFLOAT3 camPos = mCameraManager.GetActiveCameraPosition();
+	DirectX::XMFLOAT3 camForward = mCameraManager.GetActiveCameraForward();
+	mRenderer.Update(vp, camPos, camForward);
 }
 
 void Application::OnCreate(HWND hwnd)

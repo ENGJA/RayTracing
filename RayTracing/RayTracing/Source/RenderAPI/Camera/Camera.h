@@ -70,6 +70,20 @@ public:
      */
     DirectX::XMMATRIX GetViewProjection() const;
 
+    /**
+    * @brief Returns current camera position.
+	* @return XMFLOAT3 world-space position.
+    */
+	DirectX::XMFLOAT3 GetPosition() const { return mPosition; }
+
+    /**
+     * @brief Returns forward/look direction in world space (normalized).
+     * @return XMFLOAT3 forward vector.
+     *
+     * Uses camera yaw/pitch to compute forward; returns (0,0,1) for fixed-mode fallback.
+     */
+    DirectX::XMFLOAT3 GetForward() const;
+
     //
     // Granular mutation API used by callbacks
     //

@@ -6,7 +6,7 @@ void MipmapGenerator::InitializeDescriptorHeap()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	heapDesc.NumDescriptors = 64; // SRV + UAV per mip level, adjust as needed (max 32 mip levels supported here)
+	heapDesc.NumDescriptors = cMaxHeapSize; // SRV + UAV per mip level, adjust as needed (max 32 mip levels supported here)
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	mDescriptorHeap.Initialize(mDevice, heapDesc);
 	mDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(heapDesc.Type);
@@ -21,11 +21,15 @@ void MipmapGenerator::Initialize(ID3D12Device* pDevice, HLSLShader computeShader
 	InitializeDescriptorHeap();
 }
 
-void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, UINT frameIndex)
+void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, UINT frameIndex, const std::function<void()>& executeQueue)
 {
-	mCommandList->ResetCommandList(frameIndex);
 	ID3D12GraphicsCommandList* cmdList = mCommandList->Get();
+
+	UINT neededDescriptors = (mipLevels - 1) * 2;
+	if (neededDescriptors + mCurrentDescriptorOffset > cMaxHeapSize)
+		executeQueue();
 	
+
 	cmdList->SetPipelineState(mPipelineState.Get());
 	cmdList->SetComputeRootSignature(mPipelineState.GetRootSignature());
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mDescriptorHeap.Get() };
@@ -37,10 +41,13 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 		b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 		b.Transition.pResource = textureResource;
 		b.Transition.Subresource = 0;
-		b.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE; // typically the state after upload and before generating mips
+		b.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // typically the state after upload and before generating mips
 		b.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 		cmdList->ResourceBarrier(1, &b);
 	}
+
+	UINT currentBatchOffset = mCurrentDescriptorOffset;
+
 
 	UINT srcWidth = width, srcHeight = height;
 
@@ -49,19 +56,8 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 		UINT dstWidth = std::max(1u, srcWidth >> 1);
 		UINT dstHeight = std::max(1u, srcHeight >> 1);
 
-		// Transition current mip (destination) to UAV
-		{
-			D3D12_RESOURCE_BARRIER b{};
-			b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-			b.Transition.pResource = textureResource;
-			b.Transition.Subresource = mip;
-			b.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE; // if wasn't used
-			b.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-			cmdList->ResourceBarrier(1, &b);
-		}
-
 		// Create / update descriptors
-		UINT descriptorIndex = (mip - 1) * 2;
+		UINT descriptorIndex = (mip - 1) * 2 + currentBatchOffset;
 		D3D12_CPU_DESCRIPTOR_HANDLE cpuStart = mDescriptorHeap.Get()->GetCPUDescriptorHandleForHeapStart();
 		D3D12_GPU_DESCRIPTOR_HANDLE gpuStart = mDescriptorHeap.Get()->GetGPUDescriptorHandleForHeapStart();	
 		D3D12_CPU_DESCRIPTOR_HANDLE cpuSRV{ cpuStart.ptr + SIZE_T(descriptorIndex * mDescriptorSize) };
@@ -140,9 +136,5 @@ void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT widt
 		cmdList->ResourceBarrier(1, &b);
 	}
 
-	// Close and execute
-	cmdList->Close();
-	ID3D12CommandList* lists[] = { cmdList };
-	mCommandQueue->ExecuteCommandLists(1, lists);
-	mCommandQueue->Flush();
+	mCurrentDescriptorOffset += neededDescriptors;
 }
