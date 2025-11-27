@@ -176,3 +176,23 @@ GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path, UINT f
 	DecodedImage img = DecodeImageRGBA8(path);
 	return CreateTextureFromDecodedImage(img, frameIndex, executeQueue);
 }
+
+void TextureLoader::EnsureFallbackTexture(UINT frameIndex, const std::function<void()>& executeQueue)
+{
+	// If already created, do nothing
+	if (mFallbackTexture.resource.Get() != nullptr)
+		return;
+
+	DecodedImage img{};
+	img.width = 1;
+	img.height = 1;
+	img.pixels.resize(4);
+	// Black pixel, opaque
+	img.pixels[0] = 0;   // R
+	img.pixels[1] = 0;   // G
+	img.pixels[2] = 0;   // B
+	img.pixels[3] = 255; // A
+
+	// Create fallback GPU texture using the same upload / mip generation path
+	mFallbackTexture = CreateTextureFromDecodedImage(img, frameIndex, executeQueue);
+}

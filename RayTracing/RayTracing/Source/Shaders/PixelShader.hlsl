@@ -1,7 +1,6 @@
 Texture2D    gAlbedo              : register(t0);
 Texture2D    gMetalness           : register(t1);
 Texture2D    gRoughness           : register(t2); 
-Texture2D    gMetalnessRoughness  : register(t3);
 Texture2D    gEmissive            : register(t4);
 SamplerState gSampler             : register(s0);
 
@@ -98,15 +97,17 @@ float4 main(PSInput input) : SV_TARGET
 
         float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, saturate(metalness));
 
-        float shininess = lerp(8.0f, 2048.0f, 1.0f - saturate(roughness));
+        float specShininess = shininess;
 
         // Phong specular
         float3 R = reflect(-L, N);
-        float specFactor = pow(saturate(dot(V, R)), shininess);
+        float specFactor = pow(saturate(dot(V, R)), specShininess);
         float3 specular = specFactor * F0 * lightCol;
 
         finalColor += diffuse + specular;
     }
+    float3 emissive = gEmissive.Sample(gSampler, input.uv).rgb;
+    finalColor += emissive;
 
     return float4(finalColor, 1.0f);
 }

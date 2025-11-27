@@ -51,6 +51,19 @@ public:
 	* @brief Resets internal state, such as the mipmap generator.
 	*/
 	void Reset() { mMipmapGenerator.Reset(); }
+
+	/**
+	 * @brief Ensure that 1x1 black fallback texture is created (lazily).
+	 * @param frameIndex Current frame index used for mipmap generation.
+	 * @param executeQueue Callback to flush command list / upload heap when needed.
+	 */
+	void EnsureFallbackTexture(UINT frameIndex, const std::function<void()>& executeQueue);
+
+	/**
+	 * @brief Returns the fallback GPU texture (1x1 black). Call EnsureFallbackTexture() first.
+	 */
+	GPUTexture GetFallbackTexture() const { return mFallbackTexture; }
+
 private:
     /** <WIC imaging factory for image decoding. */
     Microsoft::WRL::ComPtr<IWICImagingFactory> mWIC;
@@ -72,7 +85,8 @@ private:
 
 	MipmapGenerator mMipmapGenerator; ///< Mipmap generator for generating mipmaps on GPU.
 
-
+	/** Fallback 1x1 black texture returned when material lacks emissive / other maps. */
+	GPUTexture mFallbackTexture;
 
     /**
 	* @brief Decodes an image file into RGBA8 pixel data.
