@@ -24,11 +24,11 @@ struct Light
 
 cbuffer CBData : register(b0)
 {
-    float4x4 vpMatrix;
-    float4 viewPos;
-    int numLights;
-    float3 _pad;
-    Light lights[25];
+    float4x4 vpMatrix   : packoffset(c0);
+    float4 viewPos      : packoffset(c4);
+    int numLights       : packoffset(c5.x);
+    float3 _pad         : packoffset(c5.y);
+    Light lights[25]    : packoffset(c6);
 };
 
 float4 main(PSInput input) : SV_TARGET
