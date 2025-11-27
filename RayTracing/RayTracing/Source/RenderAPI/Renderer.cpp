@@ -50,7 +50,7 @@ void Renderer::BuildMeshGpuData()
         mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
         mTextureLoader.Reset();
     };
-    mTextureLoader.EnsureFallbackTexture(mSwapChain.GetCurrentBackBufferIndex(), executeBatch);
+    //mTextureLoader.EnsureFallbackTexture(mSwapChain.GetCurrentBackBufferIndex(), executeBatch);
 
     for (const auto& modelPtr : mModels)
     {
@@ -119,8 +119,7 @@ void Renderer::BuildMeshGpuData()
                 }
                 else
                 {
-                    GPUTexture fallback = mTextureLoader.GetFallbackTexture();
-                    CreateTextureView(fallback.resource.Get(), fallback.format, dst, fallback.mipLevels);
+					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
                 }
             }
 

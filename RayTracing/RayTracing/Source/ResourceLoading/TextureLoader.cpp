@@ -163,7 +163,6 @@ D3D12_RESOURCE_BARRIER TextureLoader::CreateTextureTransitionBarrier(ID3D12Resou
 			.pResource = pResource,
 			.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
 			.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST,
-			//.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 			.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			}
 	};
@@ -177,22 +176,3 @@ GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path, UINT f
 	return CreateTextureFromDecodedImage(img, frameIndex, executeQueue);
 }
 
-void TextureLoader::EnsureFallbackTexture(UINT frameIndex, const std::function<void()>& executeQueue)
-{
-	// If already created, do nothing
-	if (mFallbackTexture.resource.Get() != nullptr)
-		return;
-
-	DecodedImage img{};
-	img.width = 1;
-	img.height = 1;
-	img.pixels.resize(4);
-	// Black pixel, opaque
-	img.pixels[0] = 0;   // R
-	img.pixels[1] = 0;   // G
-	img.pixels[2] = 0;   // B
-	img.pixels[3] = 255; // A
-
-	// Create fallback GPU texture using the same upload / mip generation path
-	mFallbackTexture = CreateTextureFromDecodedImage(img, frameIndex, executeQueue);
-}

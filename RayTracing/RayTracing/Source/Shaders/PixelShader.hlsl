@@ -1,6 +1,7 @@
 Texture2D    gAlbedo              : register(t0);
 Texture2D    gMetalness           : register(t1);
 Texture2D    gRoughness           : register(t2); 
+Texture2D    gNormalMap           : register(t3);
 Texture2D    gEmissive            : register(t4);
 SamplerState gSampler             : register(s0);
 
