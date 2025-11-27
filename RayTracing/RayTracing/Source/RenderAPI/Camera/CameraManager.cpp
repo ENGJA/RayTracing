@@ -15,7 +15,7 @@ void CameraManager::Initialize(UINT width, UINT height)
 
     // fixed view (te same parametry co by³y w Renderer)
     XMMATRIX viewMatrix = XMMatrixLookAtLH(
-        { 0.0f, 1.0f, -3.0f, 0.0f },
+        { 8.0f, 5.0f, 0.0f, 0.0f },
         { 0.0f, 0.0f, 0.0f, 0.0f },
         { 0.0f, 1.0f, 0.0f, 0.0f });
     XMMATRIX translation = XMMatrixTranslation(0.0f, -1.0f, 1.0f);
@@ -30,7 +30,7 @@ void CameraManager::Initialize(UINT width, UINT height)
     mCameras[1].InitializeFree({ 3.0f, 1.0f, -3.0f }, /*yaw*/2.5f, /*pitch*/0.0f,
         /*fovY*/1.3217304764f,
         static_cast<float>(width) / static_cast<float>(height),
-        1.0f, 50.0f);
+        0.1f, 50.0f);
 
     mActiveIndex = 0;
 
@@ -133,7 +133,7 @@ void CameraManager::Initialize(UINT width, UINT height)
 
 void CameraManager::Update(float dt)
 {
-    // Przetwórz wszystkie zarejestrowane callbacki (klawisze, przytrzymania, ruch myszy, kó³ko)
+    // Process all registered callbacks (keys, key-holds, mouse movement, wheel)
     InputManager::Instance.ProcessCallbacks(dt);
 }
 
@@ -142,4 +142,18 @@ DirectX::XMMATRIX CameraManager::GetActiveViewProjection() const
     if (mCameras.empty())
         return DirectX::XMMatrixIdentity();
     return mCameras[mActiveIndex].GetViewProjection();
+}
+
+DirectX::XMFLOAT3 CameraManager::GetActiveCameraPosition() const
+{
+    if (mCameras.empty())
+        return DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };
+    return mCameras[mActiveIndex].GetPosition();
+}
+
+DirectX::XMFLOAT3 CameraManager::GetActiveCameraForward() const
+{
+    if (mCameras.empty())
+        return DirectX::XMFLOAT3{ 0.0f, 0.0f, 1.0f };
+    return mCameras[mActiveIndex].GetForward();
 }

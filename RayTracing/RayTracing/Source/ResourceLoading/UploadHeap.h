@@ -49,4 +49,19 @@ public:
      * @brief Returns the underlying upload heap resource pointer.
      */
     ID3D12Resource* GetResource() const { return mResource.Get(); }
+
+    /**
+     * @brief Checks if the upload heap can allocate a chunk of given size.
+     * @param size Size in bytes required.
+     * @return True if allocation is possible, false otherwise.
+	 */
+    bool CanAllocate(size_t size) const;
+
+    /**
+     * @brief Checks if the upload heap can allocate a chunk of given size with alignment.
+     * @param size Size in bytes required.
+     * @param alignment Alignment in bytes.
+	 * @return True if allocation is possible, false otherwise.
+     */
+    bool CanAllocate(uint64_t size, uint64_t alignment) const;
 };

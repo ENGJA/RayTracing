@@ -85,3 +85,20 @@ XMMATRIX Camera::GetViewProjection() const
     XMMATRIX view = XMMatrixLookToLH(pos, front, up);
     return view * mProj;
 }
+
+DirectX::XMFLOAT3 Camera::GetForward() const
+{
+    // For fixed camera we cannot know yaw/pitch -> fallback to +Z
+    if (mUseFixed)
+        return DirectX::XMFLOAT3{ 0.0f, 0.0f, 1.0f };
+
+    float cy = cosf(mYaw);
+    float sy = sinf(mYaw);
+    float cp = cosf(mPitch);
+    float sp = sinf(mPitch);
+    XMVECTOR front = XMVectorSet(cp * cy, sp, cp * sy, 0.0f);
+    front = XMVector3Normalize(front);
+    DirectX::XMFLOAT3 out;
+    XMStoreFloat3(&out, front);
+    return out;
+}

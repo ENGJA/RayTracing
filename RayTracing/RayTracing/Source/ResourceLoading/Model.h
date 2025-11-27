@@ -2,6 +2,7 @@
 
 #include <assimp/scene.h>
 #include "Mesh.h"
+#include "RenderAPI/DataTypes.h"
 
 /**
  * @brief CPU-side model loader that builds meshes and textures from Assimp scenes.
@@ -13,15 +14,17 @@ private:
 	 * @brief Recursively traverse an Assimp node hierarchy and build meshes.
 	 * @param node Current node in the scene graph.
 	 * @param scene Owning Assimp scene.
+	 * @param parentTransform Accumulated transform from parent nodes (aiMatrix4x4).
 	 */
-	void processNode(aiNode* node, const aiScene* scene);
+	void processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& parentTransform);
 	/**
 	 * @brief Converts an Assimp mesh to our `Mesh` representation.
 	 * @param mesh Source Assimp mesh.
 	 * @param scene Owning Assimp scene.
+	 * @param transform Transform to apply to vertex positions/normals (world transform).
 	 * @return Built `Mesh` with vertices, indices, and textures.
 	 */
-	Mesh processMesh(aiMesh* mesh, const aiScene* scene);
+	Mesh processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform);
 	/**
 	 * @brief Loads material textures of a given type.
 	 * @param mat Assimp material.
@@ -36,6 +39,8 @@ public:
 	std::vector<Texture> mLoadedTextures;
 	/**< Meshes contained in the model. */
 	std::vector<Mesh> mMeshes;
+	/**< Lights contained in the model. */
+	std::vector<LightData> mLights;
 	/**< Directory of the source model, used to resolve relative textures. */
 	std::string mDirectory;
 	/**

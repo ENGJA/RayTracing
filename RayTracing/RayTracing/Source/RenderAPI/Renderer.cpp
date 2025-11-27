@@ -1,5 +1,5 @@
 #include "pch.h"
-
+#include <chrono>
 #include "D3D12/D3D12Debug.h"
 #include "DataTypes.h"
 #include "DXGI/DXGIDebug.h"
@@ -14,7 +14,7 @@
 #include "Renderer.h"
 #include "paths.h"
 
-using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map;
+using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function;
 
 /**
 * @brief Maps TextureType enum to descriptor slot index.
@@ -24,44 +24,62 @@ static int TextureTypeToSlot(TextureType type)
     return static_cast<int>(type);
 }
 
-GPUTexture Renderer::LoadOrGetTexture(const string& path)
+GPUTexture Renderer::LoadOrGetTexture(const string& path, const function<void()>& executeQueue)
 {
     auto it = mTextureCache.find(path);
     if (it != mTextureCache.end()) return it->second;
 	wstring wpath(path.begin(), path.end());
-    GPUTexture tex = mTextureLoader.LoadTexture2DFromFile(wpath, mSwapChain.GetCurrentBackBufferIndex());
+    GPUTexture tex = mTextureLoader.LoadTexture2DFromFile(wpath, mSwapChain.GetCurrentBackBufferIndex(), executeQueue);
     mTextureCache.emplace(path, tex);
     return tex;
 }
 
 void Renderer::BuildMeshGpuData()
 {
+    mUploadHeap.Reset();
+    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+
+    auto executeBatch = [&]()
+    {
+        mCommandList.Get()->Close();
+        ID3D12CommandList* lists[] = { mCommandList.Get() };
+        mCommandQueue.ExecuteCommandLists(1, lists);
+        mCommandQueue.Flush();
+
+        mUploadHeap.Reset();
+        mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+        mTextureLoader.Reset();
+    };
+    //mTextureLoader.EnsureFallbackTexture(mSwapChain.GetCurrentBackBufferIndex(), executeBatch);
+
     for (const auto& modelPtr : mModels)
     {
         const Model& model = *modelPtr;
         for (const Mesh& mesh : model.mMeshes)
         {
+            const UINT vbSize = static_cast<UINT>(mesh.mVertices.size() * sizeof(::Vertex));
+            const UINT ibSize = static_cast<UINT>(mesh.mIndices.size() * sizeof(unsigned int));
+            const size_t needed = vbSize + ibSize;
+
+            if (!mUploadHeap.CanAllocate(needed))
+                executeBatch();            
+
             MeshGpuData gpu{};
-            const UINT vbSize = (UINT)(mesh.mVertices.size() * sizeof(::Vertex));
-            const UINT ibSize = (UINT)(mesh.mIndices.size() * sizeof(unsigned int));
             gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
             gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
-			mUploadHeap.Reset();
             auto vbAlloc = mUploadHeap.Allocate(vbSize);
             auto ibAlloc = mUploadHeap.Allocate(ibSize);
-
-            if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr) 
-                throw std::runtime_error("Upload heap out of space for mesh buffers.");
+            if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr)
+                throw std::runtime_error("Upload heap out of space for mesh buffers batch.");
 
             memcpy(vbAlloc.cpuPtr, mesh.mVertices.data(), vbSize);
             memcpy(ibAlloc.cpuPtr, mesh.mIndices.data(), ibSize);
 
-            mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
             mCommandList.Get()->CopyBufferRegion(gpu.vb.Get(), 0, mUploadHeap.GetResource(), vbAlloc.offset, vbSize);
             mCommandList.Get()->CopyBufferRegion(gpu.ib.Get(), 0, mUploadHeap.GetResource(), ibAlloc.offset, ibSize);
 
-            D3D12_RESOURCE_BARRIER barriers[2]{};
+            D3D12_RESOURCE_BARRIER barriers[2] = {};
             barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barriers[0].Transition.pResource = gpu.vb.Get();
             barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -75,10 +93,6 @@ void Renderer::BuildMeshGpuData()
             barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
 
             mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
-            mCommandList.Get()->Close();
-            ID3D12CommandList* lists[] = { mCommandList.Get() };
-            mCommandQueue.ExecuteCommandLists(1, lists);
-            mCommandQueue.Flush();
 
             gpu.vbv.BufferLocation = gpu.vb.Get()->GetGPUVirtualAddress();
             gpu.vbv.SizeInBytes = vbSize;
@@ -100,18 +114,45 @@ void Renderer::BuildMeshGpuData()
                 auto it = textureMap.find(i);
                 if (it != textureMap.end())
                 {
-                    GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second);
-					CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
+                    GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second, executeBatch);
+                    CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
                 }
                 else
                 {
 					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
-                }              
+                }
             }
 
             mMeshGpu.push_back(std::move(gpu));
         }
     }
+
+    executeBatch();
+    mCommandList.Get()->Close();
+}
+
+void Renderer::CollectStaticLights()
+{
+    mStaticLights.clear();
+    for (const auto& modelPtr : mModels)
+    {
+        if (!modelPtr) continue;
+        for (const auto& l : modelPtr->mLights)
+        {
+            mStaticLights.push_back(l);
+            if (mStaticLights.size() >= cMaxLights) break;
+        }
+        if (mStaticLights.size() >= cMaxLights) break;
+    }
+
+    // Copy static lights once into CPU-side constant buffer data so Update doesn't have to re-create them.
+    const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
+    for (int i = 0; i < staticCount; ++i)
+    {
+        mConstantBufferData.lights[i] = mStaticLights[i];
+    }
+    // Set numLights to static count for now; Update will adjust (append camera light) each frame if needed.
+    mConstantBufferData.numLights = staticCount;
 }
 
 void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels)
@@ -123,6 +164,7 @@ void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D
     srvDesc.Texture2D.MipLevels = mipLevels;
     mDevice.Get()->CreateShaderResourceView(resource, &srvDesc, handle);
 }
+
 
 void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 {
@@ -171,32 +213,11 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     // Shared upload heap (64 MB)
     mUploadHeap.Initialize(mDevice.Get(), 64ull * 1024ull * 1024ull);
 
-    HLSLCompiler compiler;
-    compiler.Initialize();
+	mShaderCompiler.Initialize();
 
-    HLSLShader vertexShader = compiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
-    HLSLShader pixelShader  = compiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl",  L"ps_6_0");
-	HLSLShader mipmapShader = compiler.CompileFromFile(L"Source/Shaders/MipmapShader.hlsl", L"cs_6_0");
+    InitializeTextureLoader();
 
-	// Initialize texture loader
-    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
-
-	// Create pipeline state
-    D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-    };
-    D3D12_INPUT_LAYOUT_DESC inputLayoutDesc{};
-    inputLayoutDesc.pInputElementDescs = inputElementDescs;
-    inputLayoutDesc.NumElements = _countof(inputElementDescs);
-
-    mPipelineState.Initialize(
-        mDevice.Get(),
-        std::move(vertexShader),
-        std::move(pixelShader),
-        inputLayoutDesc);
+    InitializePipelineState();
 
     // set viewport and scissor rect
     mViewport.TopLeftX = 0.0f;
@@ -217,14 +238,18 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     mConstantBuffer.Initialize(
         mDevice.Get(),
-        sizeof(DirectX::XMMATRIX),
+        sizeof(ConstantBufferData),
         D3D12_HEAP_TYPE_UPLOAD,
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-    const std::string modelPath = GetResourcePath("Objects\\sphere\\sphere.obj").string();
+    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
     auto modelA = std::make_unique<Model>();
+
+	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
     modelA->loadModel(modelPath);
+	std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
+	std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
     if (modelA->mMeshes.empty())
     {
         vector<::Vertex> cpuVerts = {
@@ -236,28 +261,58 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
         modelA->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
     }
+    else
+	    wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+
     mModels.push_back(std::move(modelA));
 
-    //auto modelB = std::make_unique<Model>();
-    //modelB->loadModel(modelPath); // same path to test cache
-    //if (modelB->mMeshes.empty())
-    //{
-    //    vector<::Vertex> cpuVerts = {
-    //        { { -0.5f, -0.5f, 0 }, {0,0,1}, {0,1} },
-    //        { { -0.5f,  0.5f, 0 }, {0,0,1}, {0,0} },
-    //        { {  0.5f,  0.5f, 0 }, {0,0,1}, {1,0} },
-    //        { {  0.5f, -0.5f, 0 }, {0,0,1}, {1,1} },
-    //    };
-    //    vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
-    //    modelB->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-    //}
-    //mModels.push_back(std::move(modelB));
-
+	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
     // Build GPU buffers and material descriptor tables
     BuildMeshGpuData();
+	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+
+    // Collect static lights once after models are loaded
+    CollectStaticLights();
+
+	// For debugging: recompile shaders on 'G' key press
+	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 }
 
-void Renderer::Update(const DirectX::XMMATRIX& viewProj)
+void Renderer::InitializePipelineState()
+{
+    HLSLShader vertexShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
+    HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
+
+    constexpr D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    };
+    D3D12_INPUT_LAYOUT_DESC inputLayoutDesc
+    {
+        .pInputElementDescs = inputElementDescs,
+        .NumElements = _countof(inputElementDescs),
+    };
+
+	mCommandQueue.Flush();
+    mPipelineState.Initialize(
+        mDevice.Get(),
+        std::move(vertexShader),
+        std::move(pixelShader),
+        inputLayoutDesc);
+}
+
+void Renderer::InitializeTextureLoader()
+{
+    HLSLShader mipmapShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/MipmapShader.hlsl", L"cs_6_0");
+    mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
+}
+
+void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward)
 {
     // compute delta time
     LARGE_INTEGER now;
@@ -265,14 +320,36 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj)
     double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
     mPrevCounter = now;
 
-    static float angle = 0.0f;
-    const float angularSpeed = 2.0f; // radians per second 
-    angle += angularSpeed * static_cast<float>(dt);
-    DirectX::XMMATRIX rotationMatrix = DirectX::XMMatrixRotationY(angle);
-    DirectX::XMMATRIX worldViewProj = rotationMatrix * viewProj;
+    mConstantBufferData.vpMatrix = viewProj;
+    mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
+
+    // --- use cached static lights, avoid re-scanning models each frame ---
+    const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
+
+    // light camera light
+    const float cameraLightIntensity = 0.15f;
+    if (staticCount < cMaxLights)
+    {
+        LightData camLight{};
+        camLight.position = DirectX::XMFLOAT4(
+            cameraPos.x + cameraForward.x * 1000.0f,
+            cameraPos.y + cameraForward.y * 1000.0f,
+            cameraPos.z + cameraForward.z * 1000.0f,
+            1.0f);
+        camLight.color = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
+        camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
+        mConstantBufferData.lights[staticCount] = camLight;
+        mConstantBufferData.numLights = staticCount + 1;
+    }
+    else
+    {
+        // static lights already fill the limit; do not append camera light
+        mConstantBufferData.numLights = staticCount;
+    }
+
     void* pData;
     mConstantBuffer.Get()->Map(0, nullptr, &pData);
-    memcpy(pData, &worldViewProj, sizeof(DirectX::XMMATRIX));
+    memcpy(pData, &mConstantBufferData, sizeof(ConstantBufferData));
     mConstantBuffer.Get()->Unmap(0, nullptr);
 
     // Wait for GPU to finish with the current back buffer

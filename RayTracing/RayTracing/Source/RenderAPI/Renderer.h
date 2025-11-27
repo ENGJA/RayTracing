@@ -13,6 +13,7 @@
 #include "ResourceLoading/Model.h"
 #include "ResourceLoading/TextureLoader.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include "RenderAPI/HLSL/HLSLCompiler.h"
 #include <unordered_map>
 
 /**
@@ -58,6 +59,10 @@ private:
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.
 
+	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
+
+	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
+
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
 
 	// timing
@@ -67,14 +72,20 @@ private:
 	/**
 	 * @brief Loads a texture from disk or returns cached GPU texture.
 	 * @param path Absolute or relative texture file path.
+	 * @param executeQueue Function to execute the command queue when needed.
 	 * @return GPU texture wrapper with resource and SRV descriptor.
 	 */
-	GPUTexture LoadOrGetTexture(const std::string& path);
+	GPUTexture LoadOrGetTexture(const std::string& path, const std::function<void()>& executeQueue);
 	/**
 	 * @brief Builds GPU buffers and material descriptor tables for all loaded meshes.
 	 */
 	void BuildMeshGpuData();
 
+
+	/**
+	 * @brief Collects static lights from loaded models into mStaticLights.
+	 */
+	void CollectStaticLights();
 
 	/**
 	 * @brief Creates a shader resource view for a texture resource.
@@ -85,6 +96,16 @@ private:
 	 */
 	void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
 
+
+	/**
+	 * @brief Initializes or re-initializes the graphics pipeline state and root signature.
+	 */
+	void InitializePipelineState();
+
+	/**
+	 * @brief Initializes the texture loader with required D3D12 resources.
+	 */
+	void InitializeTextureLoader();
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
@@ -96,7 +117,9 @@ public:
 	/**
 	 * @brief Records and submits commands for one frame and presents.
 	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
+	 * @param cameraPos Camera world position.
+	 * @param cameraForward Camera forward vector.
 	 */
-	void Update(const DirectX::XMMATRIX& viewProj);
+	void Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
 };
 
