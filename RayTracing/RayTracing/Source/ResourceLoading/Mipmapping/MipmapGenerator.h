@@ -31,7 +31,7 @@ public:
 
 	/**
 	 * @brief Generates mipmaps for the given texture resource.
-	 * @param textureResource Texture resource with mip levels to generate.
+	 * @param textureResource Texture resource with mip levels to generate. All subresources must be in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
 	 * @param width Width of the top mip level.
 	 * @param height Height of the top mip level.
 	 * @param mipLevels Total number of mip levels in the texture.
