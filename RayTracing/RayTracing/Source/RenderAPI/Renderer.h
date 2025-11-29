@@ -136,7 +136,7 @@ private:
 	 * @param dst CPU descriptor handle where to write the material SRV descriptors.
 	 * @param executeBatch Function to execute the command queue when needed.
 	 */
-	void CreateMaterial(const Mesh& mesh, const std::string& directory, D3D12_CPU_DESCRIPTOR_HANDLE dst, const std::function<void()>& executeBatch);
+	void CreateMaterial(const Mesh& mesh, const std::string& directory, MeshGpuData& gpuData, const std::function<void()>& executeBatch);
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.

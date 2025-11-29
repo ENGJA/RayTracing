@@ -44,15 +44,19 @@ void Renderer::DispatchTextureDecoding()
     }
 }
 
-void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, D3D12_CPU_DESCRIPTOR_HANDLE dst, const function<void()>& executeBatch)
+void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpuData& gpuData, const function<void()>& executeBatch)
 {
     unordered_map<int, string> textureMap;
     for (const Texture& cpuTex : mesh.mTextures)
         textureMap[TextureTypeToSlot(cpuTex.mType)] = cpuTex.mPath;
 
+    gpuData.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
+
     for (int i = 0; i < Config::cNumberOfTextureSlots; i++)
     {
+        D3D12_CPU_DESCRIPTOR_HANDLE dst = gpuData.materialTable.cpuHandle;
         dst.ptr += SIZE_T(i) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
         auto it = textureMap.find(i);
         if (it != textureMap.end())
         {
@@ -124,9 +128,7 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     gpu.ibv.SizeInBytes = static_cast<UINT>(ibSize);
     gpu.ibv.Format = DXGI_FORMAT_R32_UINT;
 
-	gpu.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
-	D3D12_CPU_DESCRIPTOR_HANDLE dst = gpu.materialTable.cpuHandle;
-    CreateMaterial(mesh, directory, dst, executeBatch);
+    CreateMaterial(mesh, directory, gpu, executeBatch);
 
     mMeshGpu.push_back(std::move(gpu));
 }
