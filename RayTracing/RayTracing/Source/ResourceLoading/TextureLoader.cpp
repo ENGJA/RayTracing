@@ -12,12 +12,6 @@ void TextureLoader::Initialize(ID3D12Device* pDevice, ShaderVisibleDescriptorHea
 	mCmdList = cmdList;
 	mUploadHeap = uploadHeap;
 	mMipmapGenerator.Initialize(pDevice, std::move(mipmapComputeShader), cmdList, queue);
-	HRESULT hr = CoCreateInstance(
-		CLSID_WICImagingFactory,
-		nullptr,
-		CLSCTX_INPROC_SERVER,
-		IID_PPV_ARGS(mWIC.ReleaseAndGetAddressOf()));
-	ASSERT_HR(hr, L"Failed to create WIC factory");
 }
 
 static UINT CalculateMipLevels(UINT width, UINT height)
@@ -33,55 +27,8 @@ static UINT CalculateMipLevels(UINT width, UINT height)
 	return levels;
 }
 
-DecodedImage TextureLoader::DecodeImageRGBA8(const std::wstring& path)
-{
-	DecodedImage img{};
 
-	ComPtr<IWICBitmapDecoder> decoder;
-	HRESULT hr = mWIC->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, decoder.ReleaseAndGetAddressOf());
-	ASSERT_HR(hr, L"Failed to open image file");
-
-	ComPtr<IWICBitmapFrameDecode> frame;
-	hr = decoder->GetFrame(0, frame.ReleaseAndGetAddressOf());
-	ASSERT_HR(hr, L"Failed to decode image frame");
-
-	UINT width = 0, height = 0;
-	hr = frame->GetSize(&width, &height);
-	ASSERT_HR(hr, L"Failed to get image size");
-	img.width = width; img.height = height;
-
-	WICPixelFormatGUID srcFormat{};
-	hr = frame->GetPixelFormat(&srcFormat);
-	ASSERT_HR(hr, L"Failed to get pixel format");
-
-	static WICPixelFormatGUID target = GUID_WICPixelFormat32bppRGBA;
-	bool needsConvert = (srcFormat != target);
-
-	ComPtr<IWICFormatConverter> converter;
-	if (needsConvert)
-	{
-		hr = mWIC->CreateFormatConverter(converter.ReleaseAndGetAddressOf());
-		ASSERT_HR(hr, L"Failed to create format converter");
-		hr = converter->Initialize(frame.Get(), target, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
-		ASSERT_HR(hr, L"Failed to init format converter");
-	}
-
-	const UINT bpp = 4; // RGBA8
-	const UINT rowPitch = width * bpp;
-	img.pixels.resize(static_cast<size_t>(rowPitch) * height);
-
-	WICRect rect{ 0, 0, static_cast<INT>(width), static_cast<INT>(height) };
-	if (needsConvert)
-		hr = converter->CopyPixels(&rect, rowPitch, static_cast<UINT>(img.pixels.size()), img.pixels.data());
-	else
-		hr = frame->CopyPixels(&rect, rowPitch, static_cast<UINT>(img.pixels.size()), img.pixels.data());
-	ASSERT_HR(hr, L"Failed to copy pixels");
-
-	return img;
-}
-
-
-GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex, const std::function<void()>& executeQueue)
+GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue)
 {
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
@@ -132,7 +79,7 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
-	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex, executeQueue);
+	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, executeQueue);
 
 	return gpuTex;
 }
@@ -167,12 +114,3 @@ D3D12_RESOURCE_BARRIER TextureLoader::CreateTextureTransitionBarrier(ID3D12Resou
 			}
 	};
 }
-
-
-
-GPUTexture TextureLoader::LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex, const std::function<void()>& executeQueue)
-{
-	DecodedImage img = DecodeImageRGBA8(path);
-	return CreateTextureFromDecodedImage(img, frameIndex, executeQueue);
-}
-

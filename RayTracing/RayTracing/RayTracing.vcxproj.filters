@@ -79,6 +79,12 @@
     <Filter Include="Pliki nagłówkowe\ResourceLoading\Mipmapping">
       <UniqueIdentifier>{ae5caa4d-f804-4d30-8814-a28440e5ab78}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki nagłówkowe\RenderAPI\RT">
+      <UniqueIdentifier>{86e486d8-befa-4e92-a235-0d6345dd416e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\RenderAPI\RT">
+      <UniqueIdentifier>{d11b34ae-2d3a-43ff-8482-fa9bf14c20a8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -185,6 +191,9 @@
     </ClCompile>
     <ClCompile Include="Source\helpers.cpp">
       <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\ResourceLoading\ImageDecoder.cpp">
+      <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -295,6 +304,9 @@
     </ClInclude>
     <ClInclude Include="Source\ResourceLoading\Mipmapping\MipmapRootSignature.h">
       <Filter>Pliki nagłówkowe\ResourceLoading\Mipmapping</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\ResourceLoading\ImageDecoder.h">
+      <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
