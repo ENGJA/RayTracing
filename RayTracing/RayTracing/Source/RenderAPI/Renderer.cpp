@@ -1,5 +1,4 @@
 #include "pch.h"
-#include <chrono>
 #include "D3D12/D3D12Debug.h"
 #include "DataTypes.h"
 #include "DXGI/DXGIDebug.h"
@@ -14,7 +13,8 @@
 #include "Renderer.h"
 #include "paths.h"
 
-using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function;
+using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
+
 
 /**
 * @brief Maps TextureType enum to descriptor slot index.
@@ -24,14 +24,124 @@ static int TextureTypeToSlot(TextureType type)
     return static_cast<int>(type);
 }
 
-GPUTexture Renderer::LoadOrGetTexture(const string& path, const function<void()>& executeQueue)
+void Renderer::DispatchTextureDecoding()
 {
-    auto it = mTextureCache.find(path);
-    if (it != mTextureCache.end()) return it->second;
-	wstring wpath(path.begin(), path.end());
-    GPUTexture tex = mTextureLoader.LoadTexture2DFromFile(wpath, mSwapChain.GetCurrentBackBufferIndex(), executeQueue);
-    mTextureCache.emplace(path, tex);
-    return tex;
+    for (const auto& modelPtr : mModels)
+    {
+        for (const Mesh& mesh : modelPtr->mMeshes)
+        {
+            for (const Texture& cpuTex : mesh.mTextures)
+            {
+                string fullPath = modelPtr->mDirectory + "\\" + cpuTex.mPath;
+                auto it = mTextureCache.find(fullPath);
+                if (it == mTextureCache.end())
+                {
+                    auto fut = std::async(std::launch::async, ImageDecoder::DecodeImageRGBA8_ThreadSafe, wstring(fullPath.begin(), fullPath.end()));
+                    mTextureCache[fullPath].decodeFuture = std::move(fut);
+                }
+            }
+        }
+    }
+}
+
+void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpuData& gpuData, const function<void()>& executeBatch)
+{
+    unordered_map<int, string> textureMap;
+    for (const Texture& cpuTex : mesh.mTextures)
+        textureMap[TextureTypeToSlot(cpuTex.mType)] = cpuTex.mPath;
+
+    gpuData.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
+
+    for (int i = 0; i < Config::cNumberOfTextureSlots; i++)
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE dst = gpuData.materialTable.cpuHandle;
+        dst.ptr += SIZE_T(i) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+        auto it = textureMap.find(i);
+        if (it != textureMap.end())
+        {
+            string fullPath = directory + "\\" + it->second;
+            GPUTextureLoadState& loadState = mTextureCache[fullPath];
+            if (loadState.decodeFuture.valid())
+                loadState.decodedImage = loadState.decodeFuture.get();
+
+            if (!loadState.gpuTexture.resource.Get())
+            {
+                loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
+				loadState.decodedImage = {}; // free CPU-side decoded image data
+            }
+
+            GPUTexture& gpuTex = loadState.gpuTexture;
+            CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
+        }
+        else
+        {
+            CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
+        }
+    }
+}
+
+void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const function<void()>& executeBatch)
+{
+    const size_t vbSize = mesh.mVertices.size() * sizeof(::Vertex);
+    const size_t ibSize = mesh.mIndices.size() * sizeof(unsigned int);
+	const UINT vbSizeUINT = static_cast<UINT>(vbSize);
+	const UINT ibSizeUINT = static_cast<UINT>(ibSize);
+    const size_t needed = vbSize + ibSize;
+
+    if (!mUploadHeap.CanAllocate(needed))
+        executeBatch();
+
+    MeshGpuData gpu{};
+    gpu.vb.Initialize(mDevice.Get(), vbSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+    gpu.ib.Initialize(mDevice.Get(), ibSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+
+    auto vbAlloc = mUploadHeap.Allocate(vbSize);
+    auto ibAlloc = mUploadHeap.Allocate(ibSize);
+
+    if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr)
+        throw std::runtime_error("Upload heap out of space for mesh buffers batch.");
+
+    memcpy(vbAlloc.cpuPtr, mesh.mVertices.data(), vbSize);
+    memcpy(ibAlloc.cpuPtr, mesh.mIndices.data(), ibSize);
+
+    mCommandList.Get()->CopyBufferRegion(gpu.vb.Get(), 0, mUploadHeap.GetResource(), vbAlloc.offset, vbSize);
+    mCommandList.Get()->CopyBufferRegion(gpu.ib.Get(), 0, mUploadHeap.GetResource(), ibAlloc.offset, ibSize);
+
+    D3D12_RESOURCE_BARRIER barriers[2] = {};
+    barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[0].Transition.pResource = gpu.vb.Get();
+    barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+
+    barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[1].Transition.pResource = gpu.ib.Get();
+    barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
+
+    mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+
+    gpu.vbv.BufferLocation = gpu.vb.Get()->GetGPUVirtualAddress();
+    gpu.vbv.SizeInBytes = vbSizeUINT;
+    gpu.vbv.StrideInBytes = sizeof(::Vertex);
+    gpu.ibv.BufferLocation = gpu.ib.Get()->GetGPUVirtualAddress();
+    gpu.ibv.SizeInBytes = ibSizeUINT;
+    gpu.ibv.Format = DXGI_FORMAT_R32_UINT;
+
+    CreateMaterial(mesh, directory, gpu, executeBatch);
+
+    mMeshGpu.push_back(std::move(gpu));
+}
+
+void Renderer::UploadMeshes(const function<void()>& executeBatch)
+{
+    for (const auto& modelPtr : mModels)
+    {
+        for (const Mesh& mesh : modelPtr->mMeshes)
+            UploadSingleMesh(mesh, modelPtr->mDirectory, executeBatch);
+    }
 }
 
 void Renderer::BuildMeshGpuData()
@@ -39,7 +149,7 @@ void Renderer::BuildMeshGpuData()
     mUploadHeap.Reset();
     mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
 
-    auto executeBatch = [&]()
+    auto executeBatch = [this]()
     {
         mCommandList.Get()->Close();
         ID3D12CommandList* lists[] = { mCommandList.Get() };
@@ -50,85 +160,12 @@ void Renderer::BuildMeshGpuData()
         mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
         mTextureLoader.Reset();
     };
-    //mTextureLoader.EnsureFallbackTexture(mSwapChain.GetCurrentBackBufferIndex(), executeBatch);
 
-    for (const auto& modelPtr : mModels)
-    {
-        const Model& model = *modelPtr;
-        for (const Mesh& mesh : model.mMeshes)
-        {
-            const UINT vbSize = static_cast<UINT>(mesh.mVertices.size() * sizeof(::Vertex));
-            const UINT ibSize = static_cast<UINT>(mesh.mIndices.size() * sizeof(unsigned int));
-            const size_t needed = vbSize + ibSize;
+    DispatchTextureDecoding();
+    UploadMeshes(executeBatch);
 
-            if (!mUploadHeap.CanAllocate(needed))
-                executeBatch();            
-
-            MeshGpuData gpu{};
-            gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
-            gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
-
-            auto vbAlloc = mUploadHeap.Allocate(vbSize);
-            auto ibAlloc = mUploadHeap.Allocate(ibSize);
-            if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr)
-                throw std::runtime_error("Upload heap out of space for mesh buffers batch.");
-
-            memcpy(vbAlloc.cpuPtr, mesh.mVertices.data(), vbSize);
-            memcpy(ibAlloc.cpuPtr, mesh.mIndices.data(), ibSize);
-
-            mCommandList.Get()->CopyBufferRegion(gpu.vb.Get(), 0, mUploadHeap.GetResource(), vbAlloc.offset, vbSize);
-            mCommandList.Get()->CopyBufferRegion(gpu.ib.Get(), 0, mUploadHeap.GetResource(), ibAlloc.offset, ibSize);
-
-            D3D12_RESOURCE_BARRIER barriers[2] = {};
-            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barriers[0].Transition.pResource = gpu.vb.Get();
-            barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-            barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-
-            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barriers[1].Transition.pResource = gpu.ib.Get();
-            barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
-
-            mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
-
-            gpu.vbv.BufferLocation = gpu.vb.Get()->GetGPUVirtualAddress();
-            gpu.vbv.SizeInBytes = vbSize;
-            gpu.vbv.StrideInBytes = sizeof(::Vertex);
-            gpu.ibv.BufferLocation = gpu.ib.Get()->GetGPUVirtualAddress();
-            gpu.ibv.SizeInBytes = ibSize;
-            gpu.ibv.Format = DXGI_FORMAT_R32_UINT;
-
-            gpu.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
-
-            unordered_map<int, string> textureMap;
-            for (const Texture& cpuTex : mesh.mTextures)
-                textureMap[TextureTypeToSlot(cpuTex.mType)] = cpuTex.mPath;
-
-            for (int i = 0; i < Config::cNumberOfTextureSlots; i++)
-            {
-                D3D12_CPU_DESCRIPTOR_HANDLE dst = gpu.materialTable.cpuHandle;
-                dst.ptr += SIZE_T(i) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-                auto it = textureMap.find(i);
-                if (it != textureMap.end())
-                {
-                    GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second, executeBatch);
-                    CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
-                }
-                else
-                {
-					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
-                }
-            }
-
-            mMeshGpu.push_back(std::move(gpu));
-        }
-    }
-
-    executeBatch();
-    mCommandList.Get()->Close();
+	executeBatch();
+	mCommandList.Get()->Close();
 }
 
 void Renderer::CollectStaticLights()
@@ -414,4 +451,3 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     // Signal and increment the fence value
     mCommandQueue.SignalFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
 }
-

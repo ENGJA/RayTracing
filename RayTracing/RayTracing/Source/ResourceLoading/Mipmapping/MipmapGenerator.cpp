@@ -21,7 +21,7 @@ void MipmapGenerator::Initialize(ID3D12Device* pDevice, HLSLShader computeShader
 	InitializeDescriptorHeap();
 }
 
-void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, UINT frameIndex, const std::function<void()>& executeQueue)
+void MipmapGenerator::GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, const std::function<void()>& executeQueue)
 {
 	ID3D12GraphicsCommandList* cmdList = mCommandList->Get();
 
