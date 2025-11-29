@@ -1,5 +1,4 @@
 #include "pch.h"
-#include <chrono>
 #include "D3D12/D3D12Debug.h"
 #include "DataTypes.h"
 #include "DXGI/DXGIDebug.h"
@@ -14,7 +13,8 @@
 #include "Renderer.h"
 #include "paths.h"
 
-using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function;
+using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
+
 
 /**
 * @brief Maps TextureType enum to descriptor slot index.
@@ -24,22 +24,12 @@ static int TextureTypeToSlot(TextureType type)
     return static_cast<int>(type);
 }
 
-GPUTexture Renderer::LoadOrGetTexture(const string& path, const function<void()>& executeQueue)
-{
-    auto it = mTextureCache.find(path);
-    if (it != mTextureCache.end()) return it->second;
-	wstring wpath(path.begin(), path.end());
-    GPUTexture tex = mTextureLoader.LoadTexture2DFromFile(wpath, mSwapChain.GetCurrentBackBufferIndex(), executeQueue);
-    mTextureCache.emplace(path, tex);
-    return tex;
-}
-
 void Renderer::BuildMeshGpuData()
 {
     mUploadHeap.Reset();
     mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
 
-    auto executeBatch = [&]()
+    auto executeBatch = [this]()
     {
         mCommandList.Get()->Close();
         ID3D12CommandList* lists[] = { mCommandList.Get() };
@@ -50,19 +40,33 @@ void Renderer::BuildMeshGpuData()
         mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
         mTextureLoader.Reset();
     };
-    //mTextureLoader.EnsureFallbackTexture(mSwapChain.GetCurrentBackBufferIndex(), executeBatch);
 
     for (const auto& modelPtr : mModels)
     {
-        const Model& model = *modelPtr;
-        for (const Mesh& mesh : model.mMeshes)
+        for (const Mesh& mesh : modelPtr->mMeshes)
         {
-            const UINT vbSize = static_cast<UINT>(mesh.mVertices.size() * sizeof(::Vertex));
-            const UINT ibSize = static_cast<UINT>(mesh.mIndices.size() * sizeof(unsigned int));
+            for (const Texture& cpuTex : mesh.mTextures)
+            {
+                string fullPath = modelPtr->mDirectory + "\\" + cpuTex.mPath;
+				auto it = mTextureCache.find(fullPath);
+                if (it == mTextureCache.end())
+                {
+                    auto fut = std::async(std::launch::async, TextureLoader::DecodeImageRGBA8_ThreadSafe, wstring(fullPath.begin(), fullPath.end()));
+					mTextureCache[fullPath].decodeFuture = std::move(fut);
+                }
+            }
+		}
+    }
+    for (const auto& modelPtr : mModels)
+    {
+        for (const Mesh& mesh : modelPtr->mMeshes)
+        {
+            const size_t vbSize = mesh.mVertices.size() * sizeof(::Vertex);
+            const size_t ibSize = mesh.mIndices.size() * sizeof(unsigned int);
             const size_t needed = vbSize + ibSize;
 
             if (!mUploadHeap.CanAllocate(needed))
-                executeBatch();            
+                executeBatch();
 
             MeshGpuData gpu{};
             gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
@@ -70,6 +74,7 @@ void Renderer::BuildMeshGpuData()
 
             auto vbAlloc = mUploadHeap.Allocate(vbSize);
             auto ibAlloc = mUploadHeap.Allocate(ibSize);
+
             if (!vbAlloc.cpuPtr || !ibAlloc.cpuPtr)
                 throw std::runtime_error("Upload heap out of space for mesh buffers batch.");
 
@@ -101,34 +106,43 @@ void Renderer::BuildMeshGpuData()
             gpu.ibv.SizeInBytes = ibSize;
             gpu.ibv.Format = DXGI_FORMAT_R32_UINT;
 
-            gpu.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
-
             unordered_map<int, string> textureMap;
             for (const Texture& cpuTex : mesh.mTextures)
                 textureMap[TextureTypeToSlot(cpuTex.mType)] = cpuTex.mPath;
 
+            gpu.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
+            D3D12_CPU_DESCRIPTOR_HANDLE dst = gpu.materialTable.cpuHandle;
             for (int i = 0; i < Config::cNumberOfTextureSlots; i++)
             {
-                D3D12_CPU_DESCRIPTOR_HANDLE dst = gpu.materialTable.cpuHandle;
                 dst.ptr += SIZE_T(i) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
                 auto it = textureMap.find(i);
                 if (it != textureMap.end())
                 {
-                    GPUTexture gpuTex = LoadOrGetTexture(model.mDirectory + "\\" + it->second, executeBatch);
-                    CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
+                    string fullPath = modelPtr->mDirectory + "\\" + it->second;
+					GpuTextureLoadState& loadState = mTextureCache[fullPath];
+					if (loadState.decodeFuture.valid())
+					{
+						loadState.decodeFuture.wait();
+						loadState.decodedImage = loadState.decodeFuture.get();
+					}
+
+					if (!loadState.gpuTexture.resource.Get())
+						loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, mSwapChain.GetCurrentBackBufferIndex(), executeBatch);
+
+					GPUTexture& gpuTex = loadState.gpuTexture;
+					CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
                 }
                 else
                 {
-					CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
+                    CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
                 }
             }
-
             mMeshGpu.push_back(std::move(gpu));
         }
-    }
 
-    executeBatch();
-    mCommandList.Get()->Close();
+		executeBatch();
+		mCommandList.Get()->Close();
+    }
 }
 
 void Renderer::CollectStaticLights()
@@ -243,7 +257,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
+    const std::string modelPath = GetResourcePath("Objects\\main_sponza\\NewSponza_Main_glTF_003.gltf").string();
     auto modelA = std::make_unique<Model>();
 
 	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();

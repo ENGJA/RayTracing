@@ -17,6 +17,16 @@
 #include <unordered_map>
 
 /**
+ * @brief State of a GPU texture load operation, including async decode future.
+ */
+struct GpuTextureLoadState
+{
+	std::future<DecodedImage> decodeFuture;
+	DecodedImage decodedImage;
+	GPUTexture gpuTexture;
+};
+
+/**
  * @brief GPU resources for a single mesh (vertex/index buffers + material descriptor table).
  */
 struct MeshGpuData
@@ -54,7 +64,7 @@ private:
 	TextureLoader mTextureLoader; ///< CPU/GPU texture loading helper.
 	UploadHeap mUploadHeap; ///< Shared linear upload heap for staging data.
 
-	std::unordered_map<std::string, GPUTexture> mTextureCache; ///< Cache of loaded GPU textures by path.
+	std::unordered_map<std::string, GpuTextureLoadState> mTextureCache; ///< Cache of loaded GPU textures by path.
 
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.

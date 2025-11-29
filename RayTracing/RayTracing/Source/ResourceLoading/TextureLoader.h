@@ -48,6 +48,24 @@ public:
 	GPUTexture LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex, const std::function<void()>& executeQueue);
 
 	/**
+	* @brief Decodes an image file into RGBA8 pixel data.
+	* @param path File path to the image.
+	* @return Decoded image with width, height, and pixel data.
+	*/
+	DecodedImage DecodeImageRGBA8(const std::wstring& path);
+
+	static DecodedImage DecodeImageRGBA8_ThreadSafe(const std::wstring& path);
+
+	/**
+	* @brief Creates a GPU texture from decoded image data.
+	* @param img Decoded image data.
+	* @param frameIndex Current frame index for command list recording.
+	* @param executeQueue Function to execute the command queue when needed.
+	* @return Created GPU texture with resource and SRV.
+	*/
+	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex, const std::function<void()>& executeQueue);
+
+	/**
 	* @brief Resets internal state, such as the mipmap generator.
 	*/
 	void Reset() { mMipmapGenerator.Reset(); }
@@ -76,21 +94,7 @@ private:
 	/** Fallback 1x1 black texture returned when material lacks emissive / other maps. */
 	GPUTexture mFallbackTexture;
 
-    /**
-	* @brief Decodes an image file into RGBA8 pixel data.
-	* @param path File path to the image.
-	* @return Decoded image with width, height, and pixel data.
-    */
-	DecodedImage DecodeImageRGBA8(const std::wstring& path);
 
-	/**
-	* @brief Creates a GPU texture from decoded image data.
-	* @param img Decoded image data.
-	* @param frameIndex Current frame index for command list recording.
-	* @param executeQueue Function to execute the command queue when needed.
-	* @return Created GPU texture with resource and SRV.
-	*/
-	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex, const std::function<void()>& executeQueue);
 
 
 	/**

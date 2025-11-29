@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <cmath>
 #include <functional>
+#include <future>
+#include <chrono>
 
 // directx
 #include <d3d12.h>
