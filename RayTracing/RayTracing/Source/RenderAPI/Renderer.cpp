@@ -61,15 +61,15 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
         if (it != textureMap.end())
         {
             string fullPath = directory + "\\" + it->second;
-            GpuTextureLoadState& loadState = mTextureCache[fullPath];
+            GPUTextureLoadState& loadState = mTextureCache[fullPath];
             if (loadState.decodeFuture.valid())
-            {
-                loadState.decodeFuture.wait();
                 loadState.decodedImage = loadState.decodeFuture.get();
-            }
 
             if (!loadState.gpuTexture.resource.Get())
+            {
                 loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
+				loadState.decodedImage = {}; // free CPU-side decoded image data
+            }
 
             GPUTexture& gpuTex = loadState.gpuTexture;
             CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);

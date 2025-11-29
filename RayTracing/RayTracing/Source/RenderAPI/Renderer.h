@@ -19,7 +19,7 @@
 /**
  * @brief State of a GPU texture load operation, including async decode future.
  */
-struct GpuTextureLoadState
+struct GPUTextureLoadState
 {
 	std::future<DecodedImage> decodeFuture;
 	DecodedImage decodedImage;
@@ -64,7 +64,7 @@ private:
 	TextureLoader mTextureLoader; ///< CPU/GPU texture loading helper.
 	UploadHeap mUploadHeap; ///< Shared linear upload heap for staging data.
 
-	std::unordered_map<std::string, GpuTextureLoadState> mTextureCache; ///< Cache of loaded GPU textures by path.
+	std::unordered_map<std::string, GPUTextureLoadState> mTextureCache; ///< Cache of loaded GPU textures by path.
 
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.
@@ -127,7 +127,7 @@ private:
 	* @param directory Directory of the model owning the mesh (for texture paths).
 	* @param executeBatch Function to execute the command queue when needed.
 	*/
-	void UploadSingleMesh(const Mesh& mesh, const std::string& directory , const std::function<void()>& executeBatch);
+	void UploadSingleMesh(const Mesh& mesh, const std::string& directory, const std::function<void()>& executeBatch);
 
 	/**
 	 * @brief Creates material texture descriptors for a mesh.

@@ -5,10 +5,20 @@
 
 using Microsoft::WRL::ComPtr;
 
+struct COMInitializer
+{
+	bool needsUninit;
+	COMInitializer(HRESULT hr) : needsUninit(hr == S_OK) {}
+	~COMInitializer() { if (needsUninit) CoUninitialize(); }
+};
+
 DecodedImage ImageDecoder::DecodeImageRGBA8_ThreadSafe(const std::wstring& path)
 {
 	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-	ASSERT_HR(hr, L"Failed to initialize COM for image decoding.");
+	if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+		ASSERT_HR(hr, L"Failed to initialize COM for image decoding.");
+	
+	COMInitializer comInitialized(hr);
 
 	ComPtr<IWICImagingFactory> wicFactory;
 	hr = CoCreateInstance(
@@ -57,9 +67,6 @@ DecodedImage ImageDecoder::DecodeImageRGBA8_ThreadSafe(const std::wstring& path)
 	else
 		hr = frame->CopyPixels(&rect, rowPitch, static_cast<UINT>(pixels.size()), pixels.data());
 	ASSERT_HR(hr, L"Failed to copy pixels");
-
-
-	CoUninitialize();
 
 	return
 	{
