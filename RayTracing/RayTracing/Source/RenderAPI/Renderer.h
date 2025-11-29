@@ -79,33 +79,6 @@ private:
 	LARGE_INTEGER mPrevCounter{};
 	double mSecondsPerCount = 0.0;
 
-	/**
-	 * @brief Loads a texture from disk or returns cached GPU texture.
-	 * @param path Absolute or relative texture file path.
-	 * @param executeQueue Function to execute the command queue when needed.
-	 * @return GPU texture wrapper with resource and SRV descriptor.
-	 */
-	GPUTexture LoadOrGetTexture(const std::string& path, const std::function<void()>& executeQueue);
-	/**
-	 * @brief Builds GPU buffers and material descriptor tables for all loaded meshes.
-	 */
-	void BuildMeshGpuData();
-
-
-	/**
-	 * @brief Collects static lights from loaded models into mStaticLights.
-	 */
-	void CollectStaticLights();
-
-	/**
-	 * @brief Creates a shader resource view for a texture resource.
-	 * @param resource Texture resource.
-	 * @param format Texture format.
-	 * @param handle CPU descriptor handle where to create the SRV.
-	 * @param mipLevels Number of mip levels in the texture.
-	 */
-	void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
-
 
 	/**
 	 * @brief Initializes or re-initializes the graphics pipeline state and root signature.
@@ -116,6 +89,54 @@ private:
 	 * @brief Initializes the texture loader with required D3D12 resources.
 	 */
 	void InitializeTextureLoader();
+
+	/**
+	* @brief Builds GPU resources for all loaded meshes in all models.
+	*/
+    void BuildMeshGpuData();
+
+
+	/**
+	* @brief Collects static lights from all models into a single array for efficient access.
+	*/
+    void CollectStaticLights();
+
+	/**
+	* @brief Creates a shader resource view for a texture resource.
+	* @param resource Texture resource.
+	* @param format Texture format.
+	* @param handle CPU descriptor handle where to create the SRV.
+	* @param mipLevels Number of mip levels in the texture.
+	*/
+    void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
+
+	/**
+	* @brief Dispatches asynchronous texture decoding tasks for all textures used in loaded models.
+	*/
+    void DispatchTextureDecoding();
+
+	/**
+	* @brief Uploads GPU resources for all meshes in all models.
+	* @param executeBatch Function to execute the command queue when needed.
+	*/
+    void UploadMeshes(const std::function<void()>& executeBatch);
+
+	/**
+	* @brief Uploads GPU resources for a single mesh.
+	* @param mesh Mesh to upload.
+	* @param directory Directory of the model owning the mesh (for texture paths).
+	* @param executeBatch Function to execute the command queue when needed.
+	*/
+	void UploadSingleMesh(const Mesh& mesh, const std::string& directory , const std::function<void()>& executeBatch);
+
+	/**
+	 * @brief Creates material texture descriptors for a mesh.
+	 * @param directory Directory of the model owning the mesh (for texture paths).
+	 * @param mesh Mesh whose material to create.
+	 * @param dst CPU descriptor handle where to write the material SRV descriptors.
+	 * @param executeBatch Function to execute the command queue when needed.
+	 */
+	void CreateMaterial(const Mesh& mesh, const std::string& directory, D3D12_CPU_DESCRIPTOR_HANDLE dst, const std::function<void()>& executeBatch);
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
