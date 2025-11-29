@@ -5,6 +5,7 @@
 #include "RenderAPI/D3D12/Command/D3D12CommandList.h"
 #include "ResourceLoading/UploadHeap.h"
 #include "Mipmapping/MipmapGenerator.h"
+#include "ResourceLoading/ImageDecoder.h"
 
 struct GPUTexture
 {
@@ -15,12 +16,6 @@ struct GPUTexture
     UINT height = 0;
 };
 
-struct DecodedImage
-{
-    UINT width{};
-    UINT height{};
-    std::vector<BYTE> pixels; // RGBA8
-};
 
 /**
  * @brief Texture loader that decodes image files and uploads them to GPU textures.
@@ -39,24 +34,6 @@ public:
 	void Initialize(ID3D12Device* device, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader);
 
 	/**
-	* @brief Loads a 2D texture from file and uploads it to GPU.
-	* @param path File path to the image.
-	* @param frameIndex Current frame index for command list recording.
-	* @param executeQueue Function to execute the command queue when needed.
-	* @return Uploaded GPU texture with resource and SRV.
-    */
-	GPUTexture LoadTexture2DFromFile(const std::wstring& path, UINT frameIndex, const std::function<void()>& executeQueue);
-
-	/**
-	* @brief Decodes an image file into RGBA8 pixel data.
-	* @param path File path to the image.
-	* @return Decoded image with width, height, and pixel data.
-	*/
-	DecodedImage DecodeImageRGBA8(const std::wstring& path);
-
-	static DecodedImage DecodeImageRGBA8_ThreadSafe(const std::wstring& path);
-
-	/**
 	* @brief Creates a GPU texture from decoded image data.
 	* @param img Decoded image data.
 	* @param frameIndex Current frame index for command list recording.
@@ -71,9 +48,6 @@ public:
 	void Reset() { mMipmapGenerator.Reset(); }
 
 private:
-    /** <WIC imaging factory for image decoding. */
-    Microsoft::WRL::ComPtr<IWICImagingFactory> mWIC;
-
 	/** <D3D12 device pointer. */
     ID3D12Device* mDevice = nullptr;
 
@@ -90,11 +64,6 @@ private:
     UploadHeap* mUploadHeap = nullptr; // shared staging heap
 
 	MipmapGenerator mMipmapGenerator; ///< Mipmap generator for generating mipmaps on GPU.
-
-	/** Fallback 1x1 black texture returned when material lacks emissive / other maps. */
-	GPUTexture mFallbackTexture;
-
-
 
 
 	/**

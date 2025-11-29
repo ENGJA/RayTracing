@@ -36,7 +36,7 @@ void Renderer::DispatchTextureDecoding()
                 auto it = mTextureCache.find(fullPath);
                 if (it == mTextureCache.end())
                 {
-                    auto fut = std::async(std::launch::async, TextureLoader::DecodeImageRGBA8_ThreadSafe, wstring(fullPath.begin(), fullPath.end()));
+                    auto fut = std::async(std::launch::async, ImageDecoder::DecodeImageRGBA8_ThreadSafe, wstring(fullPath.begin(), fullPath.end()));
                     mTextureCache[fullPath].decodeFuture = std::move(fut);
                 }
             }
