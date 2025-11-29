@@ -69,7 +69,7 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
             }
 
             if (!loadState.gpuTexture.resource.Get())
-                loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, mSwapChain.GetCurrentBackBufferIndex(), executeBatch);
+                loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
 
             GPUTexture& gpuTex = loadState.gpuTexture;
             CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
@@ -85,14 +85,16 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 {
     const size_t vbSize = mesh.mVertices.size() * sizeof(::Vertex);
     const size_t ibSize = mesh.mIndices.size() * sizeof(unsigned int);
+	const UINT vbSizeUINT = static_cast<UINT>(vbSize);
+	const UINT ibSizeUINT = static_cast<UINT>(ibSize);
     const size_t needed = vbSize + ibSize;
 
     if (!mUploadHeap.CanAllocate(needed))
         executeBatch();
 
     MeshGpuData gpu{};
-    gpu.vb.Initialize(mDevice.Get(), vbSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
-    gpu.ib.Initialize(mDevice.Get(), ibSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+    gpu.vb.Initialize(mDevice.Get(), vbSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+    gpu.ib.Initialize(mDevice.Get(), ibSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
     auto vbAlloc = mUploadHeap.Allocate(vbSize);
     auto ibAlloc = mUploadHeap.Allocate(ibSize);
@@ -122,10 +124,10 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
     gpu.vbv.BufferLocation = gpu.vb.Get()->GetGPUVirtualAddress();
-    gpu.vbv.SizeInBytes = static_cast<UINT>(vbSize);
+    gpu.vbv.SizeInBytes = vbSizeUINT;
     gpu.vbv.StrideInBytes = sizeof(::Vertex);
     gpu.ibv.BufferLocation = gpu.ib.Get()->GetGPUVirtualAddress();
-    gpu.ibv.SizeInBytes = static_cast<UINT>(ibSize);
+    gpu.ibv.SizeInBytes = ibSizeUINT;
     gpu.ibv.Format = DXGI_FORMAT_R32_UINT;
 
     CreateMaterial(mesh, directory, gpu, executeBatch);

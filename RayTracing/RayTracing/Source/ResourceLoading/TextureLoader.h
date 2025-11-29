@@ -36,11 +36,10 @@ public:
 	/**
 	* @brief Creates a GPU texture from decoded image data.
 	* @param img Decoded image data.
-	* @param frameIndex Current frame index for command list recording.
 	* @param executeQueue Function to execute the command queue when needed.
 	* @return Created GPU texture with resource and SRV.
 	*/
-	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex, const std::function<void()>& executeQueue);
+	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue);
 
 	/**
 	* @brief Resets internal state, such as the mipmap generator.

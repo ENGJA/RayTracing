@@ -28,7 +28,7 @@ static UINT CalculateMipLevels(UINT width, UINT height)
 }
 
 
-GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, UINT frameIndex, const std::function<void()>& executeQueue)
+GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue)
 {
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
@@ -79,7 +79,7 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
-	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, frameIndex, executeQueue);
+	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, executeQueue);
 
 	return gpuTex;
 }

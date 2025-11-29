@@ -35,10 +35,9 @@ public:
 	 * @param width Width of the top mip level.
 	 * @param height Height of the top mip level.
 	 * @param mipLevels Total number of mip levels in the texture.
-	 * @param frameIndex Current frame index for command list recording.
 	 * @param executeQueue Function to execute the command queue when needed.
 	 */
-	void GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, UINT frameIndex, const std::function<void()>& executeQueue);
+	void GenerateMipmaps(ID3D12Resource* textureResource, UINT width, UINT height, UINT mipLevels, DXGI_FORMAT format, const std::function<void()>& executeQueue);
 
 	/**
 	 * @brief Resets internal state, such as the descriptor offset.
