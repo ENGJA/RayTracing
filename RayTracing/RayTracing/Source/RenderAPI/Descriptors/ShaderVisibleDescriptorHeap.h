@@ -45,4 +45,24 @@ public:
      * @brief Returns the descriptor size increment for this heap type.
      */
     UINT GetIncrementSize() const { return mIncrementSize; }
+    /**
+     * @brief Returns CPU descriptor handle at specific index.
+     * @param index Index of the descriptor in the heap.
+     */
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCPUHandle(UINT index) const 
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = mHeap.Get()->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += SIZE_T(index) * mIncrementSize;
+        return handle;
+    }
+    /**
+     * @brief Returns GPU descriptor handle at specific index.
+     * @param index Index of the descriptor in the heap.
+     */
+    D3D12_GPU_DESCRIPTOR_HANDLE GetGPUHandle(UINT index) const 
+    {
+        D3D12_GPU_DESCRIPTOR_HANDLE handle = mHeap.Get()->GetGPUDescriptorHandleForHeapStart();
+        handle.ptr += UINT64(index) * mIncrementSize;
+        return handle;
+    }
 };

@@ -23,6 +23,9 @@ private:
 
     bool mHasLastPos = false; ///< True if mLastMousePos contains a valid previous position.
 
+    bool mIsCursorLocked = false;    
+    POINT mScreenCenter{ 0, 0 };
+
 	using KeyPressedCallback = std::function<void()>; ///< Callback type for key-pressed (edge) events.
 	using KeyDownCallback = std::function<void(float dt)>; ///< Callback type for key-down (continuous) events.
 
@@ -112,4 +115,13 @@ public:
      * @param cb Callback receiving wheel delta in WHEEL_DELTA units.
      */
     void RegisterMouseWheelCallback(MouseWheelCallback cb);
+
+    void SetCursorLocked(bool lock);
+
+    POINT GetMousePosition() const { return mLastMousePos; }
+
+    bool IsKeyPressedThisFrame(int vkey) const {
+        if (vkey < 0 || vkey >= 256) return false;
+        return mKeyPressedThisFrame[vkey];
+    }
 };

@@ -39,6 +39,7 @@ void CameraManager::Initialize(UINT width, UINT height)
 
     // toggle camera on 'C' edge press
     input.RegisterKeyPressedCallback('C', [this]() {
+        if (!mIsActive) return;
         if (!mCameras.empty())
             mActiveIndex = (mActiveIndex + 1) % mCameras.size();
         });
@@ -51,73 +52,87 @@ void CameraManager::Initialize(UINT width, UINT height)
 
     // forward / back
     input.RegisterKeyDownCallback('W', [this, baseMoveSpeed](float dt) {
+        if (!mIsActive) return;
         float speed = baseMoveSpeed;
-        if (!mCameras.empty())
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(speed * dt, 0.0f, 0.0f);
         });
     input.RegisterKeyDownCallback('S', [this, baseMoveSpeed](float dt) {
+        if (!mIsActive) return;
         float speed = baseMoveSpeed;
-        if (!mCameras.empty())
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(-speed * dt, 0.0f, 0.0f);
         });
 
     // right / left
     input.RegisterKeyDownCallback('D', [this, baseMoveSpeed](float dt) {
+        if (!mIsActive) return;
         float speed = baseMoveSpeed;
-        if (!mCameras.empty())
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, speed * dt, 0.0f);
         });
     input.RegisterKeyDownCallback('A', [this, baseMoveSpeed](float dt) {
+        if (!mIsActive) return;
         float speed = baseMoveSpeed;
-        if (!mCameras.empty())
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, -speed * dt, 0.0f);
         });
 
     // up / down (space / shift)
     input.RegisterKeyDownCallback(VK_SPACE, [this, baseMoveSpeed](float dt) {
+        if (!mIsActive) return;
         float speed = baseMoveSpeed;
-        if (!mCameras.empty())
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, 0.0f, speed * dt);
         });
 	input.RegisterKeyDownCallback(VK_SHIFT, [this, baseMoveSpeed](float dt) {
+        if (!mIsActive) return;
         float speed = baseMoveSpeed;
-        if (!mCameras.empty())
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, 0.0f, -speed * dt);
 		});
 
     // arrow rotation
     input.RegisterKeyDownCallback(VK_LEFT, [this, yawSpeed](float dt) {
-        if (!mCameras.empty())
+        if (!mIsActive) return;
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].AddYaw(yawSpeed * dt);
         });
     input.RegisterKeyDownCallback(VK_RIGHT, [this, yawSpeed](float dt) {
-        if (!mCameras.empty())
+        if (!mIsActive) return;
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].AddYaw(-yawSpeed * dt);
         });
     input.RegisterKeyDownCallback(VK_UP, [this, pitchSpeed](float dt) {
-        if (!mCameras.empty())
+        if (!mIsActive) return;
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].AddPitch(pitchSpeed * dt);
         });
     input.RegisterKeyDownCallback(VK_DOWN, [this, pitchSpeed](float dt) {
-        if (!mCameras.empty())
+        if (!mIsActive) return;
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].AddPitch(-pitchSpeed * dt);
         });
 
     // zoom via Z/X keys
     input.RegisterKeyDownCallback('Z', [this, zoomSpeed](float dt) {
-        if (!mCameras.empty())
+        if (!mIsActive) return;
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].ChangeFov(-zoomSpeed * dt);
         });
     input.RegisterKeyDownCallback('X', [this, zoomSpeed](float dt) {
-        if (!mCameras.empty())
+        if (!mIsActive) return;
+        if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].ChangeFov(zoomSpeed * dt);
         });
 
     // mouse move -> rotation
     const float mouseSensitivity = 0.0025f;
     input.RegisterMouseMoveCallback([this, mouseSensitivity](DirectX::XMFLOAT2 delta) {
+        if (!mIsActive) return;
         if (delta.x == 0.0f && delta.y == 0.0f) return;
         if (mCameras.empty()) return;
+        if (mCameras[mActiveIndex].IsUsingFixed()) return;
         mCameras[mActiveIndex].AddYaw(-delta.x * mouseSensitivity);
         mCameras[mActiveIndex].AddPitch(-delta.y * mouseSensitivity);
         });
@@ -125,8 +140,10 @@ void CameraManager::Initialize(UINT width, UINT height)
     // wheel -> fov
     const float wheelZoomSpeed = 0.0015f;
     input.RegisterMouseWheelCallback([this, wheelZoomSpeed](int wheel) {
+        if (!mIsActive) return;
         if (wheel == 0) return;
         if (mCameras.empty()) return;
+        if (mCameras[mActiveIndex].IsUsingFixed()) return;
         mCameras[mActiveIndex].ChangeFov(-static_cast<float>(wheel) * wheelZoomSpeed);
         });
 }
@@ -134,7 +151,7 @@ void CameraManager::Initialize(UINT width, UINT height)
 void CameraManager::Update(float dt)
 {
     // Process all registered callbacks (keys, key-holds, mouse movement, wheel)
-    InputManager::Instance.ProcessCallbacks(dt);
+    //InputManager::Instance.ProcessCallbacks(dt);
 }
 
 DirectX::XMMATRIX CameraManager::GetActiveViewProjection() const

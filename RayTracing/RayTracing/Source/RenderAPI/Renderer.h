@@ -16,6 +16,9 @@
 #include "RenderAPI/HLSL/HLSLCompiler.h"
 #include <unordered_map>
 
+// Forward declaration
+struct ImGuiContext;
+
 /**
  * @brief State of a GPU texture load operation, including async decode future.
  */
@@ -78,6 +81,11 @@ private:
 	// timing
 	LARGE_INTEGER mPrevCounter{};
 	double mSecondsPerCount = 0.0;
+
+	// ImGui resources
+	ImGuiContext* mImGuiContext = nullptr;
+	ShaderVisibleDescriptorHeap mImGuiSrvHeap;
+	HWND mHwnd = nullptr;
 
 
 	/**
@@ -145,6 +153,14 @@ public:
 	 * @param height Client height.
 	 */
 	void Initialize(HWND hwnd, UINT width, UINT height);
+	
+	/**
+	 * @brief Handles window resize by recreating swap chain buffers and depth buffer.
+	 * @param width New client width.
+	 * @param height New client height.
+	 */
+	void OnResize(UINT width, UINT height);
+	
 	/**
 	 * @brief Records and submits commands for one frame and presents.
 	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
@@ -152,5 +168,25 @@ public:
 	 * @param cameraForward Camera forward vector.
 	 */
 	void Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
+
+	/**
+	 * @brief Initializes ImGui for DirectX 12 rendering.
+	 */
+	void InitializeImGui(HWND hwnd);
+
+	/**
+	 * @brief Cleans up ImGui resources.
+	 */
+	void ShutdownImGui();
+
+	/**
+	 * @brief Begins a new ImGui frame.
+	 */
+	void BeginImGuiFrame();
+
+	/**
+	 * @brief Renders ImGui draw data.
+	 */
+	void RenderImGui();
 };
 

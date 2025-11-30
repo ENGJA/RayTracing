@@ -15,6 +15,7 @@ class CameraManager
 private:
     std::vector<Camera> mCameras;
     size_t mActiveIndex = 0;
+    bool mIsActive = true; ///< Controls whether camera processes input
 
 public:
     CameraManager() = default;
@@ -50,4 +51,15 @@ public:
      * @brief Returns normalized forward vector of the active camera (world-space).
      */
     DirectX::XMFLOAT3 GetActiveCameraForward() const;
+
+    /**
+     * @brief Enable or disable camera input processing.
+     * @param active If true, camera will respond to keyboard/mouse input.
+     */
+    void SetActive(bool active) { mIsActive = active; }
+
+    /**
+     * @brief Check if camera is currently processing input.
+     */
+    bool IsActive() const { return mIsActive; }
 };

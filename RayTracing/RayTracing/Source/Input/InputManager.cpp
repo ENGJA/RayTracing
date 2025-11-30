@@ -17,6 +17,8 @@ void InputManager::Initialize(HWND hwnd)
         mLastMousePos = p;
         mHasLastPos = true;
     }
+
+    SetCursorLocked(true);
 }
 
 void InputManager::BeginFrame()
@@ -59,18 +61,52 @@ void InputManager::OnWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_MOUSEMOVE:
     {
         if (!mHwnd) break;
-        POINT p;
-        p.x = (int)(short)LOWORD(lParam);
-        p.y = (int)(short)HIWORD(lParam);
-        // p is client coords
-        if (!mHasLastPos)
+        if (mIsCursorLocked)
         {
-            mLastMousePos = p;
-            mHasLastPos = true;
+            POINT p;
+            p.x = (int)(short)LOWORD(lParam);
+            p.y = (int)(short)HIWORD(lParam);
+
+            // Obliczamy œrodek okna w Client Space (dla pewnoœci, bo okno mog³o zmieniæ rozmiar)
+            RECT rect;
+            GetClientRect(mHwnd, &rect);
+            POINT center = { (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2 };
+
+            // Obliczamy deltê wzglêdem œrodka
+            float dx = static_cast<float>(p.x - center.x);
+            float dy = static_cast<float>(p.y - center.y);
+
+            // Jeœli jest jakikolwiek ruch
+            if (dx != 0.0f || dy != 0.0f)
+            {
+                mMouseDeltaX += dx;
+                mMouseDeltaY += dy;
+
+                // Resetujemy kursor na œrodek (Physical Screen Space)
+                POINT screenCenter = center;
+                ClientToScreen(mHwnd, &screenCenter);
+                SetCursorPos(screenCenter.x, screenCenter.y);
+
+                // Aktualizujemy lastPos jako œrodek, ¿eby nastêpna delta by³a liczona od niego
+                mLastMousePos = center;
+            }
         }
-        mMouseDeltaX += static_cast<float>(p.x - mLastMousePos.x);
-        mMouseDeltaY += static_cast<float>(p.y - mLastMousePos.y);
-        mLastMousePos = p;
+        else
+        {
+            // Standardowa obs³uga (Menu Mode)
+            POINT p;
+            p.x = (int)(short)LOWORD(lParam);
+            p.y = (int)(short)HIWORD(lParam);
+
+            if (!mHasLastPos)
+            {
+                mLastMousePos = p;
+                mHasLastPos = true;
+            }
+            mMouseDeltaX += static_cast<float>(p.x - mLastMousePos.x);
+            mMouseDeltaY += static_cast<float>(p.y - mLastMousePos.y);
+            mLastMousePos = p;
+        }
         break;
     }
     case WM_MOUSEWHEEL:
@@ -162,5 +198,38 @@ void InputManager::ProcessCallbacks(float dt)
         {
             if (cb) cb(wheel);
         }
+    }
+}
+
+void InputManager::SetCursorLocked(bool lock)
+{
+    if (mIsCursorLocked == lock) return;
+
+    mIsCursorLocked = lock;
+
+    if (mIsCursorLocked)
+    {
+        // Ukrywamy kursor
+        while (ShowCursor(FALSE) >= 0);
+
+        // Obliczamy œrodek okna, aby tam zresetowaæ kursor
+        RECT rect;
+        GetClientRect(mHwnd, &rect);
+        POINT center = { (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2 };
+
+        // Zapisujemy œrodek w screen-space
+        POINT screenCenter = center;
+        ClientToScreen(mHwnd, &screenCenter);
+        mScreenCenter = screenCenter;
+
+        // Ustawiamy kursor na œrodku i resetujemy deltê, by unikn¹æ "skoku" kamery
+        SetCursorPos(mScreenCenter.x, mScreenCenter.y);
+        mLastMousePos = center;
+        mHasLastPos = true;
+    }
+    else
+    {
+        // Pokazujemy kursor
+        while (ShowCursor(TRUE) < 0);
     }
 }

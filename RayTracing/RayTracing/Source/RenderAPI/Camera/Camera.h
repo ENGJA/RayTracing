@@ -91,4 +91,5 @@ public:
     void AddPitch(float delta);               // add pitch (radians) - clamped
     void MoveLocal(float forward, float right, float up); // move relative to camera orientation
     void ChangeFov(float delta);              // change fov (radians), clamped
+	bool IsUsingFixed() const { return mUseFixed; }
 };

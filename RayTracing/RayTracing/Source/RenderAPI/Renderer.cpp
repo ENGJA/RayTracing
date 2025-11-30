@@ -13,6 +13,11 @@
 #include "Renderer.h"
 #include "paths.h"
 
+// ImGui includes
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx12.h"
+
 using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
 
 
@@ -219,6 +224,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     wcout << "Selected device: " << desc.Description << endl;
 
+    mHwnd = hwnd;
     mDevice.Initialize(adapter.Get());
     mCommandQueue.Initialize(mDevice.Get());
     mCommandList.Initialize(mDevice.Get());
@@ -312,6 +318,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     // Collect static lights once after models are loaded
     CollectStaticLights();
+
+    // Initialize ImGui at the end of initialization
+    InitializeImGui(hwnd);
 
 	// For debugging: recompile shaders on 'G' key press
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
@@ -435,6 +444,13 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
     }
 
+    // Render ImGui if a frame was started
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.BackendRendererUserData != nullptr) // Check if ImGui frame is active
+    {
+        RenderImGui();
+    }
+
     // Transition back buffer to present
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -450,4 +466,92 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
     // Signal and increment the fence value
     mCommandQueue.SignalFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
+}
+
+void Renderer::InitializeImGui(HWND hwnd)
+{
+    // Create ImGui context
+    IMGUI_CHECKVERSION();
+    mImGuiContext = ImGui::CreateContext();
+    ImGui::SetCurrentContext(mImGuiContext);
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    // Setup ImGui style
+    ImGui::StyleColorsDark();
+
+    // Create descriptor heap for ImGui (1 descriptor for font texture)
+    mImGuiSrvHeap.Initialize(mDevice.Get(), 1);
+
+    // Initialize Win32 backend first
+    ImGui_ImplWin32_Init(hwnd);
+    
+    // Initialize DX12 backend
+    ImGui_ImplDX12_Init(
+        mDevice.Get(),
+        Config::cFrameCount,
+        Config::cBackBufferFormat,
+        mImGuiSrvHeap.Get(),
+        mImGuiSrvHeap.GetCPUHandle(0),
+        mImGuiSrvHeap.GetGPUHandle(0)
+    );
+
+    // CRITICAL: Manually build and upload font atlas
+    // Get font texture data
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    
+    // Open command list for upload
+    mCommandList.ResetCommandList(0);
+    
+    // Bind ImGui descriptor heap
+    ID3D12DescriptorHeap* heaps[] = { mImGuiSrvHeap.Get() };
+    mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+    
+    // Create device objects (this uploads the font texture)
+    ImGui_ImplDX12_CreateDeviceObjects();
+    
+    // Close and execute command list
+    mCommandList.Get()->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    mCommandQueue.ExecuteCommandLists(1, lists);
+    mCommandQueue.Flush();
+    
+    wcout << "ImGui initialized: Font atlas " << width << "x" << height << " uploaded to GPU" << endl;
+}
+
+void Renderer::ShutdownImGui()
+{
+    if (mImGuiContext)
+    {
+        ImGui_ImplDX12_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext(mImGuiContext);
+        mImGuiContext = nullptr;
+    }
+}
+
+void Renderer::BeginImGuiFrame()
+{
+    ImGui::SetCurrentContext(mImGuiContext);
+    
+    // Correct order: DX12 backend first (builds font atlas), then Win32, then ImGui
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+}
+
+void Renderer::RenderImGui()
+{
+    ImGui::SetCurrentContext(mImGuiContext);
+    ImGui::Render();
+
+    // Bind ImGui descriptor heap
+    ID3D12DescriptorHeap* imguiHeaps[] = { mImGuiSrvHeap.Get() };
+    mCommandList.Get()->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+
+    // Render ImGui draw data
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 }

@@ -2,6 +2,12 @@
 #include "RenderAPI/Renderer.h"
 #include "RenderAPI/Camera/CameraManager.h"
 
+enum class AppState
+{
+	Scene,  ///< Renderowanie 3D, sterowanie kamer¹, brak kursora.
+	Menu    ///< Pauza/Menu, widoczny kursor, brak sterowania kamer¹.
+};
+
 /**
  * @brief Application bootstrap that owns the window and resources.
  */
@@ -11,6 +17,8 @@ private:
 	Renderer mRenderer; ///< High level renderer instance.
 	CameraManager mCameraManager; ///< Camera manager for view/projection matrices.
 
+	AppState mCurrentState = AppState::Scene;
+
 	HWND mHwnd = nullptr; ///< Native Win32 window handle.
 	bool mIsRunning = true; ///< Main loop running flag.
 	UINT mWidth = 0; ///< Current client area width in pixels.
@@ -18,6 +26,9 @@ private:
 
 	LARGE_INTEGER mPrevCounter{}; ///< Previous frame timestamp.
 	double mSecondsPerCount = 0.0; ///< Seconds per performance counter tick.
+
+	void ToggleMenu();
+	void RenderImGuiMenu();
 
 public:
 	/**
@@ -51,5 +62,10 @@ public:
 	 * @brief Win32 destroy callback.
 	 */
 	void OnDestroy();
+
+	/**
+	 * @brief Called on window resize.
+	 */
+	void OnResize(int width, int height);
 };
 
