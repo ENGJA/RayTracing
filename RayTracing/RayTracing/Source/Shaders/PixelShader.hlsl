@@ -11,7 +11,8 @@ struct PSInput
     float2 uv  : TEXCOORD0;
     float3 worldPos : TEXCOORD1;
     float3 normalWS : TEXCOORD2;
-    float2 materialProps : TEXCOORD3;
+    float4 tangentWS : TEXCOORD3;
+    float2 materialProps : TEXCOORD4;
 };
 
 // Light struct matching C++ ConstantBufferData::LightData (position,color,dirType)
@@ -31,6 +32,8 @@ cbuffer CBData : register(b0)
     Light lights[25]    : packoffset(c6);
 };
 
+float3 getNormal(PSInput input);
+
 float4 main(PSInput input) : SV_TARGET
 {
     float3 albedo = gAlbedo.Sample(gSampler, input.uv).rgb;
@@ -46,8 +49,8 @@ float4 main(PSInput input) : SV_TARGET
 
     float shininessFromRough = lerp(8.0f, 2048.0f, 1.0f - saturate(roughness));
     float shininess = (input.materialProps.y > 0.0f) ? input.materialProps.y : shininessFromRough;
-
-    float3 N = normalize(input.normalWS);
+    
+    float3 N = getNormal(input);    
     float3 V = normalize(viewPos.xyz - input.worldPos);
 
     float3 finalColor = float3(0.0, 0.0, 0.0);
@@ -111,4 +114,29 @@ float4 main(PSInput input) : SV_TARGET
     finalColor += emissive;
 
     return float4(finalColor, 1.0f);
+}
+
+float3 getNormal(PSInput input)
+{
+    // Normalize normal and tangent vectors
+    float3 N = normalize(input.normalWS);
+    float3 T = normalize(input.tangentWS.xyz);      
+    
+    // Re-orthogonalize T with respect to N
+    T = normalize(T - dot(T, N) * N);
+    
+    // Compute bitangent
+    float3 B = cross(N, T) * input.tangentWS.w;
+    
+    // Construct TBN matrix
+    float3x3 TBN = float3x3(T, B, N);
+    
+    // Transform normal map
+    float3 normalMapSample = gNormalMap.Sample(gSampler, input.uv).xyz;
+    float3 tangentNormal = normalize(normalMapSample * 2.0f - 1.0f);
+    // If your normal map appears inverted along the Y axis, uncomment the following line to flip 
+    //tangentNormal.y = -tangentNormal.y;
+    
+    float3 pixelNormal = normalize(mul(tangentNormal, TBN));
+    return pixelNormal;
 }
