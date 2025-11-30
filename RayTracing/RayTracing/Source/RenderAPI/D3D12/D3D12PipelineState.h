@@ -21,7 +21,9 @@ public:
 	 * @param pixelShader Compiled pixel shader.
 	 * @param inputLayoutDesc Input layout description for vertex buffers.
 	 */
-	void Initialize(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
+	void InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
+
+	void InitializeTransparent(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
 	/**
 	 * @brief Returns the native root signature pointer.
 	 */
