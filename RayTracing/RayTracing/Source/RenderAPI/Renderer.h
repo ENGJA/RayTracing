@@ -36,6 +36,9 @@ struct MeshGpuData
 	D3D12Resource ib; ///< Index buffer resource.
 	D3D12_INDEX_BUFFER_VIEW ibv{}; ///< Index buffer view used for IA binding.
 	DescriptorAllocation materialTable; ///< Contiguous descriptors for material textures (t0 - t4).
+
+	DirectX::XMFLOAT3 center; ///< Mesh bounding sphere center in model space.
+	float distanceToCamera = 0.0f; ///< Distance from mesh center to camera (for sorting).
 };
 
 /**
@@ -47,7 +50,8 @@ private:
 	D3D12Device mDevice; ///< Logical D3D12 device wrapper.
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
-	D3D12PipelineState mPipelineState; ///< Pipeline state and root signature.
+	D3D12PipelineState mPipelineStateOpaque; ///< Pipeline state and root signature for opaque objects.
+	D3D12PipelineState mPipelineStateTransparent; ///< Pipeline state and root signature for transparent objects.
 
 	UINT mWidth = 0; ///< Back buffer width.
 	UINT mHeight = 0; ///< Back buffer height.
@@ -67,7 +71,8 @@ private:
 	std::unordered_map<std::string, GPUTextureLoadState> mTextureCache; ///< Cache of loaded GPU textures by path.
 
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
-	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.
+	std::vector<MeshGpuData> mOpaqueMeshes; ///< Flattened array of opaque mesh GPU data for rendering.
+	std::vector<MeshGpuData> mTransparentMeshes; ///< Flattened array of transparent mesh GPU data for rendering.
 
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
 
@@ -137,6 +142,19 @@ private:
 	 * @param executeBatch Function to execute the command queue when needed.
 	 */
 	void CreateMaterial(const Mesh& mesh, const std::string& directory, MeshGpuData& gpuData, const std::function<void()>& executeBatch);
+
+	/**
+	 * @brief Draws a single mesh (binds its buffers and material).
+	 * @param mesh Mesh GPU data to draw.
+	 */
+	void DrawMesh(const MeshGpuData& mesh);
+
+	/**
+	 * @brief Sorts transparent meshes back-to-front based on camera position.
+	 * @param cameraPos Camera world position.
+	 */
+	void SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos);
+
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.

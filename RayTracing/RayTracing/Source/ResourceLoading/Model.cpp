@@ -112,12 +112,12 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 		aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
 		const float alphaThreshold = 0.999f; 
 
-		aiColor4D diffuseColor;
-		if (AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
-		{
-			if (diffuseColor.a < alphaThreshold)
-				continue;
-		}
+		//aiColor4D diffuseColor;
+		//if (AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
+		//{
+		//	if (diffuseColor.a < alphaThreshold)
+		//		continue;
+		//}
 
 		mMeshes.push_back(processMesh(mesh, scene, currentTransform, tangentSpaceHandednessMultiplier));
 	}
@@ -149,13 +149,18 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 			matShininess = static_cast<float>(sf);
 	}
 
+	DirectX::XMVECTOR minV = DirectX::XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, 0);
+	DirectX::XMVECTOR maxV = DirectX::XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, 0);
+
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 	{
 		Vertex vertex{};
 		// position
-		DirectX::XMVECTOR pos = DirectX::XMVectorSet(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
-		pos = XMVector3TransformCoord(pos, xmTransform);
-		XMStoreFloat3(&vertex.mPosition, pos);
+		{
+			DirectX::XMVECTOR pos = DirectX::XMVectorSet(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
+			pos = XMVector3TransformCoord(pos, xmTransform);
+			XMStoreFloat3(&vertex.mPosition, pos);
+		}
 
 		// normal (transform with inverse-transpose of 3x3)
 		if (mesh->mNormals)
@@ -207,13 +212,35 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 			vertex.mTexCoords = DirectX::XMFLOAT2(0.0f, 0.0f);
 		}
 
+		{
+			DirectX::XMVECTOR pos = DirectX::XMLoadFloat3(&vertex.mPosition);
+			minV = DirectX::XMVectorMin(minV, pos);
+			maxV = DirectX::XMVectorMax(maxV, pos);
+		}
+
 		vertices.push_back(vertex);
 	}
+
+	// Calculate Center for sorting
+	DirectX::XMVECTOR centerV = DirectX::XMVectorAdd(minV, maxV);
+	centerV = DirectX::XMVectorScale(centerV, 0.5f);
+	DirectX::XMFLOAT3 center;
+	XMStoreFloat3(&center, centerV);
+
+	
 	for (unsigned int i = 0; i < mesh->mNumFaces; i++)
 	{
 		aiFace face = mesh->mFaces[i];
 		for (unsigned int j = 0; j < face.mNumIndices; j++)
 			indices.push_back(face.mIndices[j]);
+	}
+
+	// Detect transparency
+	bool isTransparent = false;
+	float opacity = 1.0f;
+	if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_OPACITY, &opacity))
+	{
+		if (opacity < 1.0f) isTransparent = true;
 	}
 
 	// get PBR material textures
@@ -226,10 +253,11 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 		loadMaterialTextures(material, aiTextureType_DIFFUSE_ROUGHNESS, TextureType::Roughness)
 	};
 
+
 	for (const auto& textureList : loadedTextures)
 		textures.insert(textures.end(), textureList.begin(), textureList.end());
 
-	return Mesh(vertices, indices, textures);
+	return Mesh(vertices, indices, textures, center, isTransparent);
 }
 
 std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType aiType, TextureType type)

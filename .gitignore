@@ -418,3 +418,6 @@ FodyWeavers.xsd
 *.msp
 
 /RayTracing/Resources/Objects/main_sponza
+/RayTracing/Resources/Objects/pkg_a_curtains
+/RayTracing/Resources/Objects/pkg_b_ivy
+/RayTracing/Resources/Objects/pkg_d_10k_candles

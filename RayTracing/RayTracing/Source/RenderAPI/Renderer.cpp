@@ -132,7 +132,11 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 
     CreateMaterial(mesh, directory, gpu, executeBatch);
 
-    mMeshGpu.push_back(std::move(gpu));
+	gpu.center = mesh.mCenter;
+    if (mesh.mIsTransparent)
+        mTransparentMeshes.push_back(std::move(gpu));
+	else
+        mOpaqueMeshes.push_back(std::move(gpu));
 }
 
 void Renderer::UploadMeshes(const function<void()>& executeBatch)
@@ -337,11 +341,17 @@ void Renderer::InitializePipelineState()
     };
 
 	mCommandQueue.Flush();
-    mPipelineState.Initialize(
+    mPipelineStateOpaque.InitializeOpaque(
+        mDevice.Get(),
+        vertexShader,
+        pixelShader,
+        inputLayoutDesc);
+
+    mPipelineStateTransparent.InitializeTransparent(
         mDevice.Get(),
         std::move(vertexShader),
         std::move(pixelShader),
-        inputLayoutDesc);
+		inputLayoutDesc);
 }
 
 void Renderer::InitializeTextureLoader()
@@ -390,6 +400,9 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     memcpy(pData, &mConstantBufferData, sizeof(ConstantBufferData));
     mConstantBuffer.Get()->Unmap(0, nullptr);
 
+	// Sort transparent meshes back-to-front each frame (temporary solution)
+	SortTransparentMeshes(cameraPos);
+
     // Wait for GPU to finish with the current back buffer
     mCommandQueue.WaitForFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
 
@@ -422,19 +435,19 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     mCommandList.Get()->RSSetViewports(1, &mViewport);
     mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
-    mCommandList.Get()->SetGraphicsRootSignature(mPipelineState.GetRootSignature());
-    mCommandList.Get()->SetPipelineState(mPipelineState.Get());
+    mCommandList.Get()->SetGraphicsRootSignature(mPipelineStateOpaque.GetRootSignature());
     mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
 
-    // Draw all meshes
-    for (const auto& mesh : mMeshGpu)
-    {
-        mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
-        mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
-        mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
-        mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
-    }
+	// Draw opaque meshes first
+    mCommandList.Get()->SetPipelineState(mPipelineStateOpaque.Get());
+    for (const auto& mesh : mOpaqueMeshes)
+        DrawMesh(mesh);
+
+	// Then draw transparent meshes
+	mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
+	for (const auto& mesh : mTransparentMeshes)
+		DrawMesh(mesh);
 
     // Transition back buffer to present
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -451,4 +464,29 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
     // Signal and increment the fence value
     mCommandQueue.SignalFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
+}
+
+void Renderer::DrawMesh(const MeshGpuData& mesh)
+{
+    mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
+    mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
+    mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
+    mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
+}
+
+void Renderer::SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos)
+{
+    for (auto& mesh : mTransparentMeshes)
+    {
+        DirectX::XMVECTOR center = DirectX::XMLoadFloat3(&mesh.center);
+        DirectX::XMVECTOR camPos = DirectX::XMLoadFloat3(&cameraPos);
+        DirectX::XMVECTOR toCamera = DirectX::XMVectorSubtract(camPos, center);
+        mesh.distanceToCamera = DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(toCamera));
+    }
+
+    std::sort(mTransparentMeshes.begin(), mTransparentMeshes.end(),
+        [](const MeshGpuData& a, const MeshGpuData& b)
+        {
+            return a.distanceToCamera > b.distanceToCamera;
+        });
 }

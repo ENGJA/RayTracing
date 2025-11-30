@@ -36,7 +36,10 @@ float3 getNormal(PSInput input);
 
 float4 main(PSInput input) : SV_TARGET
 {
-    float3 albedo = gAlbedo.Sample(gSampler, input.uv).rgb;
+    float4 albedoSample = gAlbedo.Sample(gSampler, input.uv);
+    float3 albedo = albedoSample.rgb;
+    float alpha = albedoSample.a;
+
 
     float texMetal = gMetalness.Sample(gSampler, input.uv).r;
     float texRough = gRoughness.Sample(gSampler, input.uv).r;
@@ -113,7 +116,7 @@ float4 main(PSInput input) : SV_TARGET
     float3 emissive = gEmissive.Sample(gSampler, input.uv).rgb;
     finalColor += emissive;
 
-    return float4(finalColor, 1.0f);
+    return float4(finalColor, alpha);
 }
 
 float3 getNormal(PSInput input)
