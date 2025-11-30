@@ -7,6 +7,8 @@ struct Vertex
 	DirectX::XMFLOAT3 mNormal;
 	/**< Texture coordinates (UV). */
 	DirectX::XMFLOAT2 mTexCoords;
+	/**< Tangent vector at the vertex */
+	DirectX::XMFLOAT4 mTangent;
 	/**< Per-vertex material props packed: x = metalness, y = shininess (specular exponent). */
 	DirectX::XMFLOAT2 mMaterialProps{ 0.0f, 32.0f };
 };

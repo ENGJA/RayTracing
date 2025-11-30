@@ -15,16 +15,18 @@ private:
 	 * @param node Current node in the scene graph.
 	 * @param scene Owning Assimp scene.
 	 * @param parentTransform Accumulated transform from parent nodes (aiMatrix4x4).
+	 * @param handednessCorrection -1 for glTF models, 1 for others. (gltf, glb and blend usually have OpenGL convention textures)
 	 */
-	void processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& parentTransform);
+	void processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& parentTransform, int handednessCorrection);
 	/**
 	 * @brief Converts an Assimp mesh to our `Mesh` representation.
 	 * @param mesh Source Assimp mesh.
 	 * @param scene Owning Assimp scene.
 	 * @param transform Transform to apply to vertex positions/normals (world transform).
+	 * @param handednessCorrection -1 for glTF models, 1 for others. (gltf, glb and blend usually have OpenGL convention textures)
 	 * @return Built `Mesh` with vertices, indices, and textures.
 	 */
-	Mesh processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform);
+	Mesh processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int handednessCorrection);
 	/**
 	 * @brief Loads material textures of a given type.
 	 * @param mat Assimp material.

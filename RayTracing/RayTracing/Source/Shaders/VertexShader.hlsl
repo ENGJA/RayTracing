@@ -3,6 +3,7 @@ struct VSInput
     float3 pos : POSITION;
     float3 normal : NORMAL;
     float2 uv : TEXCOORD0;
+    float4 tangent : TANGENT;
     float2 materialProps : TEXCOORD1; // x = metalness, y = shininess
 };
 
@@ -12,7 +13,8 @@ struct VSOutput
     float2 uv  : TEXCOORD0;
     float3 worldPos : TEXCOORD1; // world-space position forwarded to PS
     float3 normalWS : TEXCOORD2; // world-space normal forwarded to PS
-    float2 materialProps : TEXCOORD3; // forwarded per-vertex material props
+    float4 tangentWS : TEXCOORD3; // world-space tangent forwarded to PS
+    float2 materialProps : TEXCOORD4; // forwarded per-vertex material props
 };
 
 // Light struct must match PixelShader and C++ layout to keep CB layout consistent
@@ -38,6 +40,7 @@ VSOutput main(VSInput input)
     // Assuming vertex positions are already in world-space (Model::processMesh applies transform).
     output.worldPos = input.pos;
     output.normalWS = input.normal;
+    output.tangentWS = input.tangent;
     output.materialProps = input.materialProps;
     output.pos = mul(vpMatrix, float4(input.pos, 1.0f));
     output.uv  = input.uv;
