@@ -49,10 +49,8 @@ float4 main(PSInput input) : SV_TARGET
 
     float shininessFromRough = lerp(8.0f, 2048.0f, 1.0f - saturate(roughness));
     float shininess = (input.materialProps.y > 0.0f) ? input.materialProps.y : shininessFromRough;
-
     
-    float3 N = getNormal(input);
-    
+    float3 N = getNormal(input);    
     float3 V = normalize(viewPos.xyz - input.worldPos);
 
     float3 finalColor = float3(0.0, 0.0, 0.0);
@@ -136,6 +134,7 @@ float3 getNormal(PSInput input)
     // Transform normal map
     float3 normalMapSample = gNormalMap.Sample(gSampler, input.uv).xyz;
     float3 tangentNormal = normalize(normalMapSample * 2.0f - 1.0f);
+    // If your normal map appears inverted along the Y axis, uncomment the following line to flip 
     //tangentNormal.y = -tangentNormal.y;
     
     float3 pixelNormal = normalize(mul(tangentNormal, TBN));
