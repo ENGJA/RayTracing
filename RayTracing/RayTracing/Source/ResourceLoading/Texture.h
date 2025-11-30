@@ -1,11 +1,12 @@
 #pragma once
 
+// Order must match with shaders
 enum class TextureType
 {
 	Albedo,
-	Normal,
 	Metalness,
 	Roughness,
+	Normal,
 	Emissive,
 };
 

@@ -26,8 +26,17 @@ void Model::loadModel(const string& path)
 		aiProcess_GenSmoothNormals |
 		aiProcess_CalcTangentSpace |
 		aiProcess_JoinIdenticalVertices |
-		aiProcess_PreTransformVertices;
+		aiProcess_PreTransformVertices |
+		aiProcess_MakeLeftHanded |
+		aiProcess_FlipWindingOrder;
 	const aiScene* scene = importer.ReadFile(path, flags);
+
+	int tangentSpaceHandednessMultiplier  = 1;
+	string ext = std::filesystem::path(path).extension().string();
+	std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+	if (ext == ".gltf" || ext == ".glb" || ext == ".blend")
+		tangentSpaceHandednessMultiplier  = -1;
+
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
 		cerr << "ERROR::ASSIMP:: " << importer.GetErrorString() << endl;
@@ -89,10 +98,10 @@ void Model::loadModel(const string& path)
 		}
 	}
 
-	processNode(scene->mRootNode, scene, identity);
+	processNode(scene->mRootNode, scene, identity, tangentSpaceHandednessMultiplier );
 }
 
-void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& parentTransform)
+void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& parentTransform, int tangentSpaceHandednessMultiplier)
 {
 	aiMatrix4x4 currentTransform = parentTransform * node->mTransformation;
 
@@ -110,19 +119,20 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 				continue;
 		}
 
-		mMeshes.push_back(processMesh(mesh, scene, currentTransform));
+		mMeshes.push_back(processMesh(mesh, scene, currentTransform, tangentSpaceHandednessMultiplier));
 	}
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
-		processNode(node->mChildren[i], scene, currentTransform);
+		processNode(node->mChildren[i], scene, currentTransform, tangentSpaceHandednessMultiplier);
 }
 
-Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform)
+Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int tangentSpaceHandednessMultiplier)
 {
 	vector<Vertex> vertices;
 	vector<unsigned int> indices;
 	vector<Texture> textures;
 
 	DirectX::XMMATRIX xmTransform = AiToXMMatrix(transform);
+	DirectX::XMMATRIX normalMatrix = DirectX::XMMatrixTranspose(DirectX::XMMatrixInverse(nullptr, xmTransform));
 
 	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
 	float matMetalness = 0.0f;
@@ -151,7 +161,28 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 		if (mesh->mNormals)
 		{
 			DirectX::XMVECTOR n = DirectX::XMVectorSet(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z, 0.0f);
-			DirectX::XMMATRIX normalMatrix = DirectX::XMMatrixTranspose(DirectX::XMMatrixInverse(nullptr, xmTransform));
+
+			if (mesh->mTangents)
+			{
+				DirectX::XMVECTOR t = DirectX::XMVectorSet(mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z, 0.0f);
+				DirectX::XMVECTOR b = DirectX::XMVectorSet(mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z, 0.0f);
+
+				DirectX::XMVECTOR crossNT = DirectX::XMVector3Cross(n, t);
+				float dotValue = DirectX::XMVectorGetX(DirectX::XMVector3Dot(crossNT, b));
+				float handedness = tangentSpaceHandednessMultiplier  * ((dotValue < 0.0f) ? -1.0f : 1.0f);
+
+				t = XMVector3TransformNormal(t, normalMatrix);
+				t = DirectX::XMVector3Normalize(t);
+
+				DirectX::XMFLOAT3 tFloat3{};
+				XMStoreFloat3(&tFloat3, t);
+				vertex.mTangent = DirectX::XMFLOAT4(tFloat3.x, tFloat3.y, tFloat3.z, handedness);
+			}
+			else 
+			{
+				vertex.mTangent = DirectX::XMFLOAT4{ 0.0f, 0.0f, 0.0f, 1.0f };
+			}
+
 			n = XMVector3TransformNormal(n, normalMatrix);
 			n = DirectX::XMVector3Normalize(n);
 			XMStoreFloat3(&vertex.mNormal, n);
@@ -159,7 +190,9 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 		else
 		{
 			vertex.mNormal = DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };
+			vertex.mTangent = DirectX::XMFLOAT4{ 0.0f, 0.0f, 0.0f, 1.0f };
 		}
+
 
 		// texcoords
 		if (mesh->mTextureCoords[0])
