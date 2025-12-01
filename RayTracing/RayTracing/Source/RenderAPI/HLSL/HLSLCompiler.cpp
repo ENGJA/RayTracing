@@ -55,7 +55,7 @@ HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, const
 	std::vector<std::wstring> macroStrings;
 	for (const auto& define : defines)
 	{
-		arguments.push_back(L"-D ");
+		arguments.push_back(L"-D");
 		std::wstring macroString = define.mName + L"=" + define.mDefinition;
 		macroStrings.push_back(std::move(macroString));
 		arguments.push_back(macroStrings.back().c_str());

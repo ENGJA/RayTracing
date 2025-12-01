@@ -41,7 +41,8 @@ struct Mesh
 	 * @param indices Index array.
 	 * @param textures Texture array.
 	 * @param center Center of the mesh's bounding box.
-	 * @param isTransparent Whether the mesh has transparency.
+	 * @param materialData Material properties for the mesh.
+	 * @param renderLayer Render layer based on alpha properties.
 	 */
 	Mesh(const std::vector<Vertex>& vertices,
 		const std::vector<unsigned int>& indices,

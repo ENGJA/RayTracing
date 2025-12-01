@@ -101,11 +101,11 @@ bool ImageDecoder::HasAlphaChannel(const std::wstring& path)
 	ASSERT_HR(hr, L"Failed to create WIC factory");
 
 	ComPtr<IWICBitmapDecoder> decoder;
-	hr = wicFactory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, decoder.ReleaseAndGetAddressOf());
+	hr = wicFactory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, decoder.GetAddressOf());
 	ASSERT_HR(hr, L"Failed to open image file");
 
 	ComPtr<IWICBitmapFrameDecode> frame;
-	hr = decoder->GetFrame(0, frame.ReleaseAndGetAddressOf());
+	hr = decoder->GetFrame(0, frame.GetAddressOf());
 	ASSERT_HR(hr, L"Failed to decode image frame");
 
 	WICPixelFormatGUID srcFormat{};
