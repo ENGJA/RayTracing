@@ -305,7 +305,6 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     
     const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
-    //const std::string modelPath = "C:\\Users\\adria\\Source\\glTF-Sample-Assets\\Models\\AlphaBlendModeTest\\glTF\\AlphaBlendModeTest.gltf";
     auto modelA = std::make_unique<Model>();
 
 	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();

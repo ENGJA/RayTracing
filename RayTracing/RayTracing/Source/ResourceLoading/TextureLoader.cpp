@@ -97,7 +97,7 @@ GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
 	gpuTex.format = desc.Format;
 	gpuTex.resource.Initialize(mDevice, desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
 
-	const UINT rowPitch = 256; // Minimum row pitch for 1x1 RGBA8
+	const UINT rowPitch = 256; // D3D12_TEXTURE_DATA_PITCH_ALIGNMENT requirement
 	const UINT totalBytes = rowPitch;
 
 	auto alloc = mUploadHeap->Allocate(totalBytes, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
