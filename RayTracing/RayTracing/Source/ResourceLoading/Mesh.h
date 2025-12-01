@@ -1,6 +1,20 @@
 #pragma once
 #include "Vertex.h"
 #include "Texture.h"
+#include "RenderAPI/DataTypes.h"
+
+enum class RenderLayer
+{
+	Opaque,		// Solid objects
+	Masked,		// Cutout transparency (e.g., foliage)
+	Blend	// Semi-transparent objects (like glass)
+};
+
+struct AlphaProperties
+{
+	RenderLayer mRenderLayer = RenderLayer::Opaque;
+	float alphaCutoff = 0.5f;
+};
 
 /**
  * @brief Container for mesh geometry and its material textures.
@@ -13,10 +27,13 @@ struct Mesh
 	std::vector<unsigned int> mIndices;
 	/**< Material-bound textures for this mesh. */
 	std::vector<Texture> mTextures;
-		/**< Center of the mesh's bounding box. */ // Temporary for sorting before ray tracing
+	/**< Center of the mesh's bounding box. */ // Temporary for sorting before ray tracing
 	DirectX::XMFLOAT3 mCenter;
-	/**< Indicates if the mesh has any transparency in its textures. */
-	bool mIsTransparent;
+	/**< Material properties for this mesh. */
+	MeshMaterialData mMaterialData;
+	/**< Render layer based on alpha properties. */
+	RenderLayer mRenderLayer;
+
 
 	/**
 	 * @brief Constructs a mesh from given vertex/index/texture data.
@@ -28,8 +45,8 @@ struct Mesh
 	 */
 	Mesh(const std::vector<Vertex>& vertices,
 		const std::vector<unsigned int>& indices,
-		const std::vector<Texture>& textures, DirectX::XMFLOAT3 center = {}, bool isTransparent = false)
-		: mVertices(vertices), mIndices(indices), mTextures(textures), mCenter(center), mIsTransparent(isTransparent)
+		const std::vector<Texture>& textures, DirectX::XMFLOAT3 center = {}, const MeshMaterialData& materialData = {}, RenderLayer renderLayer = RenderLayer::Opaque)
+		: mVertices(vertices), mIndices(indices), mTextures(textures), mCenter(center), mMaterialData(materialData), mRenderLayer(renderLayer)
 	{
 	}
 };

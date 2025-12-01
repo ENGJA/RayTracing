@@ -21,3 +21,13 @@ struct ConstantBufferData
 	float _pad[3];					///< padding for alignment
 	LightData lights[cMaxLights];
 };
+
+struct MeshMaterialData
+{
+	DirectX::XMFLOAT4 baseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float metalnessFactor = 1.0f;
+	float roughnessFactor = 1.0f;
+	float alphaCutoff = 0.5f;
+	float _pad[1]; // Padding for 16-byte alignment
+	DirectX::XMFLOAT4 emissiveFactor = { 0.0f, 0.0f, 0.0f, 1.0f }; // .w not used, reserved for alignment
+};

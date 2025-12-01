@@ -37,8 +37,17 @@ struct MeshGpuData
 	D3D12_INDEX_BUFFER_VIEW ibv{}; ///< Index buffer view used for IA binding.
 	DescriptorAllocation materialTable; ///< Contiguous descriptors for material textures (t0 - t4).
 
+	MeshMaterialData materialData{}; ///< Material data for constant buffer upload.
+
 	DirectX::XMFLOAT3 center; ///< Mesh bounding sphere center in model space.
 	float distanceToCamera = 0.0f; ///< Distance from mesh center to camera (for sorting).
+};
+
+struct DefaultTextures
+{
+	GPUTexture white;
+	//GPUTexture black;
+	GPUTexture normal;
 };
 
 /**
@@ -50,7 +59,9 @@ private:
 	D3D12Device mDevice; ///< Logical D3D12 device wrapper.
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
+
 	D3D12PipelineState mPipelineStateOpaque; ///< Pipeline state and root signature for opaque objects.
+	D3D12PipelineState mPipelineStateMasked; ///< Pipeline state and root signature for masked objects.
 	D3D12PipelineState mPipelineStateTransparent; ///< Pipeline state and root signature for transparent objects.
 
 	UINT mWidth = 0; ///< Back buffer width.
@@ -70,8 +81,10 @@ private:
 
 	std::unordered_map<std::string, GPUTextureLoadState> mTextureCache; ///< Cache of loaded GPU textures by path.
 
+	DefaultTextures mDefaultTextures; ///< Default white/black/normal textures.
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mOpaqueMeshes; ///< Flattened array of opaque mesh GPU data for rendering.
+	std::vector<MeshGpuData> mMaskedMeshes; ///< Flattened array of masked mesh GPU data for rendering.
 	std::vector<MeshGpuData> mTransparentMeshes; ///< Flattened array of transparent mesh GPU data for rendering.
 
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
@@ -155,6 +168,10 @@ private:
 	 */
 	void SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos);
 
+	/**
+	 * @brief Initializes default dummy textures (white, normal).
+	 */
+	void InitializeDummyTextures();
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
