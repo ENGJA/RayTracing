@@ -282,6 +282,17 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 			matData.baseColorFactor = { color.r, color.g, color.b, color.a };
 		}
 
+
+		// WARNING: SPECIFIC TO SPONZA
+		int twoSided = false;
+		material->Get(AI_MATKEY_TWOSIDED, twoSided);
+		if (twoSided)
+		{
+			alphaProps.mRenderLayer = RenderLayer::Masked;
+			matData.baseColorFactor.w = 0.0f;
+		}
+		//////////////////////////////
+
 		if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_COLOR_EMISSIVE, &color))
 			matData.emissiveFactor = { color.r, color.g, color.b, 1.0f };
 
