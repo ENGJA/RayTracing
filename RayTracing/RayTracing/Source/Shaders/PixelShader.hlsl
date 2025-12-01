@@ -50,19 +50,10 @@ float4 main(PSInput input) : SV_TARGET
     float4 albedoSample = gAlbedo.Sample(gSampler, input.uv);
     float3 albedo = albedoSample.rgb * gBaseColorFactor.rgb;
     float alpha = albedoSample.a * gBaseColorFactor.a;
-    
-    //if (albedo.r == 0.0f && albedo.g == 0.0f && albedo.b == 0.0f && alpha == 1.0)
-    //{
-    //    alpha = 0.0f; // Force fully transparent for black albedo
-    //}
-    
-    //clip(alpha - 1.0f); // Test for black grid
-    //g#define ALPHA_TEST 1
+
 #ifdef ALPHA_TEST
     clip(alpha - gAlphaCutoff); // Discard pixels with low alpha for alpha testing
 #endif
-
-    //return albedoSample;
 
     float texMetal = gMetalness.Sample(gSampler, input.uv).r;
     float texRough = gRoughness.Sample(gSampler, input.uv).r;
