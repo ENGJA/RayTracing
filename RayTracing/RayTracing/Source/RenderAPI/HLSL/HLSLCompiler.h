@@ -1,6 +1,13 @@
 #pragma once
 #include "HLSLShader.h"
 
+
+struct ShaderMacro
+{
+	std::wstring mName;
+	std::wstring mDefinition;
+};
+
 /**
  * @brief Wrapper for HLSL compilation using DXC.
  */
@@ -23,7 +30,7 @@ public:
 	 * @param entryPoint Entry point function name, default L"main".
 	 * @return Compiled shader blob.
 	 */
-	HLSLShader CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWSTR entryPoint = L"main") const;
+	HLSLShader CompileFromFile(LPCWSTR filePath, LPCWSTR target, const std::vector<ShaderMacro>& defines = {}, LPCWSTR entryPoint = L"main") const;
 	/**
 	 * @brief Loads a precompiled shader object (CSO).
 	 * @param filePath Path to CSO file.

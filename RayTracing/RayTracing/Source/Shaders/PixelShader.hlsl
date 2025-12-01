@@ -32,20 +32,43 @@ cbuffer CBData : register(b0)
     Light lights[25]    : packoffset(c6);
 };
 
+cbuffer MaterialData : register(b1)
+{
+    float4 gBaseColorFactor : packoffset(c0);
+    float gMetalnessFactor  : packoffset(c1.x);
+    float gRoughnessFactor  : packoffset(c1.y);
+    float gAlphaCutoff      : packoffset(c1.z);
+    float _pad2             : packoffset(c1.w);
+    float4 gEmissiveFactor  : packoffset(c2);
+};
+
+
 float3 getNormal(PSInput input);
 
 float4 main(PSInput input) : SV_TARGET
 {
     float4 albedoSample = gAlbedo.Sample(gSampler, input.uv);
-    float3 albedo = albedoSample.rgb;
-    float alpha = albedoSample.a;
+    float3 albedo = albedoSample.rgb * gBaseColorFactor.rgb;
+    float alpha = albedoSample.a * gBaseColorFactor.a;
+    
+    //if (albedo.r == 0.0f && albedo.g == 0.0f && albedo.b == 0.0f && alpha == 1.0)
+    //{
+    //    alpha = 0.0f; // Force fully transparent for black albedo
+    //}
+    
+    //clip(alpha - 1.0f); // Test for black grid
+    //g#define ALPHA_TEST 1
+#ifdef ALPHA_TEST
+    clip(alpha - gAlphaCutoff); // Discard pixels with low alpha for alpha testing
+#endif
 
+    //return albedoSample;
 
     float texMetal = gMetalness.Sample(gSampler, input.uv).r;
     float texRough = gRoughness.Sample(gSampler, input.uv).r;
 
-    float metalness = texMetal;
-    float roughness = texRough;
+    float metalness = texMetal * gMetalnessFactor;
+    float roughness = texRough * gRoughnessFactor;
 
     if (metalness == 0.0f)
         metalness = saturate(input.materialProps.x);
@@ -113,7 +136,8 @@ float4 main(PSInput input) : SV_TARGET
 
         finalColor += diffuse + specular;
     }
-    float3 emissive = gEmissive.Sample(gSampler, input.uv).rgb;
+    float3 emissiveSample = gEmissive.Sample(gSampler, input.uv).rgb;
+    float3 emissive = emissiveSample * gEmissiveFactor.rgb;    
     finalColor += emissive;
 
     return float4(finalColor, alpha);

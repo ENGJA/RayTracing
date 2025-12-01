@@ -52,12 +52,13 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
 
     gpuData.materialTable = mSrvHeap.Allocate(Config::cNumberOfTextureSlots);
 
-    for (int i = 0; i < Config::cNumberOfTextureSlots; i++)
+
+    auto processSlot = [&](int slotIndex, const GPUTexture& fallback)
     {
         D3D12_CPU_DESCRIPTOR_HANDLE dst = gpuData.materialTable.cpuHandle;
-        dst.ptr += SIZE_T(i) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        dst.ptr += SIZE_T(slotIndex) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-        auto it = textureMap.find(i);
+        auto it = textureMap.find(slotIndex);
         if (it != textureMap.end())
         {
             string fullPath = directory + "\\" + it->second;
@@ -67,18 +68,23 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
 
             if (!loadState.gpuTexture.resource.Get())
             {
-                loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
-				loadState.decodedImage = {}; // free CPU-side decoded image data
+				loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
+                loadState.decodedImage = {}; // free CPU-side decoded image data
             }
-
             GPUTexture& gpuTex = loadState.gpuTexture;
             CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
         }
         else
         {
-            CreateTextureView(nullptr, DXGI_FORMAT_R8G8B8A8_UNORM, dst, 1);
+            CreateTextureView(fallback.resource.Get(), fallback.format, dst, fallback.mipLevels);
         }
-    }
+	};
+
+	processSlot(0, mDefaultTextures.white);  // Albedo
+	processSlot(1, mDefaultTextures.white);  // Metallic
+	processSlot(2, mDefaultTextures.white);  // Roughness
+	processSlot(3, mDefaultTextures.normal); // Normal
+	processSlot(4, mDefaultTextures.white);  // Emissive	
 }
 
 void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const function<void()>& executeBatch)
@@ -93,6 +99,7 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
         executeBatch();
 
     MeshGpuData gpu{};
+    gpu.materialData = mesh.mMaterialData;
     gpu.vb.Initialize(mDevice.Get(), vbSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
     gpu.ib.Initialize(mDevice.Get(), ibSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
@@ -133,10 +140,20 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     CreateMaterial(mesh, directory, gpu, executeBatch);
 
 	gpu.center = mesh.mCenter;
-    if (mesh.mIsTransparent)
-        mTransparentMeshes.push_back(std::move(gpu));
-	else
+    switch (mesh.mRenderLayer)
+    {
+    case RenderLayer::Opaque:
         mOpaqueMeshes.push_back(std::move(gpu));
+        break;
+    case RenderLayer::Masked:
+        mMaskedMeshes.push_back(std::move(gpu));
+        break;
+    case RenderLayer::Blend:
+        mTransparentMeshes.push_back(std::move(gpu));
+        break;
+    default:
+        break;
+	}
 }
 
 void Renderer::UploadMeshes(const function<void()>& executeBatch)
@@ -260,6 +277,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     InitializePipelineState();
 
+    InitializeDummyTextures();
+
+
     // set viewport and scissor rect
     mViewport.TopLeftX = 0.0f;
     mViewport.TopLeftY = 0.0f;
@@ -284,7 +304,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
     
-    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
+    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
+    //const std::string modelPath = "C:\\Users\\adria\\Source\\glTF-Sample-Assets\\Models\\AlphaBlendModeTest\\glTF\\AlphaBlendModeTest.gltf";
     auto modelA = std::make_unique<Model>();
 
 	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
@@ -321,10 +342,31 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 }
 
+void Renderer::InitializeDummyTextures()
+{
+    mUploadHeap.Reset();
+    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+    mDefaultTextures =
+    {
+        .white = mTextureLoader.CreateSolidDummyTexture(0xFFFFFFFF),    // (255,255,255) in BGRA
+        //.black = mTextureLoader.CreateSolidDummyTexture(0xFF000000),    // (0,0,0) in BGRA
+        .normal = mTextureLoader.CreateSolidDummyTexture(0xFFFF8080),   // (255,128,128) in BGRA
+    };
+    mCommandList.Get()->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    mCommandQueue.ExecuteCommandLists(1, lists);
+    mCommandQueue.Flush();
+}
+
 void Renderer::InitializePipelineState()
 {
     HLSLShader vertexShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
     HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
+
+    std::vector<ShaderMacro> maskedDefines = {
+		{ std::move(wstring(L"ALPHA_TEST")), std::move(wstring(L"1")) }
+    };
+    HLSLShader maskedPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0", maskedDefines);
 
     constexpr D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
     {
@@ -341,12 +383,22 @@ void Renderer::InitializePipelineState()
     };
 
 	mCommandQueue.Flush();
+
+	// 1. Opaque pipeline state
     mPipelineStateOpaque.InitializeOpaque(
         mDevice.Get(),
         vertexShader,
         pixelShader,
         inputLayoutDesc);
 
+	// 2. Masked pipeline state (like opaque but with clip)
+    mPipelineStateMasked.InitializeOpaque(
+        mDevice.Get(),
+        vertexShader,
+        std::move(maskedPixelShader),
+		inputLayoutDesc);
+
+	// 3. Transparent pipeline state
     mPipelineStateTransparent.InitializeTransparent(
         mDevice.Get(),
         std::move(vertexShader),
@@ -444,6 +496,11 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     for (const auto& mesh : mOpaqueMeshes)
         DrawMesh(mesh);
 
+	// Then draw masked meshes
+    mCommandList.Get()->SetPipelineState(mPipelineStateMasked.Get());
+    for (const auto& mesh : mMaskedMeshes)
+		DrawMesh(mesh);
+
 	// Then draw transparent meshes
 	mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
 	for (const auto& mesh : mTransparentMeshes)
@@ -471,6 +528,7 @@ void Renderer::DrawMesh(const MeshGpuData& mesh)
     mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
     mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
     mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
+	mCommandList.Get()->SetGraphicsRoot32BitConstants(2, sizeof(MeshMaterialData) / 4, &mesh.materialData, 0);
     mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
 }
 
