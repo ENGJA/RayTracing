@@ -363,7 +363,7 @@ void Renderer::InitializePipelineState()
     HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
 
     std::vector<ShaderMacro> maskedDefines = {
-		{ std::move(wstring(L"ALPHA_TEST")), std::move(wstring(L"1")) }
+		{ L"ALPHA_TEST", L"1" }
     };
     HLSLShader maskedPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0", maskedDefines);
 
