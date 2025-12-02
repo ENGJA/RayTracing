@@ -33,6 +33,8 @@ struct Mesh
 	MeshMaterialData mMaterialData;
 	/**< Render layer based on alpha properties. */
 	RenderLayer mRenderLayer;
+	/**< Whether the mesh is double-sided. */
+	bool doubleSided = false;
 
 
 	/**

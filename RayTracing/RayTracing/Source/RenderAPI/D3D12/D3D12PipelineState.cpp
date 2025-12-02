@@ -4,10 +4,10 @@
 #include "helpers.h"
 //#include "RenderAPI/HLSL/HLSLCompiler.h"
 
-void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc)
+void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided)
 {
 	InitializeCommon(pDevice, std::move(vertexShader), std::move(pixelShader));
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc);
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc, doubleSided);
 
 	// Specific changes for opaque
 	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
@@ -24,7 +24,7 @@ void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, HLSLShader vert
 void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc)
 {
 	InitializeCommon(pDevice, std::move(vertexShader), std::move(pixelShader));
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc);
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc,  true);
 
 	// Specific changes for transparent
 	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
@@ -44,7 +44,7 @@ void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, HLSLShader
 	ASSERT_HR(hr, "Failed to create pipeline state object.");
 }
 
-D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc) const
+D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided) const
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc{};
 	gpsDesc.pRootSignature = mRootSignature.Get();
@@ -67,7 +67,7 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_
 
 	// Rasterizer
 	gpsDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-	gpsDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	gpsDesc.RasterizerState.CullMode = doubleSided ? D3D12_CULL_MODE_NONE : D3D12_CULL_MODE_BACK;
 
 	// Blend
 	gpsDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;

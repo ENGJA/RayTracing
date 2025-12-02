@@ -13,6 +13,8 @@ struct PSInput
     float3 normalWS : TEXCOORD2;
     float4 tangentWS : TEXCOORD3;
     float2 materialProps : TEXCOORD4;
+    
+    bool isFrontFace : SV_IsFrontFace;
 };
 
 // Light struct matching C++ ConstantBufferData::LightData (position,color,dirType)
@@ -56,8 +58,13 @@ float4 main(PSInput input) : SV_TARGET
 #ifdef ALPHA_TEST
     clip(alpha - gAlphaCutoff); // Discard pixels with low alpha for alpha testing
 #endif
+    
+    if (!input.isFrontFace)
+    {
+        input.normalWS = -input.normalWS;
+    }
 
-    float texMetal = gMetalness.Sample(gSampler, input.uv).r;
+        float texMetal = gMetalness.Sample(gSampler, input.uv).r;
     float texRough = gRoughness.Sample(gSampler, input.uv).r;
 
     float metalness = texMetal * gMetalnessFactor;

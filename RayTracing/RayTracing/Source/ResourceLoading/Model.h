@@ -24,9 +24,10 @@ private:
 	 * @param scene Owning Assimp scene.
 	 * @param transform Transform to apply to vertex positions/normals (world transform).
 	 * @param tangentSpaceHandednessMultiplier  -1 for glTF models, 1 for others. (gltf, glb and blend usually have OpenGL convention textures)
+	 * @param doubleSided Whether the mesh is double-sided.
 	 * @return Built `Mesh` with vertices, indices, and textures.
 	 */
-	Mesh processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int tangentSpaceHandednessMultiplier);
+	Mesh processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int tangentSpaceHandednessMultiplier, bool doubleSided);
 	/**
 	 * @brief Loads material textures of a given type.
 	 * @param mat Assimp material.
