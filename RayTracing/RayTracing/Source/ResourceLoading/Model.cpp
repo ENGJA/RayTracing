@@ -355,7 +355,7 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 	for (const auto& textureList : loadedTextures)
 		textures.insert(textures.end(), textureList.begin(), textureList.end());
 
-	return Mesh(vertices, indices, textures, center, matData, alphaProps.mRenderLayer);
+	return Mesh(vertices, indices, textures, center, doubleSided, matData, alphaProps.mRenderLayer);
 }
 
 std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType aiType, TextureType type)
