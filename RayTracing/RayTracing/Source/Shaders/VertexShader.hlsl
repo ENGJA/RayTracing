@@ -21,8 +21,10 @@ struct VSOutput
 struct Light
 {
     float4 position;
-    float4 color;
-    float4 dirType;
+    float4 dirType; // .xyz = direction (direction of rays), .w = type flag (1 = directional)
+    //float4 color;    // .xyz = color, .w = intensity
+    float4 diffuseColor;
+    float4 specularColor;
 };
 
 cbuffer CBData : register(b0)
