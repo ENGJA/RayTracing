@@ -435,7 +435,8 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
             cameraPos.y + cameraForward.y * 1000.0f,
             cameraPos.z + cameraForward.z * 1000.0f,
             1.0f);
-        camLight.color = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
+        camLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
+		camLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
         camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
         mConstantBufferData.lights[staticCount] = camLight;
         mConstantBufferData.numLights = staticCount + 1;

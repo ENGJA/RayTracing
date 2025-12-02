@@ -19,8 +19,10 @@ struct PSInput
 struct Light
 {
     float4 position;
-    float4 color;    // .xyz = color, .w = intensity
     float4 dirType;  // .xyz = direction (direction of rays), .w = type flag (1 = directional)
+    //float4 color;    // .xyz = color, .w = intensity
+    float4 diffuseColor;
+    float4 specularColor;
 };
 
 cbuffer CBData : register(b0)
@@ -82,6 +84,7 @@ float4 main(PSInput input) : SV_TARGET
     {
         float3 L;
         bool isDirectional = (lights[i].dirType.w > 0.5f);
+        float attenuation = 1.0f;
 
         if (isDirectional)
         {
@@ -90,16 +93,6 @@ float4 main(PSInput input) : SV_TARGET
         else
         {
             L = normalize(lights[i].position.xyz - input.worldPos);
-        }
-
-        float intensity = lights[i].color.w;
-        float3 baseLightCol = lights[i].color.xyz;
-        float3 lightCol = baseLightCol * intensity;
-
-        // Attenuation for point lights
-        float attenuation = 1.0f;
-        if (!isDirectional)
-        {
             // Tunable constants (constant, linear, quadratic)
             const float kConst = 1.0f;
             const float kLinear = 0.5f;
@@ -110,11 +103,13 @@ float4 main(PSInput input) : SV_TARGET
             attenuation = 1.0f / max(denom, 1e-4f);
             // Optional: clamp to avoid extremely bright values
             attenuation = saturate(attenuation * 1.0f);
-            lightCol *= attenuation;
         }
 
+        float3 diffuseLightCol = lights[i].diffuseColor.xyz * lights[i].diffuseColor.w * attenuation;
+        float3 specularLightCol = lights[i].specularColor.xyz * lights[i].specularColor.w * attenuation;        
+
         float NdotL = saturate(dot(N, L));
-        float3 diffuse = NdotL * albedo * lightCol;
+        float3 diffuse = NdotL * albedo * diffuseLightCol;
 
         float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, saturate(metalness));
 
@@ -123,7 +118,7 @@ float4 main(PSInput input) : SV_TARGET
         // Phong specular
         float3 R = reflect(-L, N);
         float specFactor = pow(saturate(dot(V, R)), specShininess);
-        float3 specular = specFactor * F0 * lightCol;
+        float3 specular = specFactor * F0 * specularLightCol;
 
         finalColor += diffuse + specular;
     }

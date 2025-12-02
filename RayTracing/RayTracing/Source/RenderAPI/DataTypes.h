@@ -6,8 +6,10 @@ static constexpr int cMaxLights = 25;
 struct LightData
 {
 	DirectX::XMFLOAT4 position;
-	DirectX::XMFLOAT4 color;
+	//DirectX::XMFLOAT4 color;
 	DirectX::XMFLOAT4 dirType;
+	DirectX::XMFLOAT4 diffuseColor;
+	DirectX::XMFLOAT4 specularColor;
 };
 
 /**
