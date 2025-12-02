@@ -178,7 +178,14 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 			int twoSided = 0;
 			mat->Get(AI_MATKEY_TWOSIDED, twoSided);
 			if (twoSided)
-				continue;
+			{
+				bool hasTexture = false;
+				if (mat->GetTextureCount(aiTextureType_BASE_COLOR) == 0 &&
+					mat->GetTextureCount(aiTextureType_DIFFUSE) == 0)
+				{
+					continue;
+				}
+			}
 		}
 		//const float alphaThreshold = 0.999f; 
 
