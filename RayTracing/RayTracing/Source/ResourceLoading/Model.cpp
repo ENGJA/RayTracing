@@ -157,8 +157,16 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
 
+		// WARNING: SPECIFIC TO SPONZA
 		aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
-		const float alphaThreshold = 0.999f; 
+		if (mat)
+		{
+			int twoSided = 0;
+			mat->Get(AI_MATKEY_TWOSIDED, twoSided);
+			if (twoSided)
+				continue;
+		}
+		//const float alphaThreshold = 0.999f; 
 
 		//aiColor4D diffuseColor;
 		//if (AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
@@ -284,13 +292,13 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 
 
 		// WARNING: SPECIFIC TO SPONZA
-		int twoSided = false;
-		material->Get(AI_MATKEY_TWOSIDED, twoSided);
-		if (twoSided)
-		{
-			alphaProps.mRenderLayer = RenderLayer::Masked;
-			matData.baseColorFactor.w = 0.0f;
-		}
+		//int twoSided = false;
+		//material->Get(AI_MATKEY_TWOSIDED, twoSided);
+		//if (twoSided)
+		//{
+		//	alphaProps.mRenderLayer = RenderLayer::Masked;
+		//	matData.baseColorFactor.w = 0.0f;
+		//}
 		//////////////////////////////
 
 		if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_COLOR_EMISSIVE, &color))
