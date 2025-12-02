@@ -143,13 +143,13 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     switch (mesh.mRenderLayer)
     {
     case RenderLayer::Opaque:
-		if (mesh.doubleSided)
+		if (mesh.mDoubleSided)
             mOpaqueDoubleSidedMeshes.push_back(std::move(gpu));
         else
             mOpaqueSingleSidedMeshes.push_back(std::move(gpu));
         break;
     case RenderLayer::Masked:
-        if (mesh.doubleSided)
+        if (mesh.mDoubleSided)
             mMaskedDoubleSidedMeshes.push_back(std::move(gpu));
 		else
             mMaskedSingleMeshes.push_back(std::move(gpu));

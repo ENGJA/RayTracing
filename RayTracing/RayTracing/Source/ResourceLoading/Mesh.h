@@ -34,7 +34,7 @@ struct Mesh
 	/**< Render layer based on alpha properties. */
 	RenderLayer mRenderLayer;
 	/**< Whether the mesh is double-sided. */
-	bool doubleSided = false;
+	bool mDoubleSided = false;
 
 
 	/**
@@ -43,13 +43,14 @@ struct Mesh
 	 * @param indices Index array.
 	 * @param textures Texture array.
 	 * @param center Center of the mesh's bounding box.
+	 * @param doubleSided Whether the mesh is double-sided.
 	 * @param materialData Material properties for the mesh.
 	 * @param renderLayer Render layer based on alpha properties.
 	 */
 	Mesh(const std::vector<Vertex>& vertices,
 		const std::vector<unsigned int>& indices,
-		const std::vector<Texture>& textures, DirectX::XMFLOAT3 center = {}, const MeshMaterialData& materialData = {}, RenderLayer renderLayer = RenderLayer::Opaque)
-		: mVertices(vertices), mIndices(indices), mTextures(textures), mCenter(center), mMaterialData(materialData), mRenderLayer(renderLayer)
+		const std::vector<Texture>& textures, DirectX::XMFLOAT3 center = {}, bool doubleSided = false, const MeshMaterialData& materialData = {}, RenderLayer renderLayer = RenderLayer::Opaque)
+		: mVertices(vertices), mIndices(indices), mTextures(textures), mCenter(center), mDoubleSided(doubleSided), mMaterialData(materialData), mRenderLayer(renderLayer)
 	{
 	}
 };
