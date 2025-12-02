@@ -173,9 +173,9 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 
 		// WARNING: SPECIFIC TO SPONZA
 		aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
+		int twoSided = 0;
 		if (mat)
 		{
-			int twoSided = 0;
 			mat->Get(AI_MATKEY_TWOSIDED, twoSided);
 			if (twoSided)
 			{
@@ -196,13 +196,13 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 		//		continue;
 		//}
 
-		mMeshes.push_back(processMesh(mesh, scene, currentTransform, tangentSpaceHandednessMultiplier));
+		mMeshes.push_back(processMesh(mesh, scene, currentTransform, tangentSpaceHandednessMultiplier, static_cast<bool>(twoSided)));
 	}
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
 		processNode(node->mChildren[i], scene, currentTransform, tangentSpaceHandednessMultiplier);
 }
 
-Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int tangentSpaceHandednessMultiplier)
+Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int tangentSpaceHandednessMultiplier, bool doubleSided)
 {
 	vector<Vertex> vertices;
 	vector<unsigned int> indices;

@@ -143,14 +143,20 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     switch (mesh.mRenderLayer)
     {
     case RenderLayer::Opaque:
-        mOpaqueMeshes.push_back(std::move(gpu));
+		if (mesh.doubleSided)
+            mOpaqueDoubleSidedMeshes.push_back(std::move(gpu));
+        else
+            mOpaqueSingleSidedMeshes.push_back(std::move(gpu));
         break;
     case RenderLayer::Masked:
-        mMaskedMeshes.push_back(std::move(gpu));
+        if (mesh.doubleSided)
+            mMaskedDoubleSidedMeshes.push_back(std::move(gpu));
+		else
+            mMaskedSingleMeshes.push_back(std::move(gpu));
         break;
     case RenderLayer::Blend:
-        mTransparentMeshes.push_back(std::move(gpu));
-        break;
+            mTransparentMeshes.push_back(std::move(gpu));
+			break;
     default:
         break;
 	}
@@ -269,7 +275,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     mSrvHeap.Initialize(mDevice.Get(), Config::cNumberOfSrvDescriptors);
 
     // Shared upload heap (64 MB)
-    mUploadHeap.Initialize(mDevice.Get(), 64ull * 1024ull * 1024ull);
+    mUploadHeap.Initialize(mDevice.Get(), 512ull * 1024ull * 1024ull);
 
 	mShaderCompiler.Initialize();
 
@@ -326,6 +332,26 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	    wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
 
     mModels.push_back(std::move(modelA));
+
+	//loadStartTime = std::chrono::steady_clock::now();
+	//const std::string modelPathB = GetResourcePath("Objects\\pkg_a_curtains\\NewSponza_Curtains_glTF.gltf").string();
+	//auto modelB = std::make_unique<Model>();
+	//modelB->loadModel(modelPathB);
+	//loadEndTime = std::chrono::steady_clock::now();
+	//loadElapsedSeconds = loadEndTime - loadStartTime;
+	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+	//mModels.push_back(std::move(modelB));
+
+	//loadStartTime = std::chrono::steady_clock::now();
+	//const std::string modelPathC = GetResourcePath("Objects\\pkg_b_ivy\\NewSponza_IvyGrowth_glTF.gltf").string();
+	//auto modelC = std::make_unique<Model>();
+	//modelC->loadModel(modelPathC);
+	//loadEndTime = std::chrono::steady_clock::now();
+	//loadElapsedSeconds = loadEndTime - loadStartTime;
+	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+	//mModels.push_back(std::move(modelC));
+
+
 
 	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
     // Build GPU buffers and material descriptor tables
@@ -384,25 +410,42 @@ void Renderer::InitializePipelineState()
 	mCommandQueue.Flush();
 
 	// 1. Opaque pipeline state
-    mPipelineStateOpaque.InitializeOpaque(
+    mPipelineStateOpaqueSingle.InitializeOpaque(
         mDevice.Get(),
         vertexShader,
         pixelShader,
         inputLayoutDesc);
 
 	// 2. Masked pipeline state (like opaque but with clip)
-    mPipelineStateMasked.InitializeOpaque(
+    mPipelineStateMaskedSingle.InitializeOpaque(
         mDevice.Get(),
         vertexShader,
-        std::move(maskedPixelShader),
+        maskedPixelShader,
 		inputLayoutDesc);
 
 	// 3. Transparent pipeline state
     mPipelineStateTransparent.InitializeTransparent(
         mDevice.Get(),
-        std::move(vertexShader),
-        std::move(pixelShader),
+        vertexShader,
+        pixelShader,
 		inputLayoutDesc);
+
+	// 4. Opaque double-sided pipeline state
+    mPipelineStateOpaqueDouble.InitializeOpaque(
+        mDevice.Get(),
+        vertexShader,
+        pixelShader,
+		inputLayoutDesc,
+		true);
+
+    // 5. Masked double-sided pipeline state
+    mPipelineStateMaskedDouble.InitializeOpaque(
+        mDevice.Get(),
+        vertexShader,
+		std::move(maskedPixelShader),
+		inputLayoutDesc,
+        true);
+
 }
 
 void Renderer::InitializeTextureLoader()
@@ -487,21 +530,31 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     mCommandList.Get()->RSSetViewports(1, &mViewport);
     mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
-    mCommandList.Get()->SetGraphicsRootSignature(mPipelineStateOpaque.GetRootSignature());
+    mCommandList.Get()->SetGraphicsRootSignature(mPipelineStateOpaqueSingle.GetRootSignature());
     mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
 
-	// Draw opaque meshes first
-    mCommandList.Get()->SetPipelineState(mPipelineStateOpaque.Get());
-    for (const auto& mesh : mOpaqueMeshes)
+	// 1. Opaque single-sided
+    mCommandList.Get()->SetPipelineState(mPipelineStateOpaqueSingle.Get());
+    for (const auto& mesh : mOpaqueSingleSidedMeshes)
         DrawMesh(mesh);
 
-	// Then draw masked meshes
-    mCommandList.Get()->SetPipelineState(mPipelineStateMasked.Get());
-    for (const auto& mesh : mMaskedMeshes)
+	// 2. Opaque double-sided
+    mCommandList.Get()->SetPipelineState(mPipelineStateOpaqueDouble.Get());
+    for (const auto& mesh : mOpaqueDoubleSidedMeshes)
 		DrawMesh(mesh);
 
-	// Then draw transparent meshes
+	// 3. Masked single-sided
+    mCommandList.Get()->SetPipelineState(mPipelineStateMaskedSingle.Get());
+    for (const auto& mesh : mMaskedSingleMeshes)
+		DrawMesh(mesh);
+
+	// 4. Masked double-sided
+	mCommandList.Get()->SetPipelineState(mPipelineStateMaskedDouble.Get());
+	for (const auto& mesh : mMaskedDoubleSidedMeshes)
+		DrawMesh(mesh);
+
+	// 5. Transparent
 	mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
 	for (const auto& mesh : mTransparentMeshes)
 		DrawMesh(mesh);

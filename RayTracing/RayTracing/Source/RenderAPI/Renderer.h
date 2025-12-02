@@ -60,9 +60,12 @@ private:
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
 
-	D3D12PipelineState mPipelineStateOpaque; ///< Pipeline state and root signature for opaque objects.
-	D3D12PipelineState mPipelineStateMasked; ///< Pipeline state and root signature for masked objects.
+	D3D12PipelineState mPipelineStateOpaqueSingle; ///< Pipeline state and root signature for opaque single-sided objects.
+	D3D12PipelineState mPipelineStateMaskedSingle; ///< Pipeline state and root signature for masked single-sided objects.
 	D3D12PipelineState mPipelineStateTransparent; ///< Pipeline state and root signature for transparent objects.
+
+	D3D12PipelineState mPipelineStateOpaqueDouble; ///< Pipeline state and root signature for opaque double-sided objects.
+	D3D12PipelineState mPipelineStateMaskedDouble; ///< Pipeline state and root signature for masked double-sided objects.
 
 	UINT mWidth = 0; ///< Back buffer width.
 	UINT mHeight = 0; ///< Back buffer height.
@@ -83,9 +86,12 @@ private:
 
 	DefaultTextures mDefaultTextures; ///< Default white/black/normal textures.
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
-	std::vector<MeshGpuData> mOpaqueMeshes; ///< Flattened array of opaque mesh GPU data for rendering.
-	std::vector<MeshGpuData> mMaskedMeshes; ///< Flattened array of masked mesh GPU data for rendering.
+	std::vector<MeshGpuData> mOpaqueSingleSidedMeshes; ///< Flattened array of opaque single-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mMaskedSingleMeshes; ///< Flattened array of masked single-sided mesh GPU data for rendering.
 	std::vector<MeshGpuData> mTransparentMeshes; ///< Flattened array of transparent mesh GPU data for rendering.
+
+	std::vector<MeshGpuData> mOpaqueDoubleSidedMeshes; ///< Flattened array of opaque double-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mMaskedDoubleSidedMeshes; ///< Flattened array of masked double-sided mesh GPU data for rendering.
 
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
 
