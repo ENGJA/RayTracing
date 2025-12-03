@@ -195,6 +195,9 @@
     <ClCompile Include="Source\ResourceLoading\ImageDecoder.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\RT\RayTracingBuilder.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\helpers.h">
@@ -307,6 +310,9 @@
     </ClInclude>
     <ClInclude Include="Source\ResourceLoading\ImageDecoder.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\RT\RayTracingBuilder.h">
+      <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
