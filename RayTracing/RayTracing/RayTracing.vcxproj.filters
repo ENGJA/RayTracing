@@ -320,6 +320,7 @@
     <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
     <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
     <FxCompile Include="Source\Shaders\PixelShader_Masked.hlsl" />
+    <FxCompile Include="Source\Shaders\RayTracing.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

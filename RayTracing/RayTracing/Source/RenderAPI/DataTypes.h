@@ -33,3 +33,11 @@ struct MeshMaterialData
 	float _pad[1]; // Padding for 16-byte alignment
 	DirectX::XMFLOAT4 emissiveFactor = { 0.0f, 0.0f, 0.0f, 1.0f }; // .w not used, reserved for alignment
 };
+
+
+
+struct RayGenConstantBuffer
+{
+	DirectX::XMMATRIX viewProjInverse;
+	DirectX::XMFLOAT4 cameraPos;
+};

@@ -99,11 +99,36 @@ private:
 
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
 
-	RayTracingBuilder mRayTracingBuilder; ///< Ray tracing acceleration structure builder.
+	// RAY TRACING
+	RayTracingBuilder mRtBuilder; ///< Ray tracing acceleration structure builder.
 	D3D12Resource mTLAS;	///< Top-level acceleration structure result.
 	D3D12Resource mTLAS_Scratch;	///< Top-level acceleration structure scratch buffer. May be used during updating, when objects move.
 	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. TBH I don't know if it should be kept around after build.
 
+	Microsoft::WRL::ComPtr<ID3D12StateObject> mRtStateObject; ///< Ray tracing state object (ray tracing pipeline).
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRtGlobalRootSignature; ///< Ray tracing global root signature.
+
+	D3D12Resource mRtOutputResource; ///< Ray tracing output texture resource.
+	D3D12_CPU_DESCRIPTOR_HANDLE mRtOutputUavCpuHandle{}; ///< UAV descriptor handle for ray tracing output.
+	D3D12_GPU_DESCRIPTOR_HANDLE mRtOutputUavGpuHandle{}; ///< GPU handle for ray tracing output UAV.
+
+	D3D12Resource mSbtResource; ///< Shader binding table resource.
+	UINT64 mSbtEntrySize = 0; ///< Size of a single SBT entry (aligned).
+
+	D3D12Resource mRtConstantBuffer; ///< Ray tracing constant buffer resource.
+
+
+	bool mRayTracingEnabled = false; ///< Whether ray tracing is enabled.
+
+	void CreateRayTracingOutput();
+	void CreateRayTracingPipeline();
+	void CreateShaderBindingTable();
+	void RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& camPos);
+	/**
+	 * @brief Initializes ray tracing acceleration structures.
+	 */
+	void InitializeRayTracing();
+	// END RAY TRACING
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
@@ -189,10 +214,7 @@ private:
 	 */
 	void InitializeDummyTextures();
 
-	/**
-	 * @brief Initializes ray tracing acceleration structures.
-	 */
-	void InitializeRayTracing();
+
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
