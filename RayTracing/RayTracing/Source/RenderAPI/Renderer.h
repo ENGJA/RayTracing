@@ -203,7 +203,7 @@ public:
 	void Initialize(HWND hwnd, UINT width, UINT height);
 	/**
 	 * @brief Records and submits commands for one frame and presents.
-	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
+	 * @param viewProj View-projection matrix dostarczony z zewnÂ¹trz (CameraManager).
 	 * @param cameraPos Camera world position.
 	 * @param cameraForward Camera forward vector.
 	 */
