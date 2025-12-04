@@ -84,6 +84,51 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	return gpuTex;
 }
 
+GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
+{
+	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(1, 1, 1);
+
+	desc.Alignment = D3D12_SMALL_RESOURCE_PLACEMENT_ALIGNMENT;
+
+	GPUTexture gpuTex{};
+	gpuTex.width = 1;
+	gpuTex.height = 1;
+	gpuTex.mipLevels = 1;
+	gpuTex.format = desc.Format;
+	gpuTex.resource.Initialize(mDevice, desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
+
+	const UINT rowPitch = 256; // D3D12_TEXTURE_DATA_PITCH_ALIGNMENT requirement
+	const UINT totalBytes = rowPitch;
+
+	auto alloc = mUploadHeap->Allocate(totalBytes, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+
+	uint8_t* pData = reinterpret_cast<uint8_t*>(alloc.cpuPtr);
+	memcpy(pData, &color, 4); // Copy RGBA8 color
+
+	D3D12_TEXTURE_COPY_LOCATION dstLoc{};
+	dstLoc.pResource = gpuTex.resource.Get();
+	dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	dstLoc.SubresourceIndex = 0;
+
+	D3D12_TEXTURE_COPY_LOCATION srcLoc{};
+	srcLoc.pResource = mUploadHeap->GetResource();
+	srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	srcLoc.PlacedFootprint.Offset = alloc.offset;
+	srcLoc.PlacedFootprint.Footprint.Format = desc.Format;
+	srcLoc.PlacedFootprint.Footprint.Width = 1;
+	srcLoc.PlacedFootprint.Footprint.Height = 1;
+	srcLoc.PlacedFootprint.Footprint.Depth = 1;
+	srcLoc.PlacedFootprint.Footprint.RowPitch = rowPitch;
+
+	mCmdList->Get()->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+
+	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
+	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	mCmdList->Get()->ResourceBarrier(1, &barrier);
+
+	return gpuTex;
+}
+
 D3D12_RESOURCE_DESC TextureLoader::CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels)
 {
 	return
