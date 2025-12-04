@@ -2,10 +2,58 @@
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
+#include <assimp/GltfMaterial.h>
 
 #include "Model.h"
 #include <RenderAPI/DataTypes.h>
+#include "ResourceLoading/ImageDecoder.h"
 using std::string, std::vector, std::cerr, std::endl;
+
+
+
+AlphaProperties Model::GetAlphaProperties(const aiMaterial* material)
+{
+	AlphaProperties props;
+	aiString alphaModeStr;
+	if (material->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaModeStr) == AI_SUCCESS)
+	{
+		std::string modeStr(alphaModeStr.C_Str());
+		if (modeStr == "MASK")
+		{
+			props.mRenderLayer = RenderLayer::Masked;
+			float cutoff = 0.5f;
+			if (material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff) == AI_SUCCESS)
+				props.alphaCutoff = cutoff;
+		}
+		else if (modeStr == "BLEND")
+		{
+			props.mRenderLayer = RenderLayer::Blend;
+		}
+		return props;
+	}
+
+	RenderLayer layer = RenderLayer::Opaque;
+	float opacity = 1.0f;
+	aiString texPath;
+	aiGetMaterialFloat(material, AI_MATKEY_OPACITY, &opacity);
+	if (opacity < 1.0f)
+	{
+		layer = RenderLayer::Blend;
+	}
+	else if (AI_SUCCESS == material->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath) ||
+		AI_SUCCESS == material->GetTexture(aiTextureType_DIFFUSE, 0, &texPath))
+	{
+		std::string finalPath = ResolveTexturePath(texPath.C_Str());
+		std::wstring wPath(finalPath.begin(), finalPath.end());
+
+		if (ImageDecoder::HasAlphaChannel(wPath))
+			layer = RenderLayer::Masked;
+	}
+
+	props.mRenderLayer = layer;
+	return props;
+}
+
 
 static DirectX::XMMATRIX AiToXMMatrix(const aiMatrix4x4& m)
 {
@@ -61,11 +109,25 @@ void Model::loadModel(const string& path)
 		{
 			aiLight* aLight = scene->mLights[li];
 			LightData ld{};
-			ld.color = DirectX::XMFLOAT4(
-				1.0f,
-				0.8f,
-				0.3f,
-				0.5f 
+			//ld.color = DirectX::XMFLOAT4(
+			//	1.0f,
+			//	0.8f,
+			//	0.3f,
+			//	0.5f 
+			//);
+
+			ld.diffuseColor = aLight->mColorDiffuse.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
+				aLight->mColorDiffuse.r,
+				aLight->mColorDiffuse.g,
+				aLight->mColorDiffuse.b,
+				1.0f 
+			);
+
+			ld.specularColor = aLight->mColorSpecular.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
+				aLight->mColorSpecular.r,
+				aLight->mColorSpecular.g,
+				aLight->mColorSpecular.b,
+				1.0f 
 			);
 
 			if (aLight->mType == aiLightSource_DIRECTIONAL)
@@ -109,23 +171,38 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
 
+		// WARNING: SPECIFIC TO SPONZA
 		aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
-		const float alphaThreshold = 0.999f; 
-
-		aiColor4D diffuseColor;
-		if (AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
+		int twoSided = 0;
+		if (mat)
 		{
-			if (diffuseColor.a < alphaThreshold)
-				continue;
+			mat->Get(AI_MATKEY_TWOSIDED, twoSided);
+			if (twoSided)
+			{
+				bool hasTexture = false;
+				if (mat->GetTextureCount(aiTextureType_BASE_COLOR) == 0 &&
+					mat->GetTextureCount(aiTextureType_DIFFUSE) == 0)
+				{
+					continue;
+				}
+			}
 		}
+		//const float alphaThreshold = 0.999f; 
 
-		mMeshes.push_back(processMesh(mesh, scene, currentTransform, tangentSpaceHandednessMultiplier));
+		//aiColor4D diffuseColor;
+		//if (AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
+		//{
+		//	if (diffuseColor.a < alphaThreshold)
+		//		continue;
+		//}
+
+		mMeshes.push_back(processMesh(mesh, scene, currentTransform, tangentSpaceHandednessMultiplier, static_cast<bool>(twoSided)));
 	}
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
 		processNode(node->mChildren[i], scene, currentTransform, tangentSpaceHandednessMultiplier);
 }
 
-Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int tangentSpaceHandednessMultiplier)
+Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& transform, int tangentSpaceHandednessMultiplier, bool doubleSided)
 {
 	vector<Vertex> vertices;
 	vector<unsigned int> indices;
@@ -134,28 +211,18 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 	DirectX::XMMATRIX xmTransform = AiToXMMatrix(transform);
 	DirectX::XMMATRIX normalMatrix = DirectX::XMMatrixTranspose(DirectX::XMMatrixInverse(nullptr, xmTransform));
 
-	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-	float matMetalness = 0.0f;
-	float matShininess = 32.0f;
-
-	if (material)
-	{
-		ai_real mf = 0.0;
-		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_METALLIC_FACTOR, &mf))
-			matMetalness = static_cast<float>(mf);
-
-		ai_real sf = 0.0;
-		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_SHININESS, &sf))
-			matShininess = static_cast<float>(sf);
-	}
+	DirectX::XMVECTOR minV = DirectX::XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, 0);
+	DirectX::XMVECTOR maxV = DirectX::XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, 0);
 
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 	{
 		Vertex vertex{};
 		// position
-		DirectX::XMVECTOR pos = DirectX::XMVectorSet(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
-		pos = XMVector3TransformCoord(pos, xmTransform);
-		XMStoreFloat3(&vertex.mPosition, pos);
+		{
+			DirectX::XMVECTOR pos = DirectX::XMVectorSet(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
+			pos = XMVector3TransformCoord(pos, xmTransform);
+			XMStoreFloat3(&vertex.mPosition, pos);
+		}
 
 		// normal (transform with inverse-transpose of 3x3)
 		if (mesh->mNormals)
@@ -207,14 +274,71 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 			vertex.mTexCoords = DirectX::XMFLOAT2(0.0f, 0.0f);
 		}
 
+		{
+			DirectX::XMVECTOR pos = DirectX::XMLoadFloat3(&vertex.mPosition);
+			minV = DirectX::XMVectorMin(minV, pos);
+			maxV = DirectX::XMVectorMax(maxV, pos);
+		}
+
 		vertices.push_back(vertex);
 	}
+
+	// Calculate Center for sorting
+	DirectX::XMVECTOR centerV = DirectX::XMVectorAdd(minV, maxV);
+	centerV = DirectX::XMVectorScale(centerV, 0.5f);
+	DirectX::XMFLOAT3 center;
+	XMStoreFloat3(&center, centerV);
+
+	
 	for (unsigned int i = 0; i < mesh->mNumFaces; i++)
 	{
 		aiFace face = mesh->mFaces[i];
 		for (unsigned int j = 0; j < face.mNumIndices; j++)
 			indices.push_back(face.mIndices[j]);
 	}
+
+	// get material properties
+	MeshMaterialData matData;
+	AlphaProperties alphaProps;
+	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+	if (material)
+	{
+		alphaProps = GetAlphaProperties(material);
+		aiColor4D color;
+		if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_BASE_COLOR, &color)
+			|| AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &color))
+		{
+			matData.baseColorFactor = { color.r, color.g, color.b, color.a };
+		}
+
+
+		// WARNING: SPECIFIC TO SPONZA
+		//int twoSided = false;
+		//material->Get(AI_MATKEY_TWOSIDED, twoSided);
+		//if (twoSided)
+		//{
+		//	alphaProps.mRenderLayer = RenderLayer::Masked;
+		//	matData.baseColorFactor.w = 0.0f;
+		//}
+		//////////////////////////////
+
+		if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_COLOR_EMISSIVE, &color))
+			matData.emissiveFactor = { color.r, color.g, color.b, 1.0f };
+
+		ai_real f;
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_METALLIC_FACTOR, &f))
+			matData.metalnessFactor = static_cast<float>(f);
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_ROUGHNESS_FACTOR, &f))
+			matData.roughnessFactor = static_cast<float>(f);
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_EMISSIVE_INTENSITY, &f))
+		{
+			DirectX::XMVECTOR v = DirectX::XMLoadFloat4(&matData.emissiveFactor);
+			v = DirectX::XMVectorScale(v, static_cast<float>(f));
+			DirectX::XMStoreFloat4(&matData.emissiveFactor, v);
+		}
+	}
+
+	matData.alphaCutoff = alphaProps.alphaCutoff;
 
 	// get PBR material textures
 	vector<vector<Texture>> loadedTextures =
@@ -223,13 +347,15 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 		loadMaterialTextures(material, aiTextureType_DIFFUSE, TextureType::Albedo), // fallback if BASE_COLOR not present
 		loadMaterialTextures(material, aiTextureType_NORMALS, TextureType::Normal),
 		loadMaterialTextures(material, aiTextureType_METALNESS, TextureType::Metalness),
-		loadMaterialTextures(material, aiTextureType_DIFFUSE_ROUGHNESS, TextureType::Roughness)
+		loadMaterialTextures(material, aiTextureType_DIFFUSE_ROUGHNESS, TextureType::Roughness),
+		loadMaterialTextures(material, aiTextureType_EMISSIVE, TextureType::Emissive),
 	};
+
 
 	for (const auto& textureList : loadedTextures)
 		textures.insert(textures.end(), textureList.begin(), textureList.end());
 
-	return Mesh(vertices, indices, textures);
+	return Mesh(vertices, indices, textures, center, doubleSided, matData, alphaProps.mRenderLayer);
 }
 
 std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType aiType, TextureType type)
@@ -250,42 +376,7 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType 
 			continue;
 		}
 
-		std::string finalPath = texRef;
-		std::filesystem::path pTex(texRef);
-		bool found = false;
-
-		if (pTex.is_absolute())
-		{
-			if (std::filesystem::exists(pTex))
-			{
-				finalPath = pTex.string();
-				found = true;
-			}
-		}
-		else
-		{
-			std::filesystem::path cand = std::filesystem::path(mDirectory) / pTex;
-			if (std::filesystem::exists(cand))
-			{
-				finalPath = std::filesystem::relative(cand, std::filesystem::path(mDirectory)).string();
-				found = true;
-			}
-			else
-			{
-				std::filesystem::path cand2 = std::filesystem::path(mDirectory) / "textures" / pTex;
-				if (std::filesystem::exists(cand2))
-				{
-					finalPath = std::filesystem::relative(cand2, std::filesystem::path(mDirectory)).string();
-					found = true;
-				}
-			}
-		}
-
-		if (!found)
-		{
-			finalPath = texRef;
-			std::cerr << "Warning: texture file not found for reference '" << texRef << "'; using literal path." << std::endl;
-		}
+		std::string finalPath = ResolveTexturePath(texRef);
 
 		auto it = std::find_if(mLoadedTextures.begin(), mLoadedTextures.end(), [&str] (const Texture& tex)
 		{
@@ -302,4 +393,25 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType 
 		}
 	}
 	return textures;
+}
+
+std::string Model::ResolveTexturePath(const std::string& rawPath)
+{
+	std::string texRef = rawPath;
+	if (!texRef.empty() && texRef.rfind("./", 0) == 0) texRef = texRef.substr(2);
+
+	// 1. Check absolute
+	std::filesystem::path pTex(texRef);
+	if (pTex.is_absolute() && std::filesystem::exists(pTex)) return pTex.string();
+
+	// 2. Check relative to model
+	std::filesystem::path cand = std::filesystem::path(mDirectory) / pTex;
+	if (std::filesystem::exists(cand)) return cand.string();
+
+	// 3. Check 'textures' folder
+	std::filesystem::path cand2 = std::filesystem::path(mDirectory) / "textures" / pTex;
+	if (std::filesystem::exists(cand2)) return cand2.string();
+
+	std::cerr << "Warning: texture file not found for reference '" << rawPath << "'; using literal path." << std::endl;
+	return rawPath;
 }

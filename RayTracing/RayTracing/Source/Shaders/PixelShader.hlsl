@@ -13,14 +13,18 @@ struct PSInput
     float3 normalWS : TEXCOORD2;
     float4 tangentWS : TEXCOORD3;
     float2 materialProps : TEXCOORD4;
+    
+    bool isFrontFace : SV_IsFrontFace;
 };
 
 // Light struct matching C++ ConstantBufferData::LightData (position,color,dirType)
 struct Light
 {
     float4 position;
-    float4 color;    // .xyz = color, .w = intensity
     float4 dirType;  // .xyz = direction (direction of rays), .w = type flag (1 = directional)
+    //float4 color;    // .xyz = color, .w = intensity
+    float4 diffuseColor;
+    float4 specularColor;
 };
 
 cbuffer CBData : register(b0)
@@ -32,17 +36,39 @@ cbuffer CBData : register(b0)
     Light lights[25]    : packoffset(c6);
 };
 
+cbuffer MaterialData : register(b1)
+{
+    float4 gBaseColorFactor : packoffset(c0);
+    float gMetalnessFactor  : packoffset(c1.x);
+    float gRoughnessFactor  : packoffset(c1.y);
+    float gAlphaCutoff      : packoffset(c1.z);
+    float _pad2             : packoffset(c1.w);
+    float4 gEmissiveFactor  : packoffset(c2);
+};
+
+
 float3 getNormal(PSInput input);
 
 float4 main(PSInput input) : SV_TARGET
 {
-    float3 albedo = gAlbedo.Sample(gSampler, input.uv).rgb;
+    float4 albedoSample = gAlbedo.Sample(gSampler, input.uv);
+    float3 albedo = albedoSample.rgb * gBaseColorFactor.rgb;
+    float alpha = albedoSample.a * gBaseColorFactor.a;
 
-    float texMetal = gMetalness.Sample(gSampler, input.uv).r;
+#ifdef ALPHA_TEST
+    clip(alpha - gAlphaCutoff); // Discard pixels with low alpha for alpha testing
+#endif
+    
+    if (!input.isFrontFace)
+    {
+        input.normalWS = -input.normalWS;
+    }
+
+        float texMetal = gMetalness.Sample(gSampler, input.uv).r;
     float texRough = gRoughness.Sample(gSampler, input.uv).r;
 
-    float metalness = texMetal;
-    float roughness = texRough;
+    float metalness = texMetal * gMetalnessFactor;
+    float roughness = texRough * gRoughnessFactor;
 
     if (metalness == 0.0f)
         metalness = saturate(input.materialProps.x);
@@ -65,6 +91,7 @@ float4 main(PSInput input) : SV_TARGET
     {
         float3 L;
         bool isDirectional = (lights[i].dirType.w > 0.5f);
+        float attenuation = 1.0f;
 
         if (isDirectional)
         {
@@ -73,16 +100,6 @@ float4 main(PSInput input) : SV_TARGET
         else
         {
             L = normalize(lights[i].position.xyz - input.worldPos);
-        }
-
-        float intensity = lights[i].color.w;
-        float3 baseLightCol = lights[i].color.xyz;
-        float3 lightCol = baseLightCol * intensity;
-
-        // Attenuation for point lights
-        float attenuation = 1.0f;
-        if (!isDirectional)
-        {
             // Tunable constants (constant, linear, quadratic)
             const float kConst = 1.0f;
             const float kLinear = 0.5f;
@@ -93,11 +110,13 @@ float4 main(PSInput input) : SV_TARGET
             attenuation = 1.0f / max(denom, 1e-4f);
             // Optional: clamp to avoid extremely bright values
             attenuation = saturate(attenuation * 1.0f);
-            lightCol *= attenuation;
         }
 
+        float3 diffuseLightCol = lights[i].diffuseColor.xyz * lights[i].diffuseColor.w * attenuation;
+        float3 specularLightCol = lights[i].specularColor.xyz * lights[i].specularColor.w * attenuation;        
+
         float NdotL = saturate(dot(N, L));
-        float3 diffuse = NdotL * albedo * lightCol;
+        float3 diffuse = NdotL * albedo * diffuseLightCol;
 
         float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, saturate(metalness));
 
@@ -106,14 +125,15 @@ float4 main(PSInput input) : SV_TARGET
         // Phong specular
         float3 R = reflect(-L, N);
         float specFactor = pow(saturate(dot(V, R)), specShininess);
-        float3 specular = specFactor * F0 * lightCol;
+        float3 specular = specFactor * F0 * specularLightCol;
 
         finalColor += diffuse + specular;
     }
-    float3 emissive = gEmissive.Sample(gSampler, input.uv).rgb;
+    float3 emissiveSample = gEmissive.Sample(gSampler, input.uv).rgb;
+    float3 emissive = emissiveSample * gEmissiveFactor.rgb;    
     finalColor += emissive;
 
-    return float4(finalColor, 1.0f);
+    return float4(finalColor, alpha);
 }
 
 float3 getNormal(PSInput input)

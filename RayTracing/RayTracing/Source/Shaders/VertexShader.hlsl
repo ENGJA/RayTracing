@@ -21,8 +21,10 @@ struct VSOutput
 struct Light
 {
     float4 position;
-    float4 color;
-    float4 dirType;
+    float4 dirType; // .xyz = direction (direction of rays), .w = type flag (1 = directional)
+    //float4 color;    // .xyz = color, .w = intensity
+    float4 diffuseColor;
+    float4 specularColor;
 };
 
 cbuffer CBData : register(b0)
@@ -32,6 +34,16 @@ cbuffer CBData : register(b0)
     int numLights     : packoffset(c5.x);
     float3 _pad       : packoffset(c5.y);
     Light lights[25]  : packoffset(c6);
+};
+
+cbuffer MaterialData : register(b1)
+{
+    float4 gBaseColorFactor     : packoffset(c0);
+    float gMetalnessFactor      : packoffset(c1.x);
+    float gRoughnessFactor      : packoffset(c1.y);
+    float gAlphaCutoff          : packoffset(c1.z);
+    float _pad2                 : packoffset(c1.w);
+    float4 gEmissiveFactor      : packoffset(c2);
 };
 
 VSOutput main(VSInput input)
