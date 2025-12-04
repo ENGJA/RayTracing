@@ -91,7 +91,7 @@ private:
 	DefaultTextures mDefaultTextures; ///< Default white/black/normal textures.
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mOpaqueSingleSidedMeshes; ///< Flattened array of opaque single-sided mesh GPU data for rendering.
-	std::vector<MeshGpuData> mMaskedSingleMeshes; ///< Flattened array of masked single-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mMaskedSingleSidedMeshes; ///< Flattened array of masked single-sided mesh GPU data for rendering.
 	std::vector<MeshGpuData> mTransparentMeshes; ///< Flattened array of transparent mesh GPU data for rendering.
 
 	std::vector<MeshGpuData> mOpaqueDoubleSidedMeshes; ///< Flattened array of opaque double-sided mesh GPU data for rendering.
@@ -106,6 +106,7 @@ private:
 	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. TBH I don't know if it should be kept around after build.
 
 	Microsoft::WRL::ComPtr<ID3D12StateObject> mRtStateObject; ///< Ray tracing state object (ray tracing pipeline).
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRtLocalRootSignature; ///< Ray tracing local root signature.
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRtGlobalRootSignature; ///< Ray tracing global root signature.
 
 	D3D12Resource mRtOutputResource; ///< Ray tracing output texture resource.
@@ -116,6 +117,7 @@ private:
 	UINT64 mSbtEntrySize = 0; ///< Size of a single SBT entry (aligned).
 
 	D3D12Resource mRtConstantBuffer; ///< Ray tracing constant buffer resource.
+	D3D12Resource mMaterialBuffer; ///< Material buffer resource for ray tracing.
 
 
 	bool mRayTracingEnabled = false; ///< Whether ray tracing is enabled.
@@ -152,13 +154,13 @@ private:
 	/**
 	* @brief Builds GPU resources for all loaded meshes in all models.
 	*/
-    void BuildMeshGpuData();
+	void BuildMeshGpuData();
 
 
 	/**
 	* @brief Collects static lights from all models into a single array for efficient access.
 	*/
-    void CollectStaticLights();
+	void CollectStaticLights();
 
 	/**
 	* @brief Creates a shader resource view for a texture resource.
@@ -167,18 +169,18 @@ private:
 	* @param handle CPU descriptor handle where to create the SRV.
 	* @param mipLevels Number of mip levels in the texture.
 	*/
-    void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
+	void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
 
 	/**
 	* @brief Dispatches asynchronous texture decoding tasks for all textures used in loaded models.
 	*/
-    void DispatchTextureDecoding();
+	void DispatchTextureDecoding();
 
 	/**
 	* @brief Uploads GPU resources for all meshes in all models.
 	* @param executeBatch Function to execute the command queue when needed.
 	*/
-    void UploadMeshes(const std::function<void()>& executeBatch);
+	void UploadMeshes(const std::function<void()>& executeBatch);
 
 	/**
 	* @brief Uploads GPU resources for a single mesh.

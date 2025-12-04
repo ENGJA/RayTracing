@@ -40,4 +40,7 @@ struct RayGenConstantBuffer
 {
 	DirectX::XMMATRIX viewProjInverse;
 	DirectX::XMFLOAT4 cameraPos;
+	int numLights;
+	float _pad[3];
+	LightData lights[cMaxLights];
 };

@@ -24,6 +24,10 @@ void RayTracingBuilder::BuildAllBLAS(
 	size_t totalCount = opaqueSingle.size() + opaqueDouble.size() + maskedSingle.size() + maskedDouble.size() + transparent.size();
 	buildRequests.reserve(totalCount);
 
+	// --- FIX PART 1: PREPARE STATE TRANSITIONS ---
+	std::vector<D3D12_RESOURCE_BARRIER> preBuildBarriers;
+	preBuildBarriers.reserve(totalCount * 2); // VB + IB per mesh
+
 	auto queueMeshes = [&](std::vector<MeshGpuData>& meshes, bool isOpaque)
 		{
 			for (auto& mesh : meshes)
@@ -57,6 +61,20 @@ void RayTracingBuilder::BuildAllBLAS(
 				mDevice->GetRaytracingAccelerationStructurePrebuildInfo(&buildInputs, &req.info);
 
 				buildRequests.push_back(req);
+
+				// --- FIX: ADD MISSING BARRIERS ---
+				// We must transition buffers to NON_PIXEL_SHADER_RESOURCE for the Build to read them safely.
+				preBuildBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+					mesh.vb.Get(),
+					D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+					D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+				));
+
+				preBuildBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+					mesh.ib.Get(),
+					D3D12_RESOURCE_STATE_INDEX_BUFFER,
+					D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+				));
 			}
 		};
 
@@ -69,6 +87,7 @@ void RayTracingBuilder::BuildAllBLAS(
 	if (buildRequests.empty())
 		return;
 
+	mCmdList->ResourceBarrier(static_cast<UINT>(preBuildBarriers.size()), preBuildBarriers.data());
 	// Process in batches
 	size_t currentIndex = 0;
 	while (currentIndex < buildRequests.size())
@@ -96,7 +115,7 @@ void RayTracingBuilder::BuildAllBLAS(
 		{
 			D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(batchScratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 			D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-			scratchBuffer.Initialize(mDevice, desc, heapProps.Type, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			scratchBuffer.Initialize(mDevice, desc, heapProps.Type, D3D12_RESOURCE_STATE_COMMON);
 		}
 
 		// Step C: Build BLAS for batch
@@ -143,6 +162,29 @@ void RayTracingBuilder::BuildAllBLAS(
 		// Make sure it lives until GPU is done
 		mTempResources.push_back(std::move(scratchBuffer));
 	}
+	// --- FIX PART 2: RESTORE STATES FOR RASTERIZER ---
+		// We must put them back or the Rasterizer pass will crash/error.
+	std::vector<D3D12_RESOURCE_BARRIER> postBuildBarriers;
+	postBuildBarriers.reserve(totalCount * 2);
+
+	for (const auto& req : buildRequests)
+	{
+		// Restore VB
+		postBuildBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+			req.mesh->vb.Get(),
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+		));
+
+		// Restore IB
+		postBuildBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+			req.mesh->ib.Get(),
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_INDEX_BUFFER
+		));
+	}
+
+	mCmdList->ResourceBarrier(static_cast<UINT>(postBuildBarriers.size()), postBuildBarriers.data());
 }
 
 void RayTracingBuilder::BuildTLAS(
@@ -168,7 +210,7 @@ void RayTracingBuilder::BuildTLAS(
 
 				desc.InstanceID = instanceID; // Maps to InstanceIndex() in HLSL
 				desc.InstanceMask = 0xFF;     // Visible to all rays
-				desc.InstanceContributionToHitGroupIndex = 0; // 0 for Opaque, we might change this for Masked?
+				desc.InstanceContributionToHitGroupIndex = instanceID; // 0 for Opaque, we might change this for Masked?
 
 				// Flags can override Geometry flags
 				// e.g., D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE

@@ -54,45 +54,45 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
 
 
     auto processSlot = [&](int slotIndex, const GPUTexture& fallback)
-    {
-        D3D12_CPU_DESCRIPTOR_HANDLE dst = gpuData.materialTable.cpuHandle;
-        dst.ptr += SIZE_T(slotIndex) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-        auto it = textureMap.find(slotIndex);
-        if (it != textureMap.end())
         {
-            string fullPath = directory + "\\" + it->second;
-            GPUTextureLoadState& loadState = mTextureCache[fullPath];
-            if (loadState.decodeFuture.valid())
-                loadState.decodedImage = loadState.decodeFuture.get();
+            D3D12_CPU_DESCRIPTOR_HANDLE dst = gpuData.materialTable.cpuHandle;
+            dst.ptr += SIZE_T(slotIndex) * mDevice.Get()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-            if (!loadState.gpuTexture.resource.Get())
+            auto it = textureMap.find(slotIndex);
+            if (it != textureMap.end())
             {
-				loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
-                loadState.decodedImage = {}; // free CPU-side decoded image data
-            }
-            GPUTexture& gpuTex = loadState.gpuTexture;
-            CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
-        }
-        else
-        {
-            CreateTextureView(fallback.resource.Get(), fallback.format, dst, fallback.mipLevels);
-        }
-	};
+                string fullPath = directory + "\\" + it->second;
+                GPUTextureLoadState& loadState = mTextureCache[fullPath];
+                if (loadState.decodeFuture.valid())
+                    loadState.decodedImage = loadState.decodeFuture.get();
 
-	processSlot(0, mDefaultTextures.white);  // Albedo
-	processSlot(1, mDefaultTextures.white);  // Metallic
-	processSlot(2, mDefaultTextures.white);  // Roughness
-	processSlot(3, mDefaultTextures.normal); // Normal
-	processSlot(4, mDefaultTextures.white);  // Emissive	
+                if (!loadState.gpuTexture.resource.Get())
+                {
+                    loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
+                    loadState.decodedImage = {}; // free CPU-side decoded image data
+                }
+                GPUTexture& gpuTex = loadState.gpuTexture;
+                CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
+            }
+            else
+            {
+                CreateTextureView(fallback.resource.Get(), fallback.format, dst, fallback.mipLevels);
+            }
+        };
+
+    processSlot(0, mDefaultTextures.white);  // Albedo
+    processSlot(1, mDefaultTextures.white);  // Metallic
+    processSlot(2, mDefaultTextures.white);  // Roughness
+    processSlot(3, mDefaultTextures.normal); // Normal
+    processSlot(4, mDefaultTextures.white);  // Emissive	
 }
 
 void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const function<void()>& executeBatch)
 {
     const size_t vbSize = mesh.mVertices.size() * sizeof(::Vertex);
     const size_t ibSize = mesh.mIndices.size() * sizeof(unsigned int);
-	const UINT vbSizeUINT = static_cast<UINT>(vbSize);
-	const UINT ibSizeUINT = static_cast<UINT>(ibSize);
+    const UINT vbSizeUINT = static_cast<UINT>(vbSize);
+    const UINT ibSizeUINT = static_cast<UINT>(ibSize);
     const size_t needed = vbSize + ibSize;
 
     if (!mUploadHeap.CanAllocate(needed))
@@ -139,11 +139,11 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 
     CreateMaterial(mesh, directory, gpu, executeBatch);
 
-	gpu.center = mesh.mCenter;
+    gpu.center = mesh.mCenter;
     switch (mesh.mRenderLayer)
     {
     case RenderLayer::Opaque:
-		if (mesh.mDoubleSided)
+        if (mesh.mDoubleSided)
             mOpaqueDoubleSidedMeshes.push_back(std::move(gpu));
         else
             mOpaqueSingleSidedMeshes.push_back(std::move(gpu));
@@ -151,15 +151,15 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     case RenderLayer::Masked:
         if (mesh.mDoubleSided)
             mMaskedDoubleSidedMeshes.push_back(std::move(gpu));
-		else
-            mMaskedSingleMeshes.push_back(std::move(gpu));
+        else
+            mMaskedSingleSidedMeshes.push_back(std::move(gpu));
         break;
     case RenderLayer::Blend:
-            mTransparentMeshes.push_back(std::move(gpu));
-			break;
+        mTransparentMeshes.push_back(std::move(gpu));
+        break;
     default:
         break;
-	}
+    }
 }
 
 void Renderer::UploadMeshes(const function<void()>& executeBatch)
@@ -177,22 +177,22 @@ void Renderer::BuildMeshGpuData()
     mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
 
     auto executeBatch = [this]()
-    {
-        mCommandList.Get()->Close();
-        ID3D12CommandList* lists[] = { mCommandList.Get() };
-        mCommandQueue.ExecuteCommandLists(1, lists);
-        mCommandQueue.Flush();
+        {
+            mCommandList.Get()->Close();
+            ID3D12CommandList* lists[] = { mCommandList.Get() };
+            mCommandQueue.ExecuteCommandLists(1, lists);
+            mCommandQueue.Flush();
 
-        mUploadHeap.Reset();
-        mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
-        mTextureLoader.Reset();
-    };
+            mUploadHeap.Reset();
+            mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+            mTextureLoader.Reset();
+        };
 
     DispatchTextureDecoding();
     UploadMeshes(executeBatch);
 
-	executeBatch();
-	mCommandList.Get()->Close();
+    executeBatch();
+    mCommandList.Get()->Close();
 }
 
 void Renderer::CollectStaticLights()
@@ -277,7 +277,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     // Shared upload heap (64 MB)
     mUploadHeap.Initialize(mDevice.Get(), 512ull * 1024ull * 1024ull);
 
-	mShaderCompiler.Initialize();
+    mShaderCompiler.Initialize();
 
     InitializeTextureLoader();
 
@@ -285,7 +285,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     InitializeDummyTextures();
 
-	mRtBuilder.Initialize(mDevice.Get(), mCommandList.Get(), &mCommandQueue);
+    mRtBuilder.Initialize(mDevice.Get(), mCommandList.Get(), &mCommandQueue);
 
 
     // set viewport and scissor rect
@@ -302,7 +302,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     mScissorRect.bottom = static_cast<LONG>(mHeight);
 
 
-	// view-projection matrix (will be updated each frame)
+    // view-projection matrix (will be updated each frame)
     mConstantBufferData.vpMatrix = DirectX::XMMatrixIdentity();
 
     mConstantBuffer.Initialize(
@@ -311,14 +311,14 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_HEAP_TYPE_UPLOAD,
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
-    
+
     const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
     auto modelA = std::make_unique<Model>();
 
-	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
     modelA->loadModel(modelPath);
-	std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
+    std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
     if (modelA->mMeshes.empty())
     {
         vector<::Vertex> cpuVerts = {
@@ -331,48 +331,48 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         modelA->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
     }
     else
-	    wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+        wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
 
     mModels.push_back(std::move(modelA));
 
-	//loadStartTime = std::chrono::steady_clock::now();
-	//const std::string modelPathB = GetResourcePath("Objects\\pkg_a_curtains\\NewSponza_Curtains_glTF.gltf").string();
-	//auto modelB = std::make_unique<Model>();
-	//modelB->loadModel(modelPathB);
-	//loadEndTime = std::chrono::steady_clock::now();
-	//loadElapsedSeconds = loadEndTime - loadStartTime;
-	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	//mModels.push_back(std::move(modelB));
+    //loadStartTime = std::chrono::steady_clock::now();
+    //const std::string modelPathB = GetResourcePath("Objects\\pkg_a_curtains\\NewSponza_Curtains_glTF.gltf").string();
+    //auto modelB = std::make_unique<Model>();
+    //modelB->loadModel(modelPathB);
+    //loadEndTime = std::chrono::steady_clock::now();
+    //loadElapsedSeconds = loadEndTime - loadStartTime;
+    //wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+    //mModels.push_back(std::move(modelB));
 
-	//loadStartTime = std::chrono::steady_clock::now();
-	//const std::string modelPathC = GetResourcePath("Objects\\pkg_b_ivy\\NewSponza_IvyGrowth_glTF.gltf").string();
-	//auto modelC = std::make_unique<Model>();
-	//modelC->loadModel(modelPathC);
-	//loadEndTime = std::chrono::steady_clock::now();
-	//loadElapsedSeconds = loadEndTime - loadStartTime;
-	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	//mModels.push_back(std::move(modelC));
+    //loadStartTime = std::chrono::steady_clock::now();
+    //const std::string modelPathC = GetResourcePath("Objects\\pkg_b_ivy\\NewSponza_IvyGrowth_glTF.gltf").string();
+    //auto modelC = std::make_unique<Model>();
+    //modelC->loadModel(modelPathC);
+    //loadEndTime = std::chrono::steady_clock::now();
+    //loadElapsedSeconds = loadEndTime - loadStartTime;
+    //wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+    //mModels.push_back(std::move(modelC));
 
 
 
-	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
     // Build GPU buffers and material descriptor tables
     BuildMeshGpuData();
-	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
-	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
-	// Initialize ray tracing acceleration structures
-	std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
-	InitializeRayTracing();
-	std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
-	wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
+    std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+    wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+    // Initialize ray tracing acceleration structures
+    std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
+    InitializeRayTracing();
+    std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
+    wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
 
     // Collect static lights once after models are loaded
     CollectStaticLights();
 
-	// For debugging: recompile shaders on 'G' key press
-	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
+    // For debugging: recompile shaders on 'G' key press
+    InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
     InputManager::Instance.RegisterKeyPressedCallback('R', [this]() { mRayTracingEnabled = !mRayTracingEnabled; });
 }
 
@@ -394,62 +394,62 @@ void Renderer::InitializeDummyTextures()
 
 void Renderer::InitializeRayTracing()
 {
-	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
 
-	// 1. Build BLAS for all mesh lists
+    // 1. Build BLAS for all mesh lists
     mRtBuilder.BuildAllBLAS(
         mOpaqueSingleSidedMeshes,
         mOpaqueDoubleSidedMeshes,
-        mMaskedSingleMeshes,
+        mMaskedSingleSidedMeshes,
         mMaskedDoubleSidedMeshes,
-		mTransparentMeshes);
+        mTransparentMeshes);
 
-	// 2. Allocate TLAS instance desc buffer
+    // 2. Allocate TLAS instance desc buffer
     UINT totalMeshes = static_cast<UINT>(
         mOpaqueSingleSidedMeshes.size() +
         mOpaqueDoubleSidedMeshes.size() +
-        mMaskedSingleMeshes.size() +
-		mMaskedDoubleSidedMeshes.size() +
-		mTransparentMeshes.size());
+        mMaskedSingleSidedMeshes.size() +
+        mMaskedDoubleSidedMeshes.size() +
+        mTransparentMeshes.size());
 
     UINT64 instanceDescSize = sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * totalMeshes;
     constexpr UINT uploadAlignment = 256;
-	UINT64 alignedSize = (instanceDescSize + uploadAlignment - 1) & ~(uploadAlignment - 1);
+    UINT64 alignedSize = (instanceDescSize + uploadAlignment - 1) & ~(uploadAlignment - 1);
     mInstanceDescBuffer.Initialize(
         mDevice.Get(),
         instanceDescSize,
         D3D12_HEAP_TYPE_UPLOAD,
-		D3D12_RESOURCE_STATE_GENERIC_READ);
+        D3D12_RESOURCE_STATE_GENERIC_READ);
 
     // 3. Build TLAS
     mRtBuilder.BuildTLAS(
         mOpaqueSingleSidedMeshes,
         mOpaqueDoubleSidedMeshes,
-		mMaskedSingleMeshes,
-		mMaskedDoubleSidedMeshes,
+        mMaskedSingleSidedMeshes,
+        mMaskedDoubleSidedMeshes,
         mTransparentMeshes,
         mTLAS,
-		mTLAS_Scratch,
+        mTLAS_Scratch,
         mInstanceDescBuffer);
 
     mRtConstantBuffer.Initialize(
         mDevice.Get(),
-        sizeof(RayGenConstantBuffer),
+		(sizeof(RayGenConstantBuffer) + 255) & ~255, // 256-byte aligned
         D3D12_HEAP_TYPE_UPLOAD,
-		D3D12_RESOURCE_STATE_GENERIC_READ);
+        D3D12_RESOURCE_STATE_GENERIC_READ);
 
     CreateRayTracingOutput();
     CreateRayTracingPipeline();
     CreateShaderBindingTable();
 
-	// 4. Execute command list
+    // 4. Execute command list
     mCommandList.Get()->Close();
     ID3D12CommandList* lists[] = { mCommandList.Get() };
     mCommandQueue.ExecuteCommandLists(1, lists);
-	mCommandQueue.Flush();
+    mCommandQueue.Flush();
 
-	// 5. Clear temporary BLAS resources
-	mRtBuilder.ClearScratchResources();
+    // 5. Clear temporary BLAS resources
+    mRtBuilder.ClearScratchResources();
 }
 
 void Renderer::CreateRayTracingOutput()
@@ -472,7 +472,7 @@ void Renderer::CreateRayTracingOutput()
     // Ideally, mSrvHeap handles this. Let's assume Allocate() works.
     auto uavHandle = mSrvHeap.Allocate(1);
     mRtOutputUavCpuHandle = uavHandle.cpuHandle;
-	mRtOutputUavGpuHandle = uavHandle.gpuHandle;
+    mRtOutputUavGpuHandle = uavHandle.gpuHandle;
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
@@ -481,61 +481,109 @@ void Renderer::CreateRayTracingOutput()
 
 void Renderer::CreateRayTracingPipeline()
 {
-    // 1. Create Global Root Signature
-    // Needs: Output UAV (u0), TLAS (t0), Camera CB (b0)
-    CD3DX12_DESCRIPTOR_RANGE uavRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // u0
-    //CD3DX12_DESCRIPTOR_RANGE srvRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
+    // --- 1. GLOBAL Root Signature (Output, TLAS, Camera) ---
+    CD3DX12_DESCRIPTOR_RANGE uavRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+    CD3DX12_ROOT_PARAMETER globalParams[3];
+    globalParams[0].InitAsDescriptorTable(1, &uavRange);
+    globalParams[1].InitAsShaderResourceView(0);
+    globalParams[2].InitAsConstantBufferView(0);
 
-    CD3DX12_ROOT_PARAMETER params[3];
-    params[0].InitAsDescriptorTable(1, &uavRange); // u0
-	params[1].InitAsShaderResourceView(0);      // t0
-    params[2].InitAsConstantBufferView(0);         // b0
+    CD3DX12_STATIC_SAMPLER_DESC staticSampler(
+        0, // ShaderRegister (s0)
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP
+    );
 
-    CD3DX12_ROOT_SIGNATURE_DESC globalRootDesc(3, params);
+	CD3DX12_ROOT_SIGNATURE_DESC globalRootDesc(3, globalParams, 1, &staticSampler);
+    globalRootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
-    // Serialize & Create
-    Microsoft::WRL::ComPtr<ID3DBlob> blob;
-    Microsoft::WRL::ComPtr<ID3DBlob> error;
+    Microsoft::WRL::ComPtr<ID3DBlob> blob, error;
     D3D12SerializeRootSignature(&globalRootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error);
-    mDevice.Get()->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&mRtGlobalRootSignature));
+    mDevice.Get()->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(mRtGlobalRootSignature.ReleaseAndGetAddressOf()));
 
-    // 2. Load Compiled Shader (RayTracing.cso)
-    // Ensure you configured VS to compile RayTracing.hlsl to .cso!
-    HLSLShader rtShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/RayTracing.hlsl", L"lib_6_3", {}, L"");
-	auto shaderBlob = rtShader.GetShaderBlob();
+    // --- 2. LOCAL Root Signature (Material, VB, IB) ---
+    // These arguments are passed via the SBT (Shader Binding Table)
+    CD3DX12_ROOT_PARAMETER localParams[4];
+    localParams[0].InitAsConstantBufferView(0, 1); // b0, space1 (Material CB)
+    localParams[1].InitAsShaderResourceView(0, 1); // t0, space1 (Vertices)
+    localParams[2].InitAsShaderResourceView(1, 1); // t1, space1 (Indices)
 
-    // 3. Create State Object (The Complex Part)
+	CD3DX12_DESCRIPTOR_RANGE texRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, Config::cNumberOfTextureSlots, 2, 1); // t2-tN+2, space1
+	localParams[3].InitAsDescriptorTable(1, &texRange);
+
+    CD3DX12_ROOT_SIGNATURE_DESC localRootDesc(_countof(localParams), localParams);
+    localRootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+
+    Microsoft::WRL::ComPtr<ID3DBlob> localBlob;
+    D3D12SerializeRootSignature(&localRootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &localBlob, &error);
+
+    // Note: You need a ComPtr member for this in Renderer.h to keep it alive!
+    // ComPtr<ID3D12RootSignature> mRtLocalRootSignature;
+    mDevice.Get()->CreateRootSignature(0, localBlob->GetBufferPointer(), localBlob->GetBufferSize(), IID_PPV_ARGS(mRtLocalRootSignature.ReleaseAndGetAddressOf()));
+
+    // --- 3. Load Shader ---
+    auto rtShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/RayTracing.hlsl", L"lib_6_3", {}, L"");
+    auto shaderBlob = rtShader.GetShaderBlob();
+
+    // --- 4. State Object ---
     CD3DX12_STATE_OBJECT_DESC rtPipe(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
 
-    // Library (The Shader Blob)
     auto lib = rtPipe.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
     D3D12_SHADER_BYTECODE libdxil = { shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize() };
     lib->SetDXILLibrary(&libdxil);
-    // Export symbols (Entry points)
     lib->DefineExport(L"MyRayGen");
     lib->DefineExport(L"MyMiss");
+	lib->DefineExport(L"MyShadowMiss");
     lib->DefineExport(L"MyClosestHit");
+    lib->DefineExport(L"MyAnyHit"); // Export the AnyHit shader
 
-    // Hit Groups
-    // We bind "MyClosestHit" to a hit group named "HitGroup0"
-    auto hitGroup = rtPipe.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-    hitGroup->SetClosestHitShaderImport(L"MyClosestHit");
-    hitGroup->SetHitGroupExport(L"HitGroup0");
-    hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+    // Hit Group 0 (Opaque) -> Just Closest Hit
+    auto hitGroup0 = rtPipe.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+    hitGroup0->SetClosestHitShaderImport(L"MyClosestHit");
+    hitGroup0->SetHitGroupExport(L"HitGroup0");
+    hitGroup0->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
-    // Shader Config (Payload Size)
+    // Hit Group 1 (Masked) -> Closest Hit + Any Hit (for alpha test)
+    auto hitGroup1 = rtPipe.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+    hitGroup1->SetClosestHitShaderImport(L"MyClosestHit");
+    hitGroup1->SetAnyHitShaderImport(L"MyAnyHit");
+    hitGroup1->SetHitGroupExport(L"HitGroup1");
+    hitGroup1->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+
+    // Hit Group 2 (Transparent) -> Currently same as Masked
+    auto hitGroup2 = rtPipe.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+    hitGroup2->SetClosestHitShaderImport(L"MyClosestHit");
+    //hitGroup2->SetHitGroupExport(L"HitGroup1"); // Reuse HitGroup1 export for now
+    // Note: If you want separate logic, create "HitGroup2" export above
+	hitGroup2->SetHitGroupExport(L"HitGroup2");
+	hitGroup2->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+
+    // Shader Config
     auto shaderConfig = rtPipe.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    shaderConfig->Config(sizeof(float) * 4, sizeof(float) * 2); // 16 byte payload, 8 byte attributes
+    shaderConfig->Config(sizeof(float) * 4 + 4 + sizeof(uint32_t), sizeof(float) * 2); // Payload + Attributes
 
-    // Global Root Signature
+    // Local Root Signature Association
+    // We must tell the pipeline that HitGroup0 and HitGroup1 use the Local Root Sig
+    auto localRootSub = rtPipe.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
+    localRootSub->SetRootSignature(mRtLocalRootSignature.Get());
+
+    auto association = rtPipe.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
+    association->SetSubobjectToAssociate(*localRootSub);
+    association->AddExport(L"HitGroup0");
+    association->AddExport(L"HitGroup1");
+    association->AddExport(L"HitGroup2");
+
+    // Global Root Signature Association
     auto globalRoot = rtPipe.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
     globalRoot->SetRootSignature(mRtGlobalRootSignature.Get());
 
-    // Pipeline Config (Recursion Depth)
+    // Pipeline Config
     auto pipelineConfig = rtPipe.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-    pipelineConfig->Config(1);
+    pipelineConfig->Config(8);
 
-    // Create
+
     HRESULT hr = mDevice.Get()->CreateStateObject(rtPipe, IID_PPV_ARGS(mRtStateObject.ReleaseAndGetAddressOf()));
     if (FAILED(hr)) throw std::runtime_error("Failed to create RTPSO");
 }
@@ -543,42 +591,173 @@ void Renderer::CreateRayTracingPipeline()
 void Renderer::CreateShaderBindingTable()
 {
     Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> props;
-    mRtStateObject.As(&props);
+    HRESULT hr = mRtStateObject.As(&props);
+    if (FAILED(hr)) throw std::runtime_error("Failed to get RTPSO properties");
 
-    // Get Shader Identifiers
+    // 1. Get Shader Identifiers
     void* rayGenID = props->GetShaderIdentifier(L"MyRayGen");
     void* missID = props->GetShaderIdentifier(L"MyMiss");
-    void* hitGroupID = props->GetShaderIdentifier(L"HitGroup0");
+	void* shadowMissID = props->GetShaderIdentifier(L"MyShadowMiss");
+    void* hitGroup0ID = props->GetShaderIdentifier(L"HitGroup0"); // Opaque
+    void* hitGroup1ID = props->GetShaderIdentifier(L"HitGroup1"); // Masked
+    void* hitGroup2ID = props->GetShaderIdentifier(L"HitGroup2"); // Transparent
 
-    // Calculate Size (Aligned to 256 bytes usually, records aligned to 32)
+    // 2. Calculate Layout
     UINT shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES; // 32
-    UINT recordSize = 32; // Standard alignment for shader records
+    // Record = ID (32) + MaterialPtr (8) + VertexPtr (8) + IndexPtr (8) = 56
+    // Align to 32 bytes -> 64 bytes
+    UINT recordSize = 64;
+    mSbtEntrySize = recordSize;
 
-    mSbtEntrySize= recordSize;
-    UINT sbtSize = recordSize * 3; // RayGen + Miss + HitGroup
+    // 3. Gather Meshes & Upload Material Data
+    // We must process meshes in the EXACT same order as BuildTLAS!
+    std::vector<MeshGpuData*> allMeshes;
+    auto Collect = [&](std::vector<MeshGpuData>& list) { for (auto& m : list) allMeshes.push_back(&m); };
+    Collect(mOpaqueSingleSidedMeshes);
+    Collect(mOpaqueDoubleSidedMeshes);
+    Collect(mMaskedSingleSidedMeshes);
+    Collect(mMaskedDoubleSidedMeshes);
+    Collect(mTransparentMeshes);
 
-    // Allocate Upload Buffer for SBT    
+    // FIX: Constant Buffer addresses MUST be multiples of 256 bytes for binding
+    UINT materialStride = (sizeof(MeshMaterialData) + 255) & ~255;
+    UINT materialBufferSize = (UINT)allMeshes.size() * materialStride;
+
+    // Ensure mMaterialBuffer exists (Add to Renderer.h!)
+    if (mMaterialBuffer.Get() == nullptr || mMaterialBuffer.Get()->GetDesc().Width < materialBufferSize)
+    {
+        mMaterialBuffer.Initialize(mDevice.Get(), materialBufferSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
+    }
+
+    // Write Material Data
+    uint8_t* pMatData;
+    mMaterialBuffer.Get()->Map(0, nullptr, (void**)&pMatData);
+    D3D12_GPU_VIRTUAL_ADDRESS matBaseAddr = mMaterialBuffer.Get()->GetGPUVirtualAddress();
+
+    for (size_t i = 0; i < allMeshes.size(); ++i)
+    {
+        // Copy data to aligned offset
+        memcpy(pMatData + (i * materialStride), &allMeshes[i]->materialData, sizeof(MeshMaterialData));
+    }
+    mMaterialBuffer.Get()->Unmap(0, nullptr);
+
+    // 4. Build SBT
+    UINT numHitRecords = (UINT)allMeshes.size();
+    //UINT sbtSize = 32 + 32 + (numHitRecords * recordSize);
+    UINT sbtSize = mSbtEntrySize + 2 * mSbtEntrySize + (numHitRecords * mSbtEntrySize);
+    sbtSize = (sbtSize + 255) & ~255; // Align buffer
+
     mSbtResource.Initialize(mDevice.Get(), sbtSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
 
-    // Write Data
     uint8_t* pData;
     mSbtResource.Get()->Map(0, nullptr, (void**)&pData);
 
-    // Entry 0: RayGen
+    // Entry 0: RayGen (No args)
     memcpy(pData, rayGenID, shaderIDSize);
+    //pData += 32;
 
-    // Entry 1: Miss
-    memcpy(pData + recordSize, missID, shaderIDSize);
+    // Entry 1: Miss (No args)
+	// Record 0: Miss Shader
+	uint8_t* pMiss = pData + mSbtEntrySize;
+    memcpy(pMiss, missID, shaderIDSize);
 
-    // Entry 2: HitGroup (For Opaque)
-    memcpy(pData + recordSize * 2, hitGroupID, shaderIDSize);
+	// Record 1: Shadow Miss Shader
+	uint8_t* pShadowMiss = pMiss + mSbtEntrySize;
+	memcpy(pShadowMiss, shadowMissID, shaderIDSize);
+
+	uint8_t* pHitGroupStart = pShadowMiss + mSbtEntrySize;
+
+    // Entry 2..N: Hit Groups
+    for (size_t i = 0; i < numHitRecords; ++i)
+    {
+        MeshGpuData* mesh = allMeshes[i];
+		uint8_t* pRecord = pHitGroupStart + (i * mSbtEntrySize);
+
+        // --- FIX: ASSIGN CORRECT HIT GROUP ID BASED ON RENDER LAYER ---
+        void* currentID = hitGroup0ID;
+
+        // This inference MUST match the order in the 'Collect' lambda above.
+        // Opaque (Single/Double) -> HG0
+        // Masked/Transparent -> HG1 or HG2
+        if (i >= mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size())
+        {
+            // If it's Masked or Transparent, use HG1/HG2
+            if (i < mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size())
+            {
+                currentID = hitGroup1ID; // Masked
+            }
+            else
+            {
+                currentID = hitGroup2ID; // Transparent
+            }
+        }
+
+        // Copy Shader ID
+        memcpy(pRecord, currentID, shaderIDSize);
+        //pRecord += shaderIDSize;
+		uint8_t* pArgs = pRecord + shaderIDSize;
+
+		D3D12_GPU_DESCRIPTOR_HANDLE texHandle = mesh->materialTable.gpuHandle;
+
+        // Copy Arguments
+        // 1. Material CBV Address (Aligned to 256 bytes)
+        D3D12_GPU_VIRTUAL_ADDRESS matAddr = matBaseAddr + (i * materialStride);
+        // 2. Vertex Buffer Address
+        D3D12_GPU_VIRTUAL_ADDRESS vbAddr = mesh->vb.Get()->GetGPUVirtualAddress();
+        // 3. Index Buffer Address
+        D3D12_GPU_VIRTUAL_ADDRESS ibAddr = mesh->ib.Get()->GetGPUVirtualAddress();
+
+        memcpy(pArgs, &matAddr, 8);
+        memcpy(pArgs + 8, &vbAddr, 8);
+        memcpy(pArgs + 16, &ibAddr, 8);
+
+		memcpy(pArgs + 24, &texHandle, 8); // Texture SRV Table GPU Handle
+
+        //pData += recordSize;
+    }
 
     mSbtResource.Get()->Unmap(0, nullptr);
 }
 
+
 void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& camPos)
 {
-    auto cmdList = static_cast<ID3D12GraphicsCommandList4*>(mCommandList.Get());
+    auto cmdList = mCommandList.Get();
+
+    std::vector<D3D12_RESOURCE_BARRIER> preTraceBarriers;
+    // Pre-allocate rough estimate to avoid reallocations
+    size_t totalMeshes = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
+        mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
+        mTransparentMeshes.size();
+    preTraceBarriers.reserve(totalMeshes * 2);
+
+    auto AddTransitions = [&](const std::vector<MeshGpuData>& meshes)
+        {
+            for (const auto& mesh : meshes)
+            {
+                preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+                    mesh.vb.Get(),
+                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                ));
+                preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+                    mesh.ib.Get(),
+                    D3D12_RESOURCE_STATE_INDEX_BUFFER,
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                ));
+            }
+        };
+
+    AddTransitions(mOpaqueSingleSidedMeshes);
+    AddTransitions(mOpaqueDoubleSidedMeshes);
+    AddTransitions(mMaskedSingleSidedMeshes);
+    AddTransitions(mMaskedDoubleSidedMeshes);
+    AddTransitions(mTransparentMeshes);
+
+    if (!preTraceBarriers.empty())
+    {
+        cmdList->ResourceBarrier(static_cast<UINT>(preTraceBarriers.size()), preTraceBarriers.data());
+    }
 
     // 1. Bind Pipeline & Resources
     ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
@@ -587,38 +766,44 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
     cmdList->SetPipelineState1(mRtStateObject.Get());
     cmdList->SetComputeRootSignature(mRtGlobalRootSignature.Get());
 
-    // Slot 0: UAV Table (Points to mRtOutputUAV_Gpu)
-    // Note: D3D12 Requires a table for UAVs in Root Sigs, or we use SetComputeRootUnorderedAccessView if it's a Raw buffer.
-    // For Texture2D UAV, Table is standard.
+    // Slot 0: UAV Table (Output Texture)
     cmdList->SetComputeRootDescriptorTable(0, mRtOutputUavGpuHandle);
 
     // Slot 1: TLAS (SRV)
     cmdList->SetComputeRootShaderResourceView(1, mTLAS.Get()->GetGPUVirtualAddress());
 
-    // Slot 2: Camera CB
+    // Slot 2: Camera CB (Persistent Buffer Update)
     RayGenConstantBuffer cb;
     cb.viewProjInverse = DirectX::XMMatrixInverse(nullptr, viewProj);
     cb.cameraPos = { camPos.x, camPos.y, camPos.z, 1.0f };
+	cb.numLights = mConstantBufferData.numLights;
+	memcpy(cb.lights, mConstantBufferData.lights, sizeof(LightData) * cb.numLights);
 
-  
-	void* pData;
-	mRtConstantBuffer.Get()->Map(0, nullptr, &pData);
-	memcpy(pData, &cb, sizeof(RayGenConstantBuffer));
-	mRtConstantBuffer.Get()->Unmap(0, nullptr);
-	cmdList->SetComputeRootConstantBufferView(2, mRtConstantBuffer.Get()->GetGPUVirtualAddress());
+    void* pData;
+    HRESULT hr = mRtConstantBuffer.Get()->Map(0, nullptr, &pData);
+    memcpy(pData, &cb, sizeof(RayGenConstantBuffer));
+    mRtConstantBuffer.Get()->Unmap(0, nullptr);
 
+    cmdList->SetComputeRootConstantBufferView(2, mRtConstantBuffer.Get()->GetGPUVirtualAddress());
 
-    // 2. Dispatch
+    // 2. Dispatch Rays
     D3D12_DISPATCH_RAYS_DESC desc = {};
     desc.RayGenerationShaderRecord.StartAddress = mSbtResource.Get()->GetGPUVirtualAddress();
     desc.RayGenerationShaderRecord.SizeInBytes = mSbtEntrySize;
 
     desc.MissShaderTable.StartAddress = mSbtResource.Get()->GetGPUVirtualAddress() + mSbtEntrySize;
-    desc.MissShaderTable.SizeInBytes = mSbtEntrySize;
+    desc.MissShaderTable.SizeInBytes = mSbtEntrySize * 2;
     desc.MissShaderTable.StrideInBytes = mSbtEntrySize;
 
-    desc.HitGroupTable.StartAddress = mSbtResource.Get()->GetGPUVirtualAddress() + mSbtEntrySize * 2;
-    desc.HitGroupTable.SizeInBytes = mSbtEntrySize * 2; // HG0 + HG1
+    desc.HitGroupTable.StartAddress = mSbtResource.Get()->GetGPUVirtualAddress() + mSbtEntrySize * 3;
+    // HitGroup table size = RecordSize * TotalMeshes
+    // (Wa¿ne: rozmiar musi obejmowaæ wszystkie rekordy geometrii!)
+    UINT numMeshes = static_cast<UINT>(
+        mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
+        mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
+        mTransparentMeshes.size());
+
+    desc.HitGroupTable.SizeInBytes = mSbtEntrySize * numMeshes;
     desc.HitGroupTable.StrideInBytes = mSbtEntrySize;
 
     desc.Width = mWidth;
@@ -627,14 +812,15 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 
     cmdList->DispatchRays(&desc);
 
-    // 3. Copy UAV -> BackBuffer
-    // Transition BackBuffer to COPY_DEST
+    // 3. Copy UAV -> BackBuffer (Prezentacja wyniku)
+
+    // Transition BackBuffer: PRESENT -> COPY_DEST
     D3D12_RESOURCE_BARRIER b1 = CD3DX12_RESOURCE_BARRIER::Transition(
         mSwapChain.GetCurrentBackBuffer(),
         D3D12_RESOURCE_STATE_PRESENT,
         D3D12_RESOURCE_STATE_COPY_DEST);
 
-    // Transition Output UAV to COPY_SOURCE
+    // Transition Output UAV: UAV -> COPY_SOURCE
     D3D12_RESOURCE_BARRIER b2 = CD3DX12_RESOURCE_BARRIER::Transition(
         mRtOutputResource.Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
@@ -646,11 +832,13 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
     cmdList->CopyResource(mSwapChain.GetCurrentBackBuffer(), mRtOutputResource.Get());
 
     // Restore States
+    // BackBuffer: COPY_DEST -> PRESENT
     D3D12_RESOURCE_BARRIER b3 = CD3DX12_RESOURCE_BARRIER::Transition(
         mSwapChain.GetCurrentBackBuffer(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_PRESENT);
 
+    // Output UAV: COPY_SOURCE -> UAV (Ready for next frame)
     D3D12_RESOURCE_BARRIER b4 = CD3DX12_RESOURCE_BARRIER::Transition(
         mRtOutputResource.Get(),
         D3D12_RESOURCE_STATE_COPY_SOURCE,
@@ -658,6 +846,42 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 
     D3D12_RESOURCE_BARRIER restoreBarriers[] = { b3, b4 };
     cmdList->ResourceBarrier(2, restoreBarriers);
+
+
+    // ---------------------------------------------------------
+        // 5. RESTORE GEOMETRY STATES FOR RASTERIZER
+        // ---------------------------------------------------------
+        // If you plan to use these meshes in the Rasterizer next frame, put them back.
+    std::vector<D3D12_RESOURCE_BARRIER> postTraceBarriers;
+    postTraceBarriers.reserve(totalMeshes * 2);
+
+    auto AddRestoreTransitions = [&](const std::vector<MeshGpuData>& meshes)
+        {
+            for (const auto& mesh : meshes)
+            {
+                postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+                    mesh.vb.Get(),
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+                ));
+                postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+                    mesh.ib.Get(),
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                    D3D12_RESOURCE_STATE_INDEX_BUFFER
+                ));
+            }
+        };
+
+    AddRestoreTransitions(mOpaqueSingleSidedMeshes);
+    AddRestoreTransitions(mOpaqueDoubleSidedMeshes);
+    AddRestoreTransitions(mMaskedSingleSidedMeshes);
+    AddRestoreTransitions(mMaskedDoubleSidedMeshes);
+    AddRestoreTransitions(mTransparentMeshes);
+
+    if (!postTraceBarriers.empty())
+    {
+        cmdList->ResourceBarrier(static_cast<UINT>(postTraceBarriers.size()), postTraceBarriers.data());
+    }
 }
 
 void Renderer::InitializePipelineState()
@@ -666,7 +890,7 @@ void Renderer::InitializePipelineState()
     HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
 
     std::vector<ShaderMacro> maskedDefines = {
-		{ L"ALPHA_TEST", L"1" }
+        { L"ALPHA_TEST", L"1" }
     };
     HLSLShader maskedPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0", maskedDefines);
 
@@ -675,7 +899,7 @@ void Renderer::InitializePipelineState()
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
     };
     D3D12_INPUT_LAYOUT_DESC inputLayoutDesc
@@ -684,43 +908,43 @@ void Renderer::InitializePipelineState()
         .NumElements = _countof(inputElementDescs),
     };
 
-	mCommandQueue.Flush();
+    mCommandQueue.Flush();
 
-	// 1. Opaque pipeline state
+    // 1. Opaque pipeline state
     mPipelineStateOpaqueSingle.InitializeOpaque(
         mDevice.Get(),
         vertexShader,
         pixelShader,
         inputLayoutDesc);
 
-	// 2. Masked pipeline state (like opaque but with clip)
+    // 2. Masked pipeline state (like opaque but with clip)
     mPipelineStateMaskedSingle.InitializeOpaque(
         mDevice.Get(),
         vertexShader,
         maskedPixelShader,
-		inputLayoutDesc);
+        inputLayoutDesc);
 
-	// 3. Transparent pipeline state
+    // 3. Transparent pipeline state
     mPipelineStateTransparent.InitializeTransparent(
         mDevice.Get(),
         vertexShader,
         pixelShader,
-		inputLayoutDesc);
+        inputLayoutDesc);
 
-	// 4. Opaque double-sided pipeline state
+    // 4. Opaque double-sided pipeline state
     mPipelineStateOpaqueDouble.InitializeOpaque(
         mDevice.Get(),
         vertexShader,
         pixelShader,
-		inputLayoutDesc,
-		true);
+        inputLayoutDesc,
+        true);
 
     // 5. Masked double-sided pipeline state
     mPipelineStateMaskedDouble.InitializeOpaque(
         mDevice.Get(),
         vertexShader,
-		std::move(maskedPixelShader),
-		inputLayoutDesc,
+        std::move(maskedPixelShader),
+        inputLayoutDesc,
         true);
 
 }
@@ -746,20 +970,30 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
 
     // light camera light
-    const float cameraLightIntensity = 0.15f;
+    const float cameraLightIntensity = 0.5f;
     if (staticCount < cMaxLights)
     {
-        LightData camLight{};
-        camLight.position = DirectX::XMFLOAT4(
-            cameraPos.x + cameraForward.x * 1000.0f,
-            cameraPos.y + cameraForward.y * 1000.0f,
-            cameraPos.z + cameraForward.z * 1000.0f,
-            1.0f);
-        camLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
-		camLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
-        camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
-        mConstantBufferData.lights[staticCount] = camLight;
-        mConstantBufferData.numLights = staticCount + 1;
+        //LightData camLight{};
+        //camLight.position = DirectX::XMFLOAT4(
+        //    cameraPos.x + cameraForward.x * 1000.0f,
+        //    cameraPos.y + cameraForward.y * 1000.0f,
+        //    cameraPos.z + cameraForward.z * 1000.0f,
+        //    1.0f);
+        //camLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
+        //camLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
+        //camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
+        //mConstantBufferData.lights[staticCount] = camLight;
+        //mConstantBufferData.numLights = staticCount + 1;
+
+		LightData sunLight{};
+		sunLight.position = DirectX::XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+		sunLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 0.95f, 0.9f, cameraLightIntensity);
+		sunLight.specularColor = DirectX::XMFLOAT4(1.0f, 0.95f, 0.9f, cameraLightIntensity);
+
+		sunLight.dirType = DirectX::XMFLOAT4(0.2f, -1.0f, 0.2f, 1.0f); // directional flag
+
+		mConstantBufferData.lights[staticCount] = sunLight;
+		mConstantBufferData.numLights = staticCount + 1;
     }
     else
     {
@@ -783,7 +1017,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         // Ray tracing rendering path
         RenderRayTracing(viewProj, cameraPos);
     }
-	else
+    else
     {
         // Sort transparent meshes back-to-front each frame (temporary solution)
         SortTransparentMeshes(cameraPos);
@@ -830,7 +1064,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
         // 3. Masked single-sided
         mCommandList.Get()->SetPipelineState(mPipelineStateMaskedSingle.Get());
-        for (const auto& mesh : mMaskedSingleMeshes)
+        for (const auto& mesh : mMaskedSingleSidedMeshes)
             DrawMesh(mesh);
 
         // 4. Masked double-sided
@@ -849,16 +1083,16 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         mCommandList.Get()->ResourceBarrier(1, &barrier);
 
     }
-        // Execute command list
-        mCommandList.Get()->Close();
-        ID3D12CommandList* commandLists[] = { mCommandList.Get() };
-        mCommandQueue.ExecuteCommandLists(1, commandLists);
+    // Execute command list
+    mCommandList.Get()->Close();
+    ID3D12CommandList* commandLists[] = { mCommandList.Get() };
+    mCommandQueue.ExecuteCommandLists(1, commandLists);
 
-        // Present the frame
-        mSwapChain.Present();
+    // Present the frame
+    mSwapChain.Present();
 
-        // Signal and increment the fence value
-        mCommandQueue.SignalFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
+    // Signal and increment the fence value
+    mCommandQueue.SignalFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
 }
 
 void Renderer::DrawMesh(const MeshGpuData& mesh)
@@ -866,7 +1100,7 @@ void Renderer::DrawMesh(const MeshGpuData& mesh)
     mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
     mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
     mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
-	mCommandList.Get()->SetGraphicsRoot32BitConstants(2, sizeof(MeshMaterialData) / 4, &mesh.materialData, 0);
+    mCommandList.Get()->SetGraphicsRoot32BitConstants(2, sizeof(MeshMaterialData) / 4, &mesh.materialData, 0);
     mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
 }
 
