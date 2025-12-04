@@ -102,7 +102,7 @@ private:
 	RayTracingBuilder mRayTracingBuilder; ///< Ray tracing acceleration structure builder.
 	D3D12Resource mTLAS;	///< Top-level acceleration structure result.
 	D3D12Resource mTLAS_Scratch;	///< Top-level acceleration structure scratch buffer. May be used during updating, when objects move.
-	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. TBH I don't know if it should be kept around after build.
+	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. Required only during TLAS build unless TLAS updates are planned.
 
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
