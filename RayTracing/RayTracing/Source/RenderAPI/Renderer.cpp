@@ -102,6 +102,8 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     gpu.materialData = mesh.mMaterialData;
     gpu.vb.Initialize(mDevice.Get(), vbSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
     gpu.ib.Initialize(mDevice.Get(), ibSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+    //gpu.vb.Initialize(mDevice.Get(), vbSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_GENERIC_READ);
+    //gpu.ib.Initialize(mDevice.Get(), ibSizeUINT, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_GENERIC_READ);
 
     auto vbAlloc = mUploadHeap.Allocate(vbSize);
     auto ibAlloc = mUploadHeap.Allocate(ibSize);
@@ -120,13 +122,13 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
     barriers[0].Transition.pResource = gpu.vb.Get();
     barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+    barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_GENERIC_READ;
 
     barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barriers[1].Transition.pResource = gpu.ib.Get();
     barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
+    barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_GENERIC_READ;
 
     mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
@@ -312,7 +314,11 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
+
+    //const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\AlphaBlendModeTest\glTF\AlphaBlendModeTest.gltf)"; GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
+    //const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\AlphaBlendModeTest\glTF\AlphaBlendModeTest.gltf)"; GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
+    //const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\ABeautifulGame\glTF\ABeautifulGame.gltf)"; GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
+    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
     auto modelA = std::make_unique<Model>();
 
     std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
@@ -536,25 +542,27 @@ void Renderer::CreateRayTracingPipeline()
     lib->DefineExport(L"MyRayGen");
     lib->DefineExport(L"MyMiss");
 	lib->DefineExport(L"MyShadowMiss");
-    lib->DefineExport(L"MyClosestHit");
+    //lib->DefineExport(L"MyClosestHit");
+    lib->DefineExport(L"MyClosestHitOpaque");
+    lib->DefineExport(L"MyClosestHitTransparent");
     lib->DefineExport(L"MyAnyHit"); // Export the AnyHit shader
 
     // Hit Group 0 (Opaque) -> Just Closest Hit
     auto hitGroup0 = rtPipe.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-    hitGroup0->SetClosestHitShaderImport(L"MyClosestHit");
+    hitGroup0->SetClosestHitShaderImport(L"MyClosestHitOpaque");
     hitGroup0->SetHitGroupExport(L"HitGroup0");
     hitGroup0->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
     // Hit Group 1 (Masked) -> Closest Hit + Any Hit (for alpha test)
     auto hitGroup1 = rtPipe.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-    hitGroup1->SetClosestHitShaderImport(L"MyClosestHit");
+    hitGroup1->SetClosestHitShaderImport(L"MyClosestHitOpaque");
     hitGroup1->SetAnyHitShaderImport(L"MyAnyHit");
     hitGroup1->SetHitGroupExport(L"HitGroup1");
     hitGroup1->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
     // Hit Group 2 (Transparent) -> Currently same as Masked
     auto hitGroup2 = rtPipe.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-    hitGroup2->SetClosestHitShaderImport(L"MyClosestHit");
+    hitGroup2->SetClosestHitShaderImport(L"MyClosestHitTransparent");
     //hitGroup2->SetHitGroupExport(L"HitGroup1"); // Reuse HitGroup1 export for now
     // Note: If you want separate logic, create "HitGroup2" export above
 	hitGroup2->SetHitGroupExport(L"HitGroup2");
@@ -580,8 +588,8 @@ void Renderer::CreateRayTracingPipeline()
     globalRoot->SetRootSignature(mRtGlobalRootSignature.Get());
 
     // Pipeline Config
-    auto pipelineConfig = rtPipe.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-    pipelineConfig->Config(8);
+    auto pipelineConfig = rtPipe.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG1_SUBOBJECT>();
+	pipelineConfig->Config(8, D3D12_RAYTRACING_PIPELINE_FLAG_SKIP_PROCEDURAL_PRIMITIVES); // Max recursion depth = 8
 
 
     HRESULT hr = mDevice.Get()->CreateStateObject(rtPipe, IID_PPV_ARGS(mRtStateObject.ReleaseAndGetAddressOf()));
@@ -726,38 +734,38 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 
     std::vector<D3D12_RESOURCE_BARRIER> preTraceBarriers;
     // Pre-allocate rough estimate to avoid reallocations
-    size_t totalMeshes = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
-        mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
-        mTransparentMeshes.size();
-    preTraceBarriers.reserve(totalMeshes * 2);
+    //size_t totalMeshes = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
+    //    mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
+    //    mTransparentMeshes.size();
+    //preTraceBarriers.reserve(totalMeshes * 2);
 
-    auto AddTransitions = [&](const std::vector<MeshGpuData>& meshes)
-        {
-            for (const auto& mesh : meshes)
-            {
-                preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-                    mesh.vb.Get(),
-                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-                ));
-                preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-                    mesh.ib.Get(),
-                    D3D12_RESOURCE_STATE_INDEX_BUFFER,
-                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-                ));
-            }
-        };
+    //auto AddTransitions = [&](const std::vector<MeshGpuData>& meshes)
+    //    {
+    //        for (const auto& mesh : meshes)
+    //        {
+    //            preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+    //                mesh.vb.Get(),
+    //                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    //            ));
+    //            preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+    //                mesh.ib.Get(),
+    //                D3D12_RESOURCE_STATE_INDEX_BUFFER,
+    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    //            ));
+    //        }
+    //    };
 
-    AddTransitions(mOpaqueSingleSidedMeshes);
-    AddTransitions(mOpaqueDoubleSidedMeshes);
-    AddTransitions(mMaskedSingleSidedMeshes);
-    AddTransitions(mMaskedDoubleSidedMeshes);
-    AddTransitions(mTransparentMeshes);
+    //AddTransitions(mOpaqueSingleSidedMeshes);
+    //AddTransitions(mOpaqueDoubleSidedMeshes);
+    //AddTransitions(mMaskedSingleSidedMeshes);
+    //AddTransitions(mMaskedDoubleSidedMeshes);
+    //AddTransitions(mTransparentMeshes);
 
-    if (!preTraceBarriers.empty())
-    {
-        cmdList->ResourceBarrier(static_cast<UINT>(preTraceBarriers.size()), preTraceBarriers.data());
-    }
+    //if (!preTraceBarriers.empty())
+    //{
+    //    cmdList->ResourceBarrier(static_cast<UINT>(preTraceBarriers.size()), preTraceBarriers.data());
+    //}
 
     // 1. Bind Pipeline & Resources
     ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
@@ -852,36 +860,36 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
         // 5. RESTORE GEOMETRY STATES FOR RASTERIZER
         // ---------------------------------------------------------
         // If you plan to use these meshes in the Rasterizer next frame, put them back.
-    std::vector<D3D12_RESOURCE_BARRIER> postTraceBarriers;
-    postTraceBarriers.reserve(totalMeshes * 2);
+    //std::vector<D3D12_RESOURCE_BARRIER> postTraceBarriers;
+    //postTraceBarriers.reserve(totalMeshes * 2);
 
-    auto AddRestoreTransitions = [&](const std::vector<MeshGpuData>& meshes)
-        {
-            for (const auto& mesh : meshes)
-            {
-                postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-                    mesh.vb.Get(),
-                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
-                ));
-                postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-                    mesh.ib.Get(),
-                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                    D3D12_RESOURCE_STATE_INDEX_BUFFER
-                ));
-            }
-        };
+    //auto AddRestoreTransitions = [&](const std::vector<MeshGpuData>& meshes)
+    //    {
+    //        for (const auto& mesh : meshes)
+    //        {
+    //            postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+    //                mesh.vb.Get(),
+    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+    //                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+    //            ));
+    //            postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+    //                mesh.ib.Get(),
+    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+    //                D3D12_RESOURCE_STATE_INDEX_BUFFER
+    //            ));
+    //        }
+    //    };
 
-    AddRestoreTransitions(mOpaqueSingleSidedMeshes);
-    AddRestoreTransitions(mOpaqueDoubleSidedMeshes);
-    AddRestoreTransitions(mMaskedSingleSidedMeshes);
-    AddRestoreTransitions(mMaskedDoubleSidedMeshes);
-    AddRestoreTransitions(mTransparentMeshes);
+    //AddRestoreTransitions(mOpaqueSingleSidedMeshes);
+    //AddRestoreTransitions(mOpaqueDoubleSidedMeshes);
+    //AddRestoreTransitions(mMaskedSingleSidedMeshes);
+    //AddRestoreTransitions(mMaskedDoubleSidedMeshes);
+    //AddRestoreTransitions(mTransparentMeshes);
 
-    if (!postTraceBarriers.empty())
-    {
-        cmdList->ResourceBarrier(static_cast<UINT>(postTraceBarriers.size()), postTraceBarriers.data());
-    }
+    //if (!postTraceBarriers.empty())
+    //{
+    //    cmdList->ResourceBarrier(static_cast<UINT>(postTraceBarriers.size()), postTraceBarriers.data());
+    //}
 }
 
 void Renderer::InitializePipelineState()

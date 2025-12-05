@@ -76,6 +76,83 @@ struct Vertex
     float4 tan;
 };
 
+// Calculate the World Space Normal from the Normal Map
+float3 CalculateNormal(float3 N, float4 tangent, float2 uv)
+{
+    // 1. Sample the Normal Map (Range: 0.0 to 1.0)
+    float3 normalSample = gNormalMap.SampleLevel(gSampler, uv, 0).rgb;
+    
+    // 2. Unpack from [0, 1] to [-1, 1]
+    float3 tangentNormal = normalSample * 2.0f - 1.0f;
+
+    // 3. Create the TBN Matrix
+    // N = World Geometric Normal (from vertex)
+    // T = World Tangent (from vertex)
+    // B = World Bitangent (Calculated via cross product)
+    
+    // Re-orthonormalize T with respect to N (Gram-Schmidt process)
+    // This fixes artifacts if the mesh scaling skewed the tangent.
+    float3 T = normalize(tangent.xyz - dot(tangent.xyz, N) * N);
+    
+    // Calculate Bitangent
+    // tangent.w stores the "handedness" (reflection) of the UVs, usually -1 or 1.
+    float3 B = cross(N, T) * tangent.w;
+
+    float3x3 TBN = float3x3(T, B, N);
+
+    // 4. Transform Normal from Tangent Space to World Space
+    float3 worldNormal = mul(tangentNormal, TBN);
+    
+    return normalize(worldNormal);
+}
+
+static const float PI = 3.14159265359f;
+
+// Fresnel Schlick approximation
+// F0: Surface reflection at zero incidence (0.04 for dielectrics, Albedo for metals)
+float3 fresnelSchlick(float cosTheta, float3 F0)
+{
+    return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
+}
+
+// Normal Distribution Function (GGX) - Determines how big/sharp the highlight is
+float DistributionGGX(float3 N, float3 H, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+
+    float num = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return num / max(denom, 0.0000001);
+}
+
+// Geometry Function (Schlick-GGX) - Determines self-shadowing (micro-facets)
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+
+    float num = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return num / denom;
+}
+
+float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+
 // --- RANDOM NUMBER GENERATOR ---
 // A simple hash function to generate random numbers based on position
 uint initRand(uint val0, uint val1, uint backoff = 16)
@@ -122,10 +199,13 @@ float3 GetConeSample(inout uint seed, float3 L, float spreadAngle)
 }
 
 // --- LIGHTING HELPER ---
-float3 CalculateLighting(float3 worldPos, float3 N, float3 albedo, uint2 pixelCoord)
+float3 CalculateLighting(float3 worldPos, float3 N, float3 V, float3 albedo, float metallic, float roughness, uint2 pixelCoord)
 {
-    float3 finalColor = float3(0, 0, 0);
+    float3 finalColor = albedo * 0.1f; // Ambient term
     uint seed = initRand(pixelCoord.x, pixelCoord.y);
+    
+    float3 F0 = float3(0.04f, 0.04f, 0.04f);
+    F0 = lerp(F0, albedo, metallic);
 
     for (uint i = 0; i < numLights; ++i)
     {
@@ -134,13 +214,14 @@ float3 CalculateLighting(float3 worldPos, float3 N, float3 albedo, uint2 pixelCo
         float3 L_central;
         float lightRadius = 1.0f;
         float attenuation = 1.0f;
+        float lightDistance = 10000.0f;
 
         // 1. Calculate Vector to Light (L)
         if (light.dirType.w > 0.5f) // Directional Light
         {
             L_central = normalize(-light.dirType.xyz);
             lightRadius = 0.02f;
-
+            lightDistance = 1000.0f;
         }
         else // Point Light
         {
@@ -151,6 +232,7 @@ float3 CalculateLighting(float3 worldPos, float3 N, float3 albedo, uint2 pixelCo
             // Simple Inverse Square Falloff
             attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
             lightRadius = 0.1f;
+            lightDistance = dist;
         }
         
         float NdotL = dot(N, L_central);
@@ -159,7 +241,8 @@ float3 CalculateLighting(float3 worldPos, float3 N, float3 albedo, uint2 pixelCo
         
         
         float3 L_shadow = L_central;
-        GetConeSample(seed, L_central, lightRadius);
+        if (lightRadius > 0.0f)
+            L_shadow = GetConeSample(seed, L_central, lightRadius);
         
 
         // 2. Shadow Ray
@@ -170,11 +253,12 @@ float3 CalculateLighting(float3 worldPos, float3 N, float3 albedo, uint2 pixelCo
         shadowRay.Origin = origin;
         shadowRay.Direction = L_shadow;
         shadowRay.TMin = 0.001f;
+        shadowRay.TMax = lightDistance;
         
         // If Point light, only trace as far as the light source. 
         // If Directional, trace to infinity (1000.0f).
-        float lightDist = (light.dirType.w > 0.5f) ? 1000.0f : distance(light.position.xyz, worldPos);
-        shadowRay.TMax = lightDist;
+        //float lightDist = (light.dirType.w > 0.5f) ? 1000.0f : distance(light.position.xyz, worldPos);
+        //shadowRay.TMax = lightDist;
 
         // Initialize shadow payload
         RayPayload shadowPayload;
@@ -196,10 +280,30 @@ float3 CalculateLighting(float3 worldPos, float3 N, float3 albedo, uint2 pixelCo
         );
 
         // 3. Accumulate if not occluded
-        if (shadowPayload.hitT < 0.0f) // -1.0 means "Not Occluded"
+        if (shadowPayload.hitT < 0.0f) // Not Occluded
         {
-            float3 diffuse = albedo * light.diffuseColor.rgb * light.diffuseColor.a * NdotL * attenuation;
-            finalColor += diffuse;
+            float3 L = L_central;
+            float3 H = normalize(V + L); // Half vector
+            float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation * 5.0f; // Boost intensity slightly for PBR
+
+            // Cook-Torrance BRDF
+            float NDF = DistributionGGX(N, H, roughness);
+            float G = GeometrySmith(N, V, L, roughness);
+            float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+           
+            float3 numerator = NDF * G * F;
+            float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001; // + 0.0001 to prevent divide by zero
+            float3 specular = numerator / denominator;
+            
+            // Energy conservation: diffuse + specular <= 1.0
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= (1.0 - metallic); // Metals have no diffuse
+
+            float NdotL = max(dot(N, L), 0.0);
+
+            // Add to final
+            finalColor += (kD * albedo / PI + specular) * radiance * NdotL;
         }
     }
 
@@ -246,7 +350,8 @@ Vertex GetHitSurface(Attributes attr)
     result.pos  = v0.pos * bary.x + v1.pos * bary.y + v2.pos * bary.z;
     result.norm = normalize(v0.norm * bary.x + v1.norm * bary.y + v2.norm * bary.z);
     result.uv   = v0.uv * bary.x + v1.uv * bary.y + v2.uv * bary.z;
-    // Note: Tangent interpolation skipped for brevity, typically not needed for basic shading
+    result.tan.xyz = normalize(v0.tan.xyz * bary.x + v1.tan.xyz * bary.y + v2.tan.xyz * bary.z);
+    result.tan.w = v0.tan.w;
     return result;
 }
 
@@ -301,63 +406,122 @@ void MyShadowMiss(inout RayPayload payload) // Change to RayPayload
 
 // --- 3. CLOSEST HIT (OPAQUE) ---
 // Define a max depth to prevent TDR (GPU Hangs)
-static const uint MAX_RECURSION_DEPTH = 6;
+static const uint MAX_RECURSION_DEPTH = 3;
 
-[shader("closesthit")]
-void MyClosestHit(inout RayPayload payload, in Attributes attr)
+//[shader("closesthit")]
+void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
 {
     Vertex surface = GetHitSurface(attr);
     
     if (HitKind() == HIT_KIND_TRIANGLE_BACK_FACE)
         surface.norm = -surface.norm;
-    
-    // 1. Sample Texture & Material Data
-        float4 albedoSample = gAlbedoMap.SampleLevel(gSampler, surface.uv, 0);
+
+    // 1. Sample Materials
+    float4 albedoSample = gAlbedoMap.SampleLevel(gSampler, surface.uv, 0);
     float3 albedo = albedoSample.rgb * gBaseColorFactor.rgb;
-    float alpha = albedoSample.a * gBaseColorFactor.a;
-
-    // 2. Calculate Lighting for the Decal/Surface itself
-    float3 L = normalize(float3(0.5, 1.0, -0.5));
-    float3 N = surface.norm;
-    float NdotL = saturate(dot(N, L));
-    // Calculate World Position (Ray Origin + Ray Dir * T)
-    float3 worldPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    float alpha = isTransparent ? (albedoSample.a * gBaseColorFactor.a) : 1.0f;
     
+    float metalness = gMetalnessMap.SampleLevel(gSampler, surface.uv, 0).b * gMetalnessFactor;
+    float roughness = gRoughnessMap.SampleLevel(gSampler, surface.uv, 0).g * gRoughnessFactor;
+
+    // Normal Mapping (Optional - simplified for now, assuming mesh normal)
+    //float3 N = normalize(surface.norm);
+    float3 N = CalculateNormal(normalize(surface.norm), surface.tan, surface.uv);
+
+    // View Vector (Camera to Surface)
+    float3 worldPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    float3 V = normalize(WorldRayOrigin() - worldPos);
+
+    // 2. Direct Lighting (Sun / Lights)
     uint2 pixelCoord = DispatchRaysIndex().xy;
-    float3 lighting = CalculateLighting(worldPos, surface.norm, albedo, pixelCoord);
-    lighting += gEmissiveMap.SampleLevel(gSampler, surface.uv, 0).rgb * gEmissiveFactor.rgb;
+    // Note: Passed V, Metalness and Roughness to the new function
+    float3 directLight = CalculateLighting(worldPos, N, V, albedo, metalness, roughness, pixelCoord);
+    
+    float3 emissive = gEmissiveMap.SampleLevel(gSampler, surface.uv, 0).rgb * gEmissiveFactor.rgb;
 
-    // 3. HANDLE TRANSPARENCY / BLENDING
-    float3 finalColor = lighting;
+    float3 finalColor = directLight + emissive;
 
-    // If semi-transparent AND we haven't hit our bounce limit...
+    // -------------------------------------------------------------
+    // 3. REFLECTION (MIRROR) LOGIC
+    // -------------------------------------------------------------
+    // Only reflect if we haven't hit max depth and the surface has some reflectivity
+    // For PBR, everything reflects, but we can optimize high roughness away.
+    if (payload.recursionDepth < MAX_RECURSION_DEPTH)
+    {
+        // A. Calculate F0 (Reflectivity at 0 degrees)
+        float3 F0 = float3(0.04, 0.04, 0.04);
+        F0 = lerp(F0, albedo, metalness);
+
+        // B. Calculate Fresnel (How much light reflects vs refracts/absorbs)
+        float3 F = fresnelSchlick(max(dot(N, V), 0.0), F0);
+
+        // C. Generate Reflection Ray
+        // For pure mirror: reflect(-V, N). 
+        float3 R = reflect(-V, N);
+
+        RayDesc reflRay;
+        reflRay.Origin = worldPos + (N * 0.001f); // Offset to avoid acne
+        reflRay.Direction = R;
+        reflRay.TMin = 0.001f;
+        reflRay.TMax = 1000.0f;
+
+        RayPayload reflPayload;
+        reflPayload.color = float4(0, 0, 0, 0);
+        reflPayload.hitT = -1.0f;
+        reflPayload.recursionDepth = payload.recursionDepth + 1;
+
+        // D. Trace!
+        TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, reflRay, reflPayload);
+
+        // E. Composite Reflection
+        // For metals: Reflection is tinted by Albedo (handled by F0 interpolation)
+        // For dielectrics: Reflection is white (F0=0.04)
+        // We multiply by F (Fresnel) because reflections are stronger at glancing angles.
+        finalColor += reflPayload.color.rgb * F;
+    }
+
+    // -------------------------------------------------------------
+    // 4. TRANSPARENCY LOGIC (Glass / Alpha Blending)
+    // -------------------------------------------------------------
     if (alpha < 1.0f && payload.recursionDepth < MAX_RECURSION_DEPTH)
     {
-        // A. Setup the continuation ray
-        RayDesc newRay;
-        newRay.Origin = worldPos;
-        newRay.Direction = WorldRayDirection(); // Continue straight through
-        newRay.TMin = 0.001f; // Offset to avoid self-intersection acne
-        newRay.TMax = 1000.0f;
+        RayDesc transRay;
+        transRay.Origin = worldPos + (WorldRayDirection() * 0.001f); // Push forward through surface
+        transRay.Direction = WorldRayDirection();
+        transRay.TMin = 0.001f;
+        transRay.TMax = 1000.0f;
 
-        // B. Create payload for the next bounce
-        RayPayload nextPayload;
-        nextPayload.color = float4(0, 0, 0, 0);
-        nextPayload.hitT = -1.0f;
-        nextPayload.recursionDepth = payload.recursionDepth + 1;
+        RayPayload transPayload;
+        transPayload.color = float4(0, 0, 0, 0);
+        transPayload.hitT = -1.0f;
+        transPayload.recursionDepth = payload.recursionDepth + 1;
 
-        // C. Shoot the ray!
-        // This halts the current shader, goes to find the next hit, and returns here.
-        TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, newRay, nextPayload);
+        TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, transRay, transPayload);
 
-        // D. Blend: (Source * Alpha) + (Dest * (1 - Alpha))
-        float3 backgroundColor = nextPayload.color.rgb;
-        finalColor = lerp(backgroundColor, lighting, alpha);
+        // Simple Blend:
+        // Reflective surface color + Transmitted background color
+        finalColor = lerp(transPayload.color.rgb, finalColor, alpha);
     }
 
     payload.color = float4(finalColor, 1.0f);
     payload.hitT = RayTCurrent();
 }
+
+// Entry Point 1: For Opaque and Masked Geometry
+// Masked geometry handles holes in AnyHit; the remaining surface is opaque.
+[shader("closesthit")]
+void MyClosestHitOpaque(inout RayPayload payload, in Attributes attr)
+{
+    DoShading(payload, attr, false); // false = Disable blending
+}
+
+// Entry Point 2: For Transparent Geometry
+[shader("closesthit")]
+void MyClosestHitTransparent(inout RayPayload payload, in Attributes attr)
+{
+    DoShading(payload, attr, true); // true = Enable blending
+}
+
 
 // --- 4. ANY HIT (ALPHA TEST) ---
 // Used for Masked Geometry (Leaves, Chain)
