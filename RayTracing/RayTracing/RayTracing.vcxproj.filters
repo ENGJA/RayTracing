@@ -204,6 +204,9 @@
     <ClCompile Include="Source\ResourceLoading\ImageDecoder.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\RT\RayTracingBuilder.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
     <ClCompile Include="..\Includes\imgui\imgui.cpp">
       <Filter>Pliki źródłowe\Imgui</Filter>
     </ClCompile>
@@ -338,14 +341,12 @@
     <ClInclude Include="Source\ResourceLoading\ImageDecoder.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
-    <ClInclude Include="Source\UI\UIManager.h">
-      <Filter>Pliki nagłówkowe\UI</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
     <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
     <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
+    <FxCompile Include="Source\Shaders\PixelShader_Masked.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

@@ -30,5 +30,14 @@ public:
 	 * @param clearValue Optional clear value for certain resource types.
 	 */
 	void Initialize(ID3D12Device* pDevice, const D3D12_RESOURCE_DESC& resourceDesc, D3D12_HEAP_TYPE heapType, D3D12_RESOURCE_STATES initialState, const D3D12_CLEAR_VALUE* clearValue = nullptr);
-};
 
+
+	/**
+	* @brief Allocates a committed resource using a full resource descriptor and custom heap properties.
+	* @param pDevice D3D12 device.
+	* @param resourceDesc Resource description.
+	* @param heapProps Custom heap properties.
+	*/
+	void Initialize(ID3D12Device* pDevice, const D3D12_RESOURCE_DESC& resourceDesc, const D3D12_HEAP_PROPERTIES& heapProps);
+
+};

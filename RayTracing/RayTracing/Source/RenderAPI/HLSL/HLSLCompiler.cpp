@@ -22,7 +22,7 @@ void HLSLCompiler::Initialize()
 	ASSERT_HR(hr, "Failed to create default include handler.");
 }
 
-HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWSTR entryPoint) const
+HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, const std::vector<ShaderMacro>& defines, LPCWSTR entryPoint) const
 {
 	Microsoft::WRL::ComPtr<IDxcBlobEncoding> sourceBlob;
 	HRESULT hr = mUtils->LoadFile(
@@ -38,7 +38,7 @@ HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWS
 	sourceBuffer.Size = sourceBlob->GetBufferSize();
 	sourceBuffer.Encoding = DXC_CP_ACP;
 
-	LPCWSTR arguments[] = {
+	std::vector<LPCWSTR> arguments = {
 		L"-E", // entry point
 		entryPoint,
 		L"-T", // target profile
@@ -52,11 +52,20 @@ HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWS
 #endif
 	};
 
+	std::vector<std::wstring> macroStrings;
+	for (const auto& define : defines)
+	{
+		arguments.push_back(L"-D");
+		std::wstring macroString = define.mName + L"=" + define.mDefinition;
+		macroStrings.push_back(std::move(macroString));
+		arguments.push_back(macroStrings.back().c_str());
+	}
+
 	Microsoft::WRL::ComPtr<IDxcResult> compileResult;
 	hr = mCompiler->Compile(
 		&sourceBuffer,
-		arguments,
-		_countof(arguments),
+		arguments.data(),
+		arguments.size(),
 		mIncludeHandler.Get(),
 		IID_PPV_ARGS(compileResult.GetAddressOf())
 	);
@@ -86,6 +95,7 @@ HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, LPCWS
 
 	return HLSLShader(shaderBlob.Get());
 }
+
 
 HLSLShader HLSLCompiler::LoadFromCso(LPCWSTR filePath) const
 {

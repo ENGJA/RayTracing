@@ -42,6 +42,12 @@ public:
 	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue);
 
 	/**
+	* @brief Creates a solid color 1x1 texture for default/dummy usage.
+	* @param color 32-bit BGRA color value.
+	*/
+	GPUTexture CreateSolidDummyTexture(uint32_t color);
+
+	/**
 	* @brief Resets internal state, such as the mipmap generator.
 	*/
 	void Reset() { mMipmapGenerator.Reset(); }

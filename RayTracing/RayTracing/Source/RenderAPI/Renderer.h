@@ -14,6 +14,7 @@
 #include "ResourceLoading/TextureLoader.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
 #include "RenderAPI/HLSL/HLSLCompiler.h"
+#include "RenderAPI/RT/RayTracingBuilder.h"
 #include <unordered_map>
 
 // Forward declaration
@@ -39,6 +40,21 @@ struct MeshGpuData
 	D3D12Resource ib; ///< Index buffer resource.
 	D3D12_INDEX_BUFFER_VIEW ibv{}; ///< Index buffer view used for IA binding.
 	DescriptorAllocation materialTable; ///< Contiguous descriptors for material textures (t0 - t4).
+
+	MeshMaterialData materialData{}; ///< Material data for constant buffer upload.
+
+	DirectX::XMFLOAT3 center; ///< Mesh bounding sphere center in model space.
+	float distanceToCamera = 0.0f; ///< Distance from mesh center to camera (for sorting).
+
+	D3D12Resource blasResult; ///< Bottom-level acceleration structure resource for ray tracing.
+	//UINT blasIndex;
+};
+
+struct DefaultTextures
+{
+	GPUTexture white;
+	//GPUTexture black;
+	GPUTexture normal;
 };
 
 /**
@@ -50,7 +66,13 @@ private:
 	D3D12Device mDevice; ///< Logical D3D12 device wrapper.
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
-	D3D12PipelineState mPipelineState; ///< Pipeline state and root signature.
+
+	D3D12PipelineState mPipelineStateOpaqueSingle; ///< Pipeline state and root signature for opaque single-sided objects.
+	D3D12PipelineState mPipelineStateMaskedSingle; ///< Pipeline state and root signature for masked single-sided objects.
+	D3D12PipelineState mPipelineStateTransparent; ///< Pipeline state and root signature for transparent objects.
+
+	D3D12PipelineState mPipelineStateOpaqueDouble; ///< Pipeline state and root signature for opaque double-sided objects.
+	D3D12PipelineState mPipelineStateMaskedDouble; ///< Pipeline state and root signature for masked double-sided objects.
 
 	UINT mWidth = 0; ///< Back buffer width.
 	UINT mHeight = 0; ///< Back buffer height.
@@ -69,10 +91,22 @@ private:
 
 	std::unordered_map<std::string, GPUTextureLoadState> mTextureCache; ///< Cache of loaded GPU textures by path.
 
+	DefaultTextures mDefaultTextures; ///< Default white/black/normal textures.
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
-	std::vector<MeshGpuData> mMeshGpu; ///< Flattened GPU data per mesh across all models.
+	std::vector<MeshGpuData> mOpaqueSingleSidedMeshes; ///< Flattened array of opaque single-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mMaskedSingleMeshes; ///< Flattened array of masked single-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mTransparentMeshes; ///< Flattened array of transparent mesh GPU data for rendering.
+
+	std::vector<MeshGpuData> mOpaqueDoubleSidedMeshes; ///< Flattened array of opaque double-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mMaskedDoubleSidedMeshes; ///< Flattened array of masked double-sided mesh GPU data for rendering.
 
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
+
+	RayTracingBuilder mRayTracingBuilder; ///< Ray tracing acceleration structure builder.
+	D3D12Resource mTLAS;	///< Top-level acceleration structure result.
+	D3D12Resource mTLAS_Scratch;	///< Top-level acceleration structure scratch buffer. May be used during updating, when objects move.
+	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. Required only during TLAS build unless TLAS updates are planned.
+
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
@@ -144,6 +178,28 @@ private:
 	 * @param executeBatch Function to execute the command queue when needed.
 	 */
 	void CreateMaterial(const Mesh& mesh, const std::string& directory, MeshGpuData& gpuData, const std::function<void()>& executeBatch);
+
+	/**
+	 * @brief Draws a single mesh (binds its buffers and material).
+	 * @param mesh Mesh GPU data to draw.
+	 */
+	void DrawMesh(const MeshGpuData& mesh);
+
+	/**
+	 * @brief Sorts transparent meshes back-to-front based on camera position.
+	 * @param cameraPos Camera world position.
+	 */
+	void SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos);
+
+	/**
+	 * @brief Initializes default dummy textures (white, normal).
+	 */
+	void InitializeDummyTextures();
+
+	/**
+	 * @brief Initializes ray tracing acceleration structures.
+	 */
+	void InitializeRayTracing();
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
@@ -162,7 +218,7 @@ public:
 	
 	/**
 	 * @brief Records and submits commands for one frame and presents.
-	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
+	 * @param viewProj View-projection matrix dostarczony z zewnÂ¹trz (CameraManager).
 	 * @param cameraPos Camera world position.
 	 * @param cameraForward Camera forward vector.
 	 */

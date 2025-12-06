@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "D3D12RootSignature.h"
+#include "RenderAPI/DataTypes.h"
 #include "helpers.h"
 
 using std::wcerr, std::endl;
@@ -8,6 +9,7 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 	// Root parameters:
 	// 0: CBV b0
 	// 1: Descriptor table with 5 SRVs (t0 - t4) for material textures
+	// 2: 32-bit constants b1 for MeshMaterialData
 	D3D12_DESCRIPTOR_RANGE1 srvRange{};
 	srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	srvRange.NumDescriptors = 5; // baseColor, normal, metalness, roughness, emissive
@@ -16,7 +18,7 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 	srvRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
 	srvRange.OffsetInDescriptorsFromTableStart = 0;
 
-	D3D12_ROOT_PARAMETER1 rootParameters[2] = {};
+	D3D12_ROOT_PARAMETER1 rootParameters[3] = {};
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[0].Descriptor.ShaderRegister = 0;
 	rootParameters[0].Descriptor.RegisterSpace = 0;
@@ -26,6 +28,13 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 	rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 	rootParameters[1].DescriptorTable.pDescriptorRanges = &srvRange;
 	rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+
+	rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+	rootParameters[2].Constants.ShaderRegister = 1; // b1
+	rootParameters[2].Constants.RegisterSpace = 0;
+	rootParameters[2].Constants.Num32BitValues = sizeof(MeshMaterialData) / 4;
+	rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	// Static sampler at s0 (use version 1.2 structure)
 	D3D12_STATIC_SAMPLER_DESC staticSampler{};
