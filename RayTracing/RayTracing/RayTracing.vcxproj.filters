@@ -85,6 +85,15 @@
     <Filter Include="Pliki źródłowe\RenderAPI\RT">
       <UniqueIdentifier>{d11b34ae-2d3a-43ff-8482-fa9bf14c20a8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Pliki źródłowe\Imgui">
+      <UniqueIdentifier>{cfcb3ea4-7916-4fec-b422-4c4617eeecec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki nagłówkowe\UI">
+      <UniqueIdentifier>{8d60fb51-9028-4bb7-963a-2028f70d49db}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Pliki źródłowe\UI">
+      <UniqueIdentifier>{77414f6c-e674-481d-9a05-a5329fe280f9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\pch.cpp">
@@ -194,6 +203,27 @@
     </ClCompile>
     <ClCompile Include="Source\ResourceLoading\ImageDecoder.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Includes\imgui\imgui.cpp">
+      <Filter>Pliki źródłowe\Imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Includes\imgui\imgui_draw.cpp">
+      <Filter>Pliki źródłowe\Imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Includes\imgui\imgui_impl_dx12.cpp">
+      <Filter>Pliki źródłowe\Imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Includes\imgui\imgui_impl_win32.cpp">
+      <Filter>Pliki źródłowe\Imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Includes\imgui\imgui_tables.cpp">
+      <Filter>Pliki źródłowe\Imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Includes\imgui\imgui_widgets.cpp">
+      <Filter>Pliki źródłowe\Imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\UI\UIManager.cpp">
+      <Filter>Pliki źródłowe\UI</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -307,6 +337,9 @@
     </ClInclude>
     <ClInclude Include="Source\ResourceLoading\ImageDecoder.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\UI\UIManager.h">
+      <Filter>Pliki nagłówkowe\UI</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

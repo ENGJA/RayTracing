@@ -208,6 +208,7 @@
     <ClCompile Include="Source\ResourceLoading\Texture.cpp" />
     <ClCompile Include="Source\ResourceLoading\TextureLoader.cpp" />
     <ClCompile Include="Source\ResourceLoading\Vertex.cpp" />
+    <ClCompile Include="Source\UI\UIManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\ResourceLoading\ImageDecoder.h" />
@@ -247,6 +248,7 @@
     <ClInclude Include="Source\ResourceLoading\Texture.h" />
     <ClInclude Include="Source\ResourceLoading\TextureLoader.h" />
     <ClInclude Include="Source\ResourceLoading\Vertex.h" />
+    <ClInclude Include="Source\UI\UIManager.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\MipmapShader.hlsl">

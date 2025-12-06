@@ -1,12 +1,7 @@
 #pragma once
 #include "RenderAPI/Renderer.h"
 #include "RenderAPI/Camera/CameraManager.h"
-
-enum class AppState
-{
-	Scene,  ///< Renderowanie 3D, sterowanie kamer¹, brak kursora.
-	Menu    ///< Pauza/Menu, widoczny kursor, brak sterowania kamer¹.
-};
+#include "UI/UIManager.h"
 
 /**
  * @brief Application bootstrap that owns the window and resources.
@@ -16,8 +11,9 @@ class Application
 private:
 	Renderer mRenderer; ///< High level renderer instance.
 	CameraManager mCameraManager; ///< Camera manager for view/projection matrices.
+	UIManager mUIManager; ///< UI manager for ImGui windows.
 
-	AppState mCurrentState = AppState::Scene;
+	UIManager::AppState mCurrentState = UIManager::AppState::LoadingMenu; // Start with loading menu
 
 	HWND mHwnd = nullptr; ///< Native Win32 window handle.
 	bool mIsRunning = true; ///< Main loop running flag.
@@ -27,8 +23,15 @@ private:
 	LARGE_INTEGER mPrevCounter{}; ///< Previous frame timestamp.
 	double mSecondsPerCount = 0.0; ///< Seconds per performance counter tick.
 
+	std::string mCurrentScenePath; ///< Currently loaded scene path.
+	bool mSceneLoaded = false; ///< Whether a scene is currently loaded.
+	
+	// Application logic
 	void ToggleMenu();
-	void RenderImGuiMenu();
+	void LoadScene(const std::string& path);
+	void UnloadScene();
+	void ExitToMainMenu();
+	void ExitApplication();
 
 public:
 	/**

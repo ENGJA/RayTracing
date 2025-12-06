@@ -53,13 +53,13 @@ void CameraManager::Initialize(UINT width, UINT height)
     // forward / back
     input.RegisterKeyDownCallback('W', [this, baseMoveSpeed](float dt) {
         if (!mIsActive) return;
-        float speed = baseMoveSpeed;
+        float speed = baseMoveSpeed * mMoveSpeedMultiplier;
         if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(speed * dt, 0.0f, 0.0f);
         });
     input.RegisterKeyDownCallback('S', [this, baseMoveSpeed](float dt) {
         if (!mIsActive) return;
-        float speed = baseMoveSpeed;
+        float speed = baseMoveSpeed * mMoveSpeedMultiplier;
         if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(-speed * dt, 0.0f, 0.0f);
         });
@@ -67,13 +67,13 @@ void CameraManager::Initialize(UINT width, UINT height)
     // right / left
     input.RegisterKeyDownCallback('D', [this, baseMoveSpeed](float dt) {
         if (!mIsActive) return;
-        float speed = baseMoveSpeed;
+        float speed = baseMoveSpeed * mMoveSpeedMultiplier;
         if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, speed * dt, 0.0f);
         });
     input.RegisterKeyDownCallback('A', [this, baseMoveSpeed](float dt) {
         if (!mIsActive) return;
-        float speed = baseMoveSpeed;
+        float speed = baseMoveSpeed * mMoveSpeedMultiplier;
         if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, -speed * dt, 0.0f);
         });
@@ -81,13 +81,13 @@ void CameraManager::Initialize(UINT width, UINT height)
     // up / down (space / shift)
     input.RegisterKeyDownCallback(VK_SPACE, [this, baseMoveSpeed](float dt) {
         if (!mIsActive) return;
-        float speed = baseMoveSpeed;
+        float speed = baseMoveSpeed * mMoveSpeedMultiplier;
         if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, 0.0f, speed * dt);
         });
 	input.RegisterKeyDownCallback(VK_SHIFT, [this, baseMoveSpeed](float dt) {
         if (!mIsActive) return;
-        float speed = baseMoveSpeed;
+        float speed = baseMoveSpeed * mMoveSpeedMultiplier;
         if (!mCameras.empty() && !mCameras[mActiveIndex].IsUsingFixed())
             mCameras[mActiveIndex].MoveLocal(0.0f, 0.0f, -speed * dt);
 		});

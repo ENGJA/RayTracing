@@ -87,7 +87,6 @@ private:
 	ShaderVisibleDescriptorHeap mImGuiSrvHeap;
 	HWND mHwnd = nullptr;
 
-
 	/**
 	 * @brief Initializes or re-initializes the graphics pipeline state and root signature.
 	 */
@@ -168,6 +167,24 @@ public:
 	 * @param cameraForward Camera forward vector.
 	 */
 	void Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
+
+	/**
+	 * @brief Loads a scene from a file path.
+	 * @param path Path to the scene file (e.g., .gltf, .obj).
+	 * @return true if scene loaded successfully, false otherwise.
+	 */
+	bool LoadScene(const std::string& path);
+	
+	/**
+	 * @brief Unloads the currently loaded scene and frees GPU resources.
+	 */
+	void UnloadScene();
+	
+	/**
+	 * @brief Checks if a scene is currently loaded.
+	 * @return true if scene is loaded, false otherwise.
+	 */
+	bool HasScene() const { return !mModels.empty(); }
 
 	/**
 	 * @brief Initializes ImGui for DirectX 12 rendering.

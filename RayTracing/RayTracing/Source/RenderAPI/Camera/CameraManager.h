@@ -16,6 +16,7 @@ private:
     std::vector<Camera> mCameras;
     size_t mActiveIndex = 0;
     bool mIsActive = true; ///< Controls whether camera processes input
+    float mMoveSpeedMultiplier = 1.0f; ///< Movement speed multiplier (1.0 = default)
 
 public:
     CameraManager() = default;
@@ -62,4 +63,15 @@ public:
      * @brief Check if camera is currently processing input.
      */
     bool IsActive() const { return mIsActive; }
+
+    /**
+     * @brief Set camera movement speed multiplier.
+     * @param multiplier Speed multiplier (0.1 = very slow, 1.0 = normal, 5.0 = very fast)
+     */
+    void SetMoveSpeedMultiplier(float multiplier) { mMoveSpeedMultiplier = multiplier; }
+    
+    /**
+     * @brief Get current movement speed multiplier.
+     */
+    float GetMoveSpeedMultiplier() const { return mMoveSpeedMultiplier; }
 };

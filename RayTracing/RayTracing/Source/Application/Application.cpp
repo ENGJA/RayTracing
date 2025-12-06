@@ -3,7 +3,7 @@
 #include "RenderAPI/DXGI/DXGIDebug.h"
 #include "Input/InputManager.h"
 
-// ImGui includes
+// ImGui includes for Win32 message handler
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 
@@ -22,14 +22,12 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 	Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 
-
 	switch (uMsg)
 	{
 	case WM_NCCREATE:
 	{
 		LPCREATESTRUCT pcs = reinterpret_cast<LPCREATESTRUCT>(lParam);
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pcs->lpCreateParams));
-
 		cout << "Window non-client area created!" << endl;
 		break;
 	}
@@ -37,7 +35,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 	{
 		Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 		app->OnCreate(hwnd);
-
 		cout << "Window created!" << endl;
 		break;
 	}
@@ -45,7 +42,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 	{
 		Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 		app->OnDestroy();
-
 		cout << "Window destroyed!" << endl;
 		PostQuitMessage(0);
 		break;
@@ -130,26 +126,22 @@ void Application::Update()
 	// Always begin ImGui frame (required for WndProcHandler to work)
 	mRenderer.BeginImGuiFrame();
 
-	// Update camera only when in Scene mode
-	if (mCurrentState == AppState::Scene)
+	// Render UI through UIManager
+	mUIManager.RenderUI(mCurrentState);
+
+	// Update camera only in Scene mode
+	if (mCurrentState == UIManager::AppState::Scene)
 	{
 		mCameraManager.Update(static_cast<float>(dt));
 	}
-	else // Menu mode
-	{
-		// Render menu UI
-		RenderImGuiMenu();
-	}
 
-	// Always render the scene (frozen in menu mode)
+	// Render the scene (if loaded)
 	DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
 	DirectX::XMFLOAT3 camPos = mCameraManager.GetActiveCameraPosition();
 	DirectX::XMFLOAT3 camForward = mCameraManager.GetActiveCameraForward();
 
-	// Render the frame (includes ImGui)
 	mRenderer.Update(vp, camPos, camForward);
 }
-
 
 void Application::OnCreate(HWND hwnd)
 {
@@ -157,8 +149,40 @@ void Application::OnCreate(HWND hwnd)
 	auto& input = InputManager::Instance;
 	input.Initialize(hwnd);
 
+	// Initialize UIManager with dependencies
+	mUIManager.Initialize(hwnd, &mCameraManager);
+	
+	// Set UI callbacks
+	mUIManager.SetLoadSceneCallback([this](const std::string& path) {
+		LoadScene(path);
+	});
+	
+	mUIManager.SetUnloadSceneCallback([this]() {
+		UnloadScene();
+	});
+	
+	mUIManager.SetToggleMenuCallback([this]() {
+		ToggleMenu();
+	});
+	
+	mUIManager.SetExitCallback([this]() {
+		ExitApplication();
+	});
+	
+	mUIManager.SetExitToMainMenuCallback([this]() {
+		ExitToMainMenu();
+	});
+	
+	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
-		this->ToggleMenu();
+		if (mCurrentState == UIManager::AppState::Scene)
+			this->ToggleMenu();
+	});
+	
+	// Toggle settings window with F1
+	input.RegisterKeyPressedCallback(VK_F1, [this]() {
+		if (mCurrentState == UIManager::AppState::Scene)
+			mUIManager.ToggleSettings();
 	});
 
 	LARGE_INTEGER freq;
@@ -167,8 +191,11 @@ void Application::OnCreate(HWND hwnd)
 	QueryPerformanceCounter(&mPrevCounter);
 
 	mCameraManager.Initialize(mWidth, mHeight);
-
 	mRenderer.Initialize(hwnd, mWidth, mHeight);
+	
+	// Start with cursor visible in loading menu
+input.SetCursorLocked(false);
+	mCameraManager.SetActive(false);
 }
 
 void Application::OnDestroy()
@@ -183,54 +210,56 @@ void Application::OnResize(int width, int height)
 	mHeight = height;
 }
 
-void Application::RenderImGuiMenu()
-{
-	// Set window position and size (these calls are safe after NewFrame)
-	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(300, 150), ImGuiCond_Always);
-
-	ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
-
-	ImGui::Text("Paused");
-	ImGui::Spacing();
-	ImGui::Separator();
-	ImGui::Spacing();
-
-	// Resume button
-	if (ImGui::Button("Resume (ESC)", ImVec2(270, 40)))
-	{
-		ToggleMenu(); // Return to Scene mode
-	}
-
-	ImGui::End();
-}
-
 void Application::ToggleMenu()
 {
 	auto& input = InputManager::Instance;
-	if (mCurrentState == AppState::Scene)
+	if (mCurrentState == UIManager::AppState::Scene)
 	{
-		// Przejœcie do Menu
-		mCurrentState = AppState::Menu;
+		mCurrentState = UIManager::AppState::Menu;
 		cout << "Switching to MENU mode." << endl;
-
-		// Odblokuj kursor (poka¿ go)
 		input.SetCursorLocked(false);
-		
-		// Wy³¹cz sterowanie kamer¹
 		mCameraManager.SetActive(false);
 	}
-	else
+	else if (mCurrentState == UIManager::AppState::Menu)
 	{
-		// Powrót do Sceny
-		mCurrentState = AppState::Scene;
+		mCurrentState = UIManager::AppState::Scene;
 		cout << "Switching to SCENE mode." << endl;
-
-		// Zablokuj kursor (ukryj i centruj)
 		input.SetCursorLocked(true);
-		
-		// W³¹cz sterowanie kamer¹
 		mCameraManager.SetActive(true);
 	}
+}
+
+void Application::LoadScene(const std::string& path)
+{
+	mCurrentScenePath = path;
+	mSceneLoaded = mRenderer.LoadScene(path);
+	
+	if (mSceneLoaded)
+	{
+		// Switch to scene mode after successful load
+		mCurrentState = UIManager::AppState::Scene;
+		InputManager::Instance.SetCursorLocked(true);
+		mCameraManager.SetActive(true);
+	}
+}
+
+void Application::UnloadScene()
+{
+	mRenderer.UnloadScene();
+	mSceneLoaded = false;
+	mCurrentScenePath.clear();
+}
+
+void Application::ExitToMainMenu()
+{
+	UnloadScene();
+	mCurrentState = UIManager::AppState::LoadingMenu;
+	InputManager::Instance.SetCursorLocked(false);
+	mCameraManager.SetActive(false);
+}
+
+void Application::ExitApplication()
+{
+	mIsRunning = false;
+	PostQuitMessage(0);
 }

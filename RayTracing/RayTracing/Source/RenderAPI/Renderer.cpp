@@ -152,7 +152,7 @@ void Renderer::UploadMeshes(const function<void()>& executeBatch)
 void Renderer::BuildMeshGpuData()
 {
     mUploadHeap.Reset();
-    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+    mCommandList.ResetCommandList(0); // Use allocator 0 for one-time upload, not swap chain index
 
     auto executeBatch = [this]()
     {
@@ -162,7 +162,7 @@ void Renderer::BuildMeshGpuData()
         mCommandQueue.Flush();
 
         mUploadHeap.Reset();
-        mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+        mCommandList.ResetCommandList(0); // Always use allocator 0 for uploads
         mTextureLoader.Reset();
     };
 
@@ -275,7 +275,6 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     mScissorRect.right = static_cast<LONG>(mWidth);
     mScissorRect.bottom = static_cast<LONG>(mHeight);
 
-
 	// view-projection matrix (will be updated each frame)
     mConstantBufferData.vpMatrix = DirectX::XMMatrixIdentity();
 
@@ -286,39 +285,6 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
-    auto modelA = std::make_unique<Model>();
-
-	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
-    modelA->loadModel(modelPath);
-	std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
-    if (modelA->mMeshes.empty())
-    {
-        vector<::Vertex> cpuVerts = {
-            { { -1, -1, 0 }, {0,0,1}, {0,1} },
-            { { -1,  1, 0 }, {0,0,1}, {0,0} },
-            { {  1,  1, 0 }, {0,0,1}, {1,0} },
-            { {  1, -1, 0 }, {0,0,1}, {1,1} },
-        };
-        vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
-        modelA->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-    }
-    else
-	    wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-
-    mModels.push_back(std::move(modelA));
-
-	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
-    // Build GPU buffers and material descriptor tables
-    BuildMeshGpuData();
-	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
-	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
-
-    // Collect static lights once after models are loaded
-    CollectStaticLights();
-
     // Initialize ImGui at the end of initialization
     InitializeImGui(hwnd);
 
@@ -326,6 +292,79 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 }
 
+bool Renderer::LoadScene(const std::string& path)
+{
+    wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
+
+    // Wait for GPU to finish all work before loading new scene
+    mCommandQueue.Flush();
+
+    auto model = std::make_unique<Model>();
+
+    std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
+    model->loadModel(path);
+    std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
+    
+    if (model->mMeshes.empty())
+    {
+        wcout << L"Warning: Scene loaded but contains no meshes." << endl;
+        
+        // Create fallback quad for testing
+        vector<::Vertex> cpuVerts = {
+            { { -1, -1, 0 }, {0,0,1}, {0,1} },
+            { { -1,  1, 0 }, {0,0,1}, {0,0} },
+            { {  1,  1, 0 }, {0,0,1}, {1,0} },
+            { {  1, -1, 0 }, {0,0,1}, {1,1} },
+        };
+        vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
+        model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
+    }
+    else
+    {
+        wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+    }
+
+    mModels.push_back(std::move(model));
+
+    std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+    BuildMeshGpuData();
+    std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+    wcout << L"Mesh GPU data built in " << elapsedSeconds.count() << L" seconds." << endl;
+
+    CollectStaticLights();
+
+    wcout << L"Scene loaded successfully!" << endl;
+    return true;
+}
+
+void Renderer::UnloadScene()
+{
+    wcout << L"Unloading scene..." << endl;
+
+    // Wait for GPU to finish all work
+    mCommandQueue.Flush();
+
+    // Clear all GPU resources
+    mMeshGpu.clear();
+    mModels.clear();
+    mTextureCache.clear();
+    mStaticLights.clear();
+
+    // Reset heaps
+    mUploadHeap.Reset();
+    mTextureLoader.Reset();
+    
+    // Reset constant buffer data
+    mConstantBufferData.numLights = 0;
+    for (int i = 0; i < cMaxLights; ++i)
+    {
+        mConstantBufferData.lights[i] = LightData{};
+    }
+
+    wcout << L"Scene unloaded." << endl;
+}
 void Renderer::InitializePipelineState()
 {
     HLSLShader vertexShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
@@ -418,7 +457,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
     mCommandList.Get()->ResourceBarrier(1, &barrier);
 
-    const FLOAT clearColor[4] = { 0 };
+    const FLOAT clearColor[4] = { 0.1f, 0.1f, 0.15f, 1.0f }; // Dark blue background
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mSwapChain.GetCurrentBackBufferView();
     D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = mDepthBuffer.GetDSVHandle();
@@ -430,18 +469,22 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     mCommandList.Get()->RSSetViewports(1, &mViewport);
     mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
-    mCommandList.Get()->SetGraphicsRootSignature(mPipelineState.GetRootSignature());
-    mCommandList.Get()->SetPipelineState(mPipelineState.Get());
-    mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
-
-    // Draw all meshes
-    for (const auto& mesh : mMeshGpu)
+    // Only render scene if meshes are loaded
+    if (!mMeshGpu.empty())
     {
-        mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
-        mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
-        mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
-        mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
+        mCommandList.Get()->SetGraphicsRootSignature(mPipelineState.GetRootSignature());
+        mCommandList.Get()->SetPipelineState(mPipelineState.Get());
+        mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
+
+        // Draw all meshes
+        for (const auto& mesh : mMeshGpu)
+        {
+            mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
+            mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
+            mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
+            mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
+        }
     }
 
     // Render ImGui if a frame was started

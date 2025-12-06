@@ -18,9 +18,9 @@
 #include <dxgidebug.h>
 
 // windows
-
 #include <windows.h>
 #include <wrl.h>
 #include <wincodec.h>
+#include <commdlg.h> 
 
 //#pragma comment(lib, "windowscodecs.lib")
