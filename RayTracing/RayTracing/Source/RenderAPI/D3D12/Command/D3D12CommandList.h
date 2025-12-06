@@ -7,7 +7,7 @@
 class D3D12CommandList
 {
 private:
-	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList; ///< Graphics command list.
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> mCommandList; ///< Graphics command list.
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mCommandAllocators[Config::cBufferCount]; ///< Per-frame command allocators.
 public:
 	/**
@@ -19,7 +19,7 @@ public:
 	/**
 	 * @brief Returns the native command list pointer.
 	 */
-	ID3D12GraphicsCommandList* Get() const { return mCommandList.Get(); }
+	ID3D12GraphicsCommandList4* Get() const { return mCommandList.Get(); }
 
 	/**
 	 * @brief Resets the command allocator and command list for the given frame index.
