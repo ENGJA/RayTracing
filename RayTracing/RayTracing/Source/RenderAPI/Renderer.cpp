@@ -383,8 +383,13 @@ void Renderer::UnloadScene()
     // Wait for GPU to finish all work
     mCommandQueue.Flush();
 
-    // Clear all GPU resources
-    mMeshGpu.clear();
+    // Clear all GPU resources - now we have separate mesh lists
+    mOpaqueSingleSidedMeshes.clear();
+    mOpaqueDoubleSidedMeshes.clear();
+    mMaskedSingleMeshes.clear();
+    mMaskedDoubleSidedMeshes.clear();
+    mTransparentMeshes.clear();
+    
     mModels.clear();
     mTextureCache.clear();
     mStaticLights.clear();
@@ -392,13 +397,16 @@ void Renderer::UnloadScene()
     // Reset heaps
     mUploadHeap.Reset();
     mTextureLoader.Reset();
-    
+
     // Reset constant buffer data
     mConstantBufferData.numLights = 0;
     for (int i = 0; i < cMaxLights; ++i)
     {
         mConstantBufferData.lights[i] = LightData{};
     }
+
+    wcout << L"Scene unloaded." << endl;
+}
 
 void Renderer::InitializeDummyTextures()
 {
