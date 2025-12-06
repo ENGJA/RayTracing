@@ -285,6 +285,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     InitializeDummyTextures();
 
+	mRayTracingBuilder.Initialize(mDevice.Get(), mCommandList.Get(), &mCommandQueue);
 
     // set viewport and scissor rect
     mViewport.TopLeftX = 0.0f;
@@ -359,6 +360,12 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
 	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+	// Initialize ray tracing acceleration structures
+	std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
+	InitializeRayTracing();
+	std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
+	std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
+	wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
 
     // Collect static lights once after models are loaded
     CollectStaticLights();
@@ -381,6 +388,54 @@ void Renderer::InitializeDummyTextures()
     ID3D12CommandList* lists[] = { mCommandList.Get() };
     mCommandQueue.ExecuteCommandLists(1, lists);
     mCommandQueue.Flush();
+}
+
+void Renderer::InitializeRayTracing()
+{
+	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+
+	// 1. Build BLAS for all mesh lists
+    mRayTracingBuilder.BuildAllBLAS(
+        mOpaqueSingleSidedMeshes,
+        mOpaqueDoubleSidedMeshes,
+        mMaskedSingleMeshes,
+        mMaskedDoubleSidedMeshes,
+		mTransparentMeshes);
+
+	// 2. Allocate TLAS instance desc buffer
+    UINT totalMeshes = static_cast<UINT>(
+        mOpaqueSingleSidedMeshes.size() +
+        mOpaqueDoubleSidedMeshes.size() +
+        mMaskedSingleMeshes.size() +
+		mMaskedDoubleSidedMeshes.size() +
+		mTransparentMeshes.size());
+
+    UINT64 instanceDescSize = sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * totalMeshes;
+    mInstanceDescBuffer.Initialize(
+        mDevice.Get(),
+        instanceDescSize,
+        D3D12_HEAP_TYPE_UPLOAD,
+		D3D12_RESOURCE_STATE_GENERIC_READ);
+
+    // 3. Build TLAS
+    mRayTracingBuilder.BuildTLAS(
+        mOpaqueSingleSidedMeshes,
+        mOpaqueDoubleSidedMeshes,
+		mMaskedSingleMeshes,
+		mMaskedDoubleSidedMeshes,
+        mTransparentMeshes,
+        mTLAS,
+		mTLAS_Scratch,
+        mInstanceDescBuffer);
+
+	// 4. Execute command list
+    mCommandList.Get()->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    mCommandQueue.ExecuteCommandLists(1, lists);
+	mCommandQueue.Flush();
+
+	// 5. Clear temporary BLAS resources
+	mRayTracingBuilder.ClearScratchResources();
 }
 
 void Renderer::InitializePipelineState()

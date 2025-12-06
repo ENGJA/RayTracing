@@ -54,3 +54,17 @@ void D3D12Resource::Initialize(ID3D12Device* pDevice, const D3D12_RESOURCE_DESC&
 	);
 	ASSERT_HR(hr, "Failed to create D3D12 resource.");
 }
+
+void D3D12Resource::Initialize(ID3D12Device* pDevice, const D3D12_RESOURCE_DESC& resourceDesc, const D3D12_HEAP_PROPERTIES& heapProps)
+{
+	HRESULT hr = pDevice->CreateCommittedResource(
+		&heapProps,
+		D3D12_HEAP_FLAG_NONE,
+		&resourceDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(mResource.ReleaseAndGetAddressOf())
+	);
+	ASSERT_HR(hr, "Failed to create D3D12 resource.");
+}
+

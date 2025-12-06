@@ -14,6 +14,7 @@
 #include "ResourceLoading/TextureLoader.h"
 #include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
 #include "RenderAPI/HLSL/HLSLCompiler.h"
+#include "RenderAPI/RT/RayTracingBuilder.h"
 #include <unordered_map>
 
 /**
@@ -41,6 +42,9 @@ struct MeshGpuData
 
 	DirectX::XMFLOAT3 center; ///< Mesh bounding sphere center in model space.
 	float distanceToCamera = 0.0f; ///< Distance from mesh center to camera (for sorting).
+
+	D3D12Resource blasResult; ///< Bottom-level acceleration structure resource for ray tracing.
+	//UINT blasIndex;
 };
 
 struct DefaultTextures
@@ -94,6 +98,12 @@ private:
 	std::vector<MeshGpuData> mMaskedDoubleSidedMeshes; ///< Flattened array of masked double-sided mesh GPU data for rendering.
 
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
+
+	RayTracingBuilder mRayTracingBuilder; ///< Ray tracing acceleration structure builder.
+	D3D12Resource mTLAS;	///< Top-level acceleration structure result.
+	D3D12Resource mTLAS_Scratch;	///< Top-level acceleration structure scratch buffer. May be used during updating, when objects move.
+	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. Required only during TLAS build unless TLAS updates are planned.
+
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
@@ -178,6 +188,11 @@ private:
 	 * @brief Initializes default dummy textures (white, normal).
 	 */
 	void InitializeDummyTextures();
+
+	/**
+	 * @brief Initializes ray tracing acceleration structures.
+	 */
+	void InitializeRayTracing();
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
@@ -188,7 +203,7 @@ public:
 	void Initialize(HWND hwnd, UINT width, UINT height);
 	/**
 	 * @brief Records and submits commands for one frame and presents.
-	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
+	 * @param viewProj View-projection matrix dostarczony z zewnÂ¹trz (CameraManager).
 	 * @param cameraPos Camera world position.
 	 * @param cameraForward Camera forward vector.
 	 */
