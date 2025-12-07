@@ -450,6 +450,11 @@ bool UIManager::OpenFileDialog(std::string& outPath)
 	OPENFILENAMEA ofn{};
 	char szFile[260] = { 0 };
 
+	std::filesystem::path currentPath = std::filesystem::current_path();
+	std::filesystem::path resourcesPath = currentPath / ".." / "Resources" / "Objects";
+
+	std::string initialDir = std::filesystem::absolute(resourcesPath).string();
+
 	ofn.lStructSize = sizeof(ofn);
 	ofn.hwndOwner = mHwnd;
 	ofn.lpstrFile = szFile;
@@ -458,7 +463,7 @@ bool UIManager::OpenFileDialog(std::string& outPath)
 	ofn.nFilterIndex = 1;
 	ofn.lpstrFileTitle = NULL;
 	ofn.nMaxFileTitle = 0;
-	ofn.lpstrInitialDir = NULL;
+	ofn.lpstrInitialDir = initialDir.c_str();
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 
 	if (GetOpenFileNameA(&ofn) == TRUE)

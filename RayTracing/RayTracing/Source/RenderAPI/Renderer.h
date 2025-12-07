@@ -111,8 +111,6 @@ private:
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
-	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
-
 	// timing
 	LARGE_INTEGER mPrevCounter{};
 	double mSecondsPerCount = 0.0;
@@ -121,6 +119,8 @@ private:
 	ImGuiContext* mImGuiContext = nullptr;
 	ShaderVisibleDescriptorHeap mImGuiSrvHeap;
 	HWND mHwnd = nullptr;
+
+	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
 
 	/**
 	 * @brief Initializes or re-initializes the graphics pipeline state and root signature.
