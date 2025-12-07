@@ -12,7 +12,11 @@ public:
 	 * @brief Creates a default root signature suitable for the sample.
 	 * @param pDevice D3D12 device.
 	 */
-	void Initialize(ID3D12Device* pDevice);// , const D3D12_ROOT_SIGNATURE_DESC& rootSignatureDesc);
+	void InitializeMeshRS(ID3D12Device* pDevice);// , const D3D12_ROOT_SIGNATURE_DESC& rootSignatureDesc);
+
+	void InitializeComputeRS(ID3D12Device* pDevice);
+
+	void Initialize(ID3D12Device* pDevice, const D3D12_VERSIONED_ROOT_SIGNATURE_DESC& rootSignatureDesc);
 	/**
 	 * @brief Returns the native root signature pointer.
 	 */

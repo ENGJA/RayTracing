@@ -4,9 +4,9 @@
 #include "helpers.h"
 //#include "RenderAPI/HLSL/HLSLCompiler.h"
 
-void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided)
+void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided)
 {
-	InitializeCommon(pDevice, std::move(vertexShader), std::move(pixelShader));
+	InitializeCommon(pDevice, rootSig, std::move(vertexShader), std::move(pixelShader));
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc, doubleSided);
 
 	// Specific changes for opaque
@@ -21,9 +21,9 @@ void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, HLSLShader vert
 	ASSERT_HR(hr, "Failed to create pipeline state object.");
 }
 
-void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc)
+void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc)
 {
-	InitializeCommon(pDevice, std::move(vertexShader), std::move(pixelShader));
+	InitializeCommon(pDevice, rootSig, std::move(vertexShader), std::move(pixelShader));
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc,  true);
 
 	// Specific changes for transparent
@@ -44,10 +44,27 @@ void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, HLSLShader
 	ASSERT_HR(hr, "Failed to create pipeline state object.");
 }
 
+void D3D12PipelineState::InitializeCompute(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader computeShader)
+{
+	mRootSignature = rootSig;
+	mComputeShader = std::move(computeShader);
+	D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+	desc.pRootSignature = mRootSignature;
+	desc.CS.pShaderBytecode = mComputeShader.GetShaderBlob()->GetBufferPointer();
+	desc.CS.BytecodeLength = mComputeShader.GetShaderBlob()->GetBufferSize();
+	desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+
+	HRESULT hr = pDevice->CreateComputePipelineState(
+		&desc,
+		IID_PPV_ARGS(mPipelineState.ReleaseAndGetAddressOf())
+	);
+	ASSERT_HR(hr, "Failed to create compute pipeline state object.");
+}
+
 D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided) const
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc{};
-	gpsDesc.pRootSignature = mRootSignature.Get();
+	gpsDesc.pRootSignature = mRootSignature;
 
 	// Shaders
 	gpsDesc.VS.pShaderBytecode = mVertexShader.GetShaderBlob()->GetBufferPointer();
@@ -62,8 +79,10 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_
 
 	// Topology and render target formats
 	gpsDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	gpsDesc.NumRenderTargets = 1;
-	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	gpsDesc.NumRenderTargets = 3;
+	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;		// Albedo
+	gpsDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT; // Normals
+	gpsDesc.RTVFormats[2] = DXGI_FORMAT_R32G32_FLOAT;		// Material properties
 
 	// Rasterizer
 	gpsDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
@@ -82,9 +101,9 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_
 	return gpsDesc;
 }
 
-void D3D12PipelineState::InitializeCommon(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader)
+void D3D12PipelineState::InitializeCommon(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader)
 {
-	mRootSignature.Initialize(pDevice);
+	mRootSignature = rootSig;
 	mVertexShader = std::move(vertexShader);
 	mPixelShader = std::move(pixelShader);
 }

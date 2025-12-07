@@ -17,6 +17,13 @@ struct PSInput
     bool isFrontFace : SV_IsFrontFace;
 };
 
+struct PSOutput
+{
+    float4 Albedo   : SV_TARGET0; // R8G8B8A8_UNORM
+    float4 Normal   : SV_TARGET1; // R16G16B16A16_FLOAT
+    float2 Material : SV_TARGET2; // R32G32_FLOAT (Metalness, Roughness)
+};
+
 // Light struct matching C++ ConstantBufferData::LightData (position,color,dirType)
 struct Light
 {
@@ -29,11 +36,12 @@ struct Light
 
 cbuffer CBData : register(b0)
 {
-    float4x4 vpMatrix   : packoffset(c0);
-    float4 viewPos      : packoffset(c4);
-    int numLights       : packoffset(c5.x);
-    float3 _pad         : packoffset(c5.y);
-    Light lights[25]    : packoffset(c6);
+    float4x4 vpMatrix : packoffset(c0);
+    float4x4 invViewProj : packoffset(c4); // Added for consistency with LightPassCS
+    float3 viewPos    : packoffset(c8);
+    int numLights     : packoffset(c8.w);
+    //float3 _pad       : packoffset(c9.y);
+    Light lights[25]  : packoffset(c10);
 };
 
 cbuffer MaterialData : register(b1)
@@ -49,7 +57,7 @@ cbuffer MaterialData : register(b1)
 
 float3 getNormal(PSInput input);
 
-float4 main(PSInput input) : SV_TARGET
+PSOutput main(PSInput input)
 {
     float4 albedoSample = gAlbedo.Sample(gSampler, input.uv);
     float3 albedo = albedoSample.rgb * gBaseColorFactor.rgb;
@@ -64,8 +72,8 @@ float4 main(PSInput input) : SV_TARGET
         input.normalWS = -input.normalWS;
     }
 
-        float texMetal = gMetalness.Sample(gSampler, input.uv).r;
-    float texRough = gRoughness.Sample(gSampler, input.uv).r;
+    float texRough = gMetalness.Sample(gSampler, input.uv).g;
+    float texMetal = gMetalness.Sample(gSampler, input.uv).b;
 
     float metalness = texMetal * gMetalnessFactor;
     float roughness = texRough * gRoughnessFactor;
@@ -73,67 +81,18 @@ float4 main(PSInput input) : SV_TARGET
     if (metalness == 0.0f)
         metalness = saturate(input.materialProps.x);
 
-    float shininessFromRough = lerp(8.0f, 2048.0f, 1.0f - saturate(roughness));
-    float shininess = (input.materialProps.y > 0.0f) ? input.materialProps.y : shininessFromRough;
+    //float shininessFromRough = lerp(8.0f, 2048.0f, 1.0f - saturate(roughness));
+    //float shininess = (input.materialProps.y > 0.0f) ? input.materialProps.y : shininessFromRough;
     
     float3 N = getNormal(input);    
-    float3 V = normalize(viewPos.xyz - input.worldPos);
-
-    float3 finalColor = float3(0.0, 0.0, 0.0);
-
-    // ambient
-    const float ambientStrength = 0.2f;
-    float3 ambient = ambientStrength * albedo;
-    finalColor += ambient;
-
-    int active = min(numLights, 25);
-    for (int i = 0; i < active; ++i)
-    {
-        float3 L;
-        bool isDirectional = (lights[i].dirType.w > 0.5f);
-        float attenuation = 1.0f;
-
-        if (isDirectional)
-        {
-            L = normalize(-lights[i].dirType.xyz);
-        }
-        else
-        {
-            L = normalize(lights[i].position.xyz - input.worldPos);
-            // Tunable constants (constant, linear, quadratic)
-            const float kConst = 1.0f;
-            const float kLinear = 0.5f;
-            const float kQuadratic = 0.2f;
-
-            float dist = length(lights[i].position.xyz - input.worldPos);
-            float denom = kConst + kLinear * dist + kQuadratic * dist * dist;
-            attenuation = 1.0f / max(denom, 1e-4f);
-            // Optional: clamp to avoid extremely bright values
-            attenuation = saturate(attenuation * 1.0f);
-        }
-
-        float3 diffuseLightCol = lights[i].diffuseColor.xyz * lights[i].diffuseColor.w * attenuation;
-        float3 specularLightCol = lights[i].specularColor.xyz * lights[i].specularColor.w * attenuation;        
-
-        float NdotL = saturate(dot(N, L));
-        float3 diffuse = NdotL * albedo * diffuseLightCol;
-
-        float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, saturate(metalness));
-
-        float specShininess = shininess;
-
-        // Phong specular
-        float3 R = reflect(-L, N);
-        float specFactor = pow(saturate(dot(V, R)), specShininess);
-        float3 specular = specFactor * F0 * specularLightCol;
-
-        finalColor += diffuse + specular;
-    }
-    float3 emissiveSample = gEmissive.Sample(gSampler, input.uv).rgb;
-    float3 emissive = emissiveSample * gEmissiveFactor.rgb;    
-    finalColor += emissive;
-
-    return float4(finalColor, alpha);
+    
+    PSOutput output;
+    output.Albedo = float4(albedo, alpha);
+    output.Normal = float4(N, 0.0f);
+    //output.Material = float2(0, 1);
+    output.Material = float2(metalness, roughness);
+    
+    return output;
 }
 
 float3 getNormal(PSInput input)

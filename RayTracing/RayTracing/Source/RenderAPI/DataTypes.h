@@ -18,9 +18,9 @@ struct LightData
 struct ConstantBufferData
 {
 	DirectX::XMMATRIX vpMatrix;		///< View-Projection matrix
-	DirectX::XMFLOAT4 viewPos;		///< world-space camera position (w .xyz)
+	DirectX::XMMATRIX InvVpMatrix;    // Compute Shader needs this (NEW)
+	DirectX::XMFLOAT3 viewPos;		///< world-space camera position (w .xyz)
 	int numLights;					///< number of active lights
-	float _pad[3];					///< padding for alignment
 	LightData lights[cMaxLights];
 };
 

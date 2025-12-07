@@ -198,6 +198,9 @@
     <ClCompile Include="Source\RenderAPI\RT\RayTracingBuilder.cpp">
       <Filter>Pliki źródłowe</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Descriptors\DescriptorHeap.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\helpers.h">
@@ -314,12 +317,16 @@
     <ClInclude Include="Source\RenderAPI\RT\RayTracingBuilder.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Descriptors\DescriptorHeap.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
     <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
     <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
     <FxCompile Include="Source\Shaders\PixelShader_Masked.hlsl" />
+    <FxCompile Include="Source\Shaders\LightPassCS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
