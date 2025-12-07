@@ -12,7 +12,7 @@
 #include "DXGI/DXGISwapChain.h"
 #include "ResourceLoading/Model.h"
 #include "ResourceLoading/TextureLoader.h"
-#include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include "RenderAPI/Descriptors/DescriptorHeap.h"
 #include "RenderAPI/HLSL/HLSLCompiler.h"
 #include "RenderAPI/RT/RayTracingBuilder.h"
 #include <unordered_map>
@@ -36,7 +36,7 @@ struct MeshGpuData
 	D3D12_VERTEX_BUFFER_VIEW vbv{}; ///< Vertex buffer view used for IA binding.
 	D3D12Resource ib; ///< Index buffer resource.
 	D3D12_INDEX_BUFFER_VIEW ibv{}; ///< Index buffer view used for IA binding.
-	DescriptorAllocation materialTable; ///< Contiguous descriptors for material textures (t0 - t4).
+	DescriptorHandle materialTable; ///< Contiguous descriptors for material textures (t0 - t4).
 
 	MeshMaterialData materialData{}; ///< Material data for constant buffer upload.
 
@@ -64,12 +64,18 @@ private:
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
 
+	D3D12RootSignature mMeshRootSignature; ///< Root signature for mesh rendering.
+	D3D12RootSignature mComputeRootSignature; ///< Root signature for compute shader passes.
+
+
 	D3D12PipelineState mPipelineStateOpaqueSingle; ///< Pipeline state and root signature for opaque single-sided objects.
 	D3D12PipelineState mPipelineStateMaskedSingle; ///< Pipeline state and root signature for masked single-sided objects.
 	D3D12PipelineState mPipelineStateTransparent; ///< Pipeline state and root signature for transparent objects.
 
 	D3D12PipelineState mPipelineStateOpaqueDouble; ///< Pipeline state and root signature for opaque double-sided objects.
 	D3D12PipelineState mPipelineStateMaskedDouble; ///< Pipeline state and root signature for masked double-sided objects.
+
+	D3D12PipelineState mPipelineStateCompute; ///< Pipeline state for compute shader passes.
 
 	UINT mWidth = 0; ///< Back buffer width.
 	UINT mHeight = 0; ///< Back buffer height.
@@ -82,7 +88,7 @@ private:
 	ConstantBufferData mConstantBufferData{}; ///< CPU-side constant buffer data (view-projection matrix).
 	D3D12Resource mConstantBuffer; ///< GPU upload heap constant buffer.
 
-	ShaderVisibleDescriptorHeap mSrvHeap; ///< Global shader-visible SRV heap for textures.
+	DescriptorHeap mSrvHeap; ///< Global shader-visible SRV heap for textures.
 	TextureLoader mTextureLoader; ///< CPU/GPU texture loading helper.
 	UploadHeap mUploadHeap; ///< Shared linear upload heap for staging data.
 
@@ -105,6 +111,36 @@ private:
 	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. TBH I don't know if it should be kept around after build.
 
 
+
+	D3D12Resource mGBufferAlbedo;    ///< G-buffer render target for albedo (RGBA8).
+	D3D12Resource mGBufferNormal;    ///< G-buffer render target for normals (RGBA16F).
+	D3D12Resource mGBufferMaterial;  ///< G-buffer render target for material properties (RGBA8).
+
+	DescriptorHeap mGBufferRtvHeap; ///< RTV heap for G-buffer render targets.
+
+	D3D12PipelineState mComputeState;; ///< Pipeline state for compute shader passes.
+	//D3D12RootSignature mComputeRootSignature; ///< Root signature for compute shader passes.
+
+	D3D12Resource mComputeOutputTexture; ///< Output texture for compute shader passes.
+	D3D12Resource mGlobalLightBuffer; ///< Structured buffer for global lights.
+
+
+	// --- Descriptor Indices (Saved during initialization) ---
+	int mSrvSlot_GBufferAlbedo = -1;
+	int mSrvSlot_GBufferNormal = -1;
+	int mSrvSlot_GBufferMaterial = -1;
+	int mSrvSlot_Depth = -1;
+
+	int mUavSlot_Output = -1;       // For the Compute Shader Output
+	int mSrvSlot_LightBuffer = -1;  // For the StructuredBuffer<Light>
+
+
+
+	void InitializeGBufferResources();
+	void InitializeComputePipeline();
+	void CreateLightBuffer();
+
+
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
@@ -113,6 +149,8 @@ private:
 	LARGE_INTEGER mPrevCounter{};
 	double mSecondsPerCount = 0.0;
 
+
+	void InitializeRootSignatures();
 
 	/**
 	 * @brief Initializes or re-initializes the graphics pipeline state and root signature.

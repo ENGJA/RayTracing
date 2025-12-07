@@ -4,7 +4,7 @@
 
 using Microsoft::WRL::ComPtr;
 
-void TextureLoader::Initialize(ID3D12Device* pDevice, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader)
+void TextureLoader::Initialize(ID3D12Device* pDevice, DescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader)
 {
 	mDevice = pDevice;
 	mHeap = heap;
