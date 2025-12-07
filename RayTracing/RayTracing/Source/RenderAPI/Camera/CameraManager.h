@@ -18,6 +18,11 @@ private:
     bool mIsActive = true; ///< Controls whether camera processes input
     float mMoveSpeedMultiplier = 1.0f; ///< Movement speed multiplier (1.0 = default)
 
+    /**
+     * @brief Register all input callbacks for camera control.
+     */
+    void RegisterInputCallbacks();
+
 public:
     CameraManager() = default;
 
