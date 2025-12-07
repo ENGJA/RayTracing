@@ -221,15 +221,10 @@ void UIManager::RenderSettingsWindow()
 	
 	ImGui::Text("Movement Speed: %.1fx", currentSpeed);
 	
-	// Double the frame padding to make slider 2x thicker
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 16.0f));
-	
 	if (ImGui::SliderFloat("##speed", &currentSpeed, 0.1f, 5.0f, "%.1fx"))
 	{
 		mCameraManager->SetMoveSpeedMultiplier(currentSpeed);
 	}
-	
-	ImGui::PopStyleVar();
 	
 	ImGui::Spacing();
 	ImGui::Separator();
