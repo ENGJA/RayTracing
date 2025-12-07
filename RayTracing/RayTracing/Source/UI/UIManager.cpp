@@ -26,6 +26,10 @@ void UIManager::RenderUI(AppState currentState)
 		if (mShowSettingsWindow)
 			RenderSettingsWindow();
 	}
+	else if (currentState == AppState::LoadingScene)
+	{
+		RenderLoadingScene();
+	}
 	else // Scene mode
 	{
 		// Render performance overlay in scene mode (if enabled)
@@ -149,8 +153,7 @@ void UIManager::RenderPauseMenu()
 				mUnloadSceneCallback();
 			if (mLoadSceneCallback)
 				mLoadSceneCallback(scenePath);
-			if (mToggleMenuCallback)
-				mToggleMenuCallback();
+			// Don't toggle menu here - LoadScene will change state to LoadingScene
 		}
 	}
 	y += buttonHeight + gap;
@@ -390,6 +393,45 @@ void UIManager::RenderPerformanceOverlay()
 		else
 			ImGui::TextDisabled("VRAM: N/A");
 	}
+	ImGui::End();
+}
+
+void UIManager::RenderLoadingScene()
+{
+	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiCond_Always);
+
+	ImGui::Begin("Loading", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+
+	// Title
+	ImGui::SetCursorPos(ImVec2(15.0f, 20.0f));
+	ImGui::Text("LOADING SCENE");
+	
+	ImGui::SetCursorPos(ImVec2(15.0f, 45.0f));
+	ImGui::Separator();
+	
+	// Scene name
+	ImGui::SetCursorPos(ImVec2(15.0f, 60.0f));
+	if (!mLoadingSceneName.empty())
+	{
+		ImGui::TextWrapped("%s", mLoadingSceneName.c_str());
+	}
+	else
+	{
+		ImGui::Text("Please wait...");
+	}
+	
+	// Loading animation (simple dots)
+	ImGui::SetCursorPos(ImVec2(15.0f, 100.0f));
+	static float loadingTime = 0.0f;
+	loadingTime += ImGui::GetIO().DeltaTime;
+	int dots = (int)(loadingTime * 2.0f) % 4;
+	std::string loadingText = "Loading";
+	for (int i = 0; i < dots; i++)
+		loadingText += ".";
+	ImGui::Text("%s", loadingText.c_str());
+
 	ImGui::End();
 }
 

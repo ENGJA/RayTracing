@@ -27,10 +27,13 @@ private:
 
 	std::string mCurrentScenePath; ///< Currently loaded scene path.
 	bool mSceneLoaded = false; ///< Whether a scene is currently loaded.
+	std::string mPendingSceneLoad; ///< Path to scene waiting to be loaded.
+	int mLoadingFrameCount = 0; ///< Number of frames rendered in loading state.
 	
 	// Application logic
 	void ToggleMenu();
 	void LoadScene(const std::string& path);
+	void ProcessSceneLoading();
 	void UnloadScene();
 	void ExitToMainMenu();
 	void ExitApplication();

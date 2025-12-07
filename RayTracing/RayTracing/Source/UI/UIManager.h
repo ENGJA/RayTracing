@@ -28,7 +28,8 @@ public:
 	{
 		LoadingMenu,
 		Menu,
-		Scene
+		Scene,
+		LoadingScene
 	};
 
 	/**
@@ -85,6 +86,12 @@ public:
 	 */
 	bool IsAnyWindowOpen() const { return mShowSettingsWindow || mShowAboutWindow || mShowControlsWindow; }
 
+	/**
+	 * @brief Set the scene name being loaded for display in loading screen.
+	 * @param sceneName Name of the scene file being loaded.
+	 */
+	void SetLoadingSceneName(const std::string& sceneName) { mLoadingSceneName = sceneName; }
+
 private:
 	// Rendering methods
 	void RenderLoadingMenu();
@@ -93,6 +100,7 @@ private:
 	void RenderAboutWindow();
 	void RenderControlsWindow();
 	void RenderPerformanceOverlay();
+	void RenderLoadingScene();
 
 	// Helper methods
 	bool OpenFileDialog(std::string& outPath);
@@ -107,6 +115,7 @@ private:
 	bool mShowControlsWindow = false;
 	bool mShowSettingsWindow = false;
 	bool mShowPerformanceOverlay = true;
+	std::string mLoadingSceneName;
 
 	// Callbacks
 	LoadSceneCallback mLoadSceneCallback;

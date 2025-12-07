@@ -152,6 +152,13 @@ void Application::Update()
 	DirectX::XMFLOAT3 camForward = mCameraManager.GetActiveCameraForward();
 
 	mRenderer.Update(vp, camPos, camForward);
+
+	// Process scene loading AFTER rendering current frame
+	// This ensures the loading screen is visible before we start loading
+	if (mCurrentState == UIManager::AppState::LoadingScene)
+	{
+		ProcessSceneLoading();
+	}
 }
 
 void Application::OnCreate(HWND hwnd)
@@ -255,15 +262,66 @@ void Application::ToggleMenu()
 
 void Application::LoadScene(const std::string& path)
 {
-	mCurrentScenePath = path;
-	mSceneLoaded = mRenderer.LoadScene(path);
+	// Extract filename from path for display
+	std::filesystem::path fsPath(path);
+	std::string filename = fsPath.filename().string();
 	
-	if (mSceneLoaded)
+	cout << "LoadScene called for: " << filename << endl;
+	
+	mUIManager.SetLoadingSceneName(filename);
+	mPendingSceneLoad = path;
+	mLoadingFrameCount = 0;
+	
+	// Switch to loading state
+	mCurrentState = UIManager::AppState::LoadingScene;
+	InputManager::Instance.SetCursorLocked(false);
+	mCameraManager.SetActive(false);
+	
+	cout << "Switched to LoadingScene state" << endl;
+}
+
+void Application::ProcessSceneLoading()
+{
+	if (mPendingSceneLoad.empty())
+		return;
+
+	mLoadingFrameCount++;
+	cout << "ProcessSceneLoading: frame " << mLoadingFrameCount << endl;
+
+	// First frame: just show loading screen, don't start loading yet
+	// This ensures the loading UI is presented to the user
+	if (mLoadingFrameCount == 1)
 	{
-		// Switch to scene mode after successful load
-		mCurrentState = UIManager::AppState::Scene;
-		InputManager::Instance.SetCursorLocked(true);
-		mCameraManager.SetActive(true);
+		// Do nothing, just let the frame render
+		cout << "First loading frame - showing loading screen" << endl;
+		return;
+	}
+
+	// Second frame: actually load the scene
+	if (mLoadingFrameCount == 2)
+	{
+		// Actually load the scene
+		mCurrentScenePath = mPendingSceneLoad;
+		mPendingSceneLoad.clear();
+		mLoadingFrameCount = 0;
+		
+		cout << "Loading scene: " << mCurrentScenePath << endl;
+		mSceneLoaded = mRenderer.LoadScene(mCurrentScenePath);
+		
+		if (mSceneLoaded)
+		{
+			// Switch to scene mode after successful load
+			mCurrentState = UIManager::AppState::Scene;
+			InputManager::Instance.SetCursorLocked(true);
+			mCameraManager.SetActive(true);
+			cout << "Scene loaded successfully, switching to SCENE mode." << endl;
+		}
+		else
+		{
+			// Loading failed, return to menu
+			cerr << "Failed to load scene: " << mCurrentScenePath << endl;
+			mCurrentState = UIManager::AppState::LoadingMenu;
+		}
 	}
 }
 
