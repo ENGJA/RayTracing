@@ -67,33 +67,33 @@ void InputManager::OnWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
             p.x = (int)(short)LOWORD(lParam);
             p.y = (int)(short)HIWORD(lParam);
 
-            // Obliczamy œrodek okna w Client Space (dla pewnoœci, bo okno mog³o zmieniæ rozmiar)
+            // Calculate window center in Client Space
             RECT rect;
             GetClientRect(mHwnd, &rect);
             POINT center = { (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2 };
 
-            // Obliczamy deltê wzglêdem œrodka
+            // Calculate delta relative to center
             float dx = static_cast<float>(p.x - center.x);
             float dy = static_cast<float>(p.y - center.y);
 
-            // Jeœli jest jakikolwiek ruch
+            // If there is any movement
             if (dx != 0.0f || dy != 0.0f)
             {
                 mMouseDeltaX += dx;
                 mMouseDeltaY += dy;
 
-                // Resetujemy kursor na œrodek (Physical Screen Space)
+                // Reset cursor to center (Physical Screen Space)
                 POINT screenCenter = center;
                 ClientToScreen(mHwnd, &screenCenter);
                 SetCursorPos(screenCenter.x, screenCenter.y);
 
-                // Aktualizujemy lastPos jako œrodek, ¿eby nastêpna delta by³a liczona od niego
+                // Update lastPos as center for next delta calculation
                 mLastMousePos = center;
             }
         }
         else
         {
-            // Standardowa obs³uga (Menu Mode)
+            // Standard handling (Menu Mode)
             POINT p;
             p.x = (int)(short)LOWORD(lParam);
             p.y = (int)(short)HIWORD(lParam);
@@ -209,27 +209,27 @@ void InputManager::SetCursorLocked(bool lock)
 
     if (mIsCursorLocked)
     {
-        // Ukrywamy kursor
+        // Hide cursor
         while (ShowCursor(FALSE) >= 0);
 
-        // Obliczamy œrodek okna, aby tam zresetowaæ kursor
+        // Calculate window center to reset cursor there
         RECT rect;
         GetClientRect(mHwnd, &rect);
         POINT center = { (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2 };
 
-        // Zapisujemy œrodek w screen-space
+        // Save center in screen-space
         POINT screenCenter = center;
         ClientToScreen(mHwnd, &screenCenter);
         mScreenCenter = screenCenter;
 
-        // Ustawiamy kursor na œrodku i resetujemy deltê, by unikn¹æ "skoku" kamery
+        // Set cursor to center and reset delta to avoid camera "jump"
         SetCursorPos(mScreenCenter.x, mScreenCenter.y);
         mLastMousePos = center;
         mHasLastPos = true;
     }
     else
     {
-        // Pokazujemy kursor
+        // Show cursor
         while (ShowCursor(TRUE) < 0);
     }
 }
