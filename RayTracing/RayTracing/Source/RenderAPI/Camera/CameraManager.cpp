@@ -174,3 +174,12 @@ DirectX::XMFLOAT3 CameraManager::GetActiveCameraForward() const
         return DirectX::XMFLOAT3{ 0.0f, 0.0f, 1.0f };
     return mCameras[mActiveIndex].GetForward();
 }
+
+void CameraManager::OnResize(UINT width, UINT height)
+{
+    // Update aspect ratio for all cameras
+    for (auto& camera : mCameras)
+    {
+        camera.OnResize(width, height);
+    }
+}

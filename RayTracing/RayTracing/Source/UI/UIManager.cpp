@@ -105,7 +105,7 @@ void UIManager::RenderPauseMenu()
 {
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
 	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(400, 360), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(400, 460), ImGuiCond_Always);
 
 	ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
 
@@ -142,7 +142,23 @@ void UIManager::RenderPauseMenu()
 	}
 	y += buttonHeight + gap;
 	
-	// Button 3: Load Scene
+	// Button 3: About and Controls (side by side)
+	float smallButtonWidth = (buttonWidth - gap) / 2.0f;
+	
+	ImGui::SetCursorPos(ImVec2(buttonX, y));
+	if (ImGui::Button("About", ImVec2(smallButtonWidth, buttonHeight)))
+	{
+		mShowAboutWindow = true;
+	}
+	
+	ImGui::SetCursorPos(ImVec2(buttonX + smallButtonWidth + gap, y));
+	if (ImGui::Button("Controls", ImVec2(smallButtonWidth, buttonHeight)))
+	{
+		mShowControlsWindow = true;
+	}
+	y += buttonHeight + gap;
+	
+	// Button 4: Load Scene
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
 	if (ImGui::Button("Load Different Scene...", ImVec2(buttonWidth, buttonHeight)))
 	{
@@ -153,12 +169,11 @@ void UIManager::RenderPauseMenu()
 				mUnloadSceneCallback();
 			if (mLoadSceneCallback)
 				mLoadSceneCallback(scenePath);
-			// Don't toggle menu here - LoadScene will change state to LoadingScene
 		}
 	}
 	y += buttonHeight + gap;
 	
-	// Button 4: Exit to Menu
+	// Button 5: Exit to Menu
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
 	if (ImGui::Button("Exit to Main Menu", ImVec2(buttonWidth, buttonHeight)))
 	{
@@ -167,7 +182,7 @@ void UIManager::RenderPauseMenu()
 	}
 	y += buttonHeight + gap;
 	
-	// Button 5: Exit App
+	// Button 6: Exit App
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
 	if (ImGui::Button("Exit Application", ImVec2(buttonWidth, buttonHeight)))
 	{
@@ -180,10 +195,10 @@ void UIManager::RenderPauseMenu()
 
 void UIManager::RenderSettingsWindow()
 {
-	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(450, 180), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_Once);
+	ImGui::SetNextWindowSize(ImVec2(450, 180), ImGuiCond_Once);
 
-	if (!ImGui::Begin("Settings", &mShowSettingsWindow, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize))
+	if (!ImGui::Begin("Settings", &mShowSettingsWindow, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize))
 	{
 		ImGui::End();
 		return;
@@ -235,10 +250,10 @@ void UIManager::RenderSettingsWindow()
 
 void UIManager::RenderAboutWindow()
 {
-	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_Once);
+	ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_Once);
 
-	if (!ImGui::Begin("About 3D Scene Viewer", &mShowAboutWindow))
+	if (!ImGui::Begin("About 3D Scene Viewer", &mShowAboutWindow, ImGuiWindowFlags_NoResize))
 	{
 		ImGui::End();
 		return;
@@ -278,10 +293,10 @@ void UIManager::RenderAboutWindow()
 
 void UIManager::RenderControlsWindow()
 {
-	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(500, 450), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_Once);
+	ImGui::SetNextWindowSize(ImVec2(500, 450), ImGuiCond_Once);
 
-	if (!ImGui::Begin("Controls", &mShowControlsWindow))
+	if (!ImGui::Begin("Controls", &mShowControlsWindow, ImGuiWindowFlags_NoResize))
 	{
 		ImGui::End();
 		return;

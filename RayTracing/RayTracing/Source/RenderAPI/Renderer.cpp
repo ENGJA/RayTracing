@@ -326,6 +326,55 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 }
 
+void Renderer::OnResize(UINT width, UINT height)
+{
+	if (width == 0 || height == 0)
+		return; // Ignore invalid sizes (minimized window)
+
+	if (width == mWidth && height == mHeight)
+		return; // No actual resize
+
+	wcout << "Resizing renderer to " << width << "x" << height << endl;
+
+	// Wait for GPU to complete all work
+	mCommandQueue.Flush();
+
+	// Update dimensions
+	mWidth = width;
+	mHeight = height;
+
+	// Resize swap chain buffers
+	mSwapChain.Resize(width, height);
+
+	// Recreate depth buffer with new dimensions
+	mDepthBuffer.Initialize(mDevice.Get(), width, height);
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
+	dsvDesc.Format = Config::cDepthBufferFormat;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+
+	mDevice.Get()->CreateDepthStencilView(
+		mDepthBuffer.GetResource(),
+		&dsvDesc,
+		mDepthBuffer.GetDSVHandle()
+	);
+
+	// Update viewport
+	mViewport.TopLeftX = 0.0f;
+	mViewport.TopLeftY = 0.0f;
+	mViewport.Width = static_cast<FLOAT>(width);
+	mViewport.Height = static_cast<FLOAT>(height);
+	mViewport.MinDepth = 0.0f;
+	mViewport.MaxDepth = 1.0f;
+
+	// Update scissor rect
+	mScissorRect.left = 0;
+	mScissorRect.top = 0;
+	mScissorRect.right = static_cast<LONG>(width);
+	mScissorRect.bottom = static_cast<LONG>(height);
+
+	wcout << "Resize complete!" << endl;
+}
+
 bool Renderer::LoadScene(const std::string& path)
 {
     wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
@@ -711,8 +760,38 @@ void Renderer::InitializeImGui(HWND hwnd)
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
+    // Configure font rendering for better quality
+    ImFontConfig fontConfig;
+    fontConfig.OversampleH = 3;  // Horizontal oversampling for sharper text
+    fontConfig.OversampleV = 3;  // Vertical oversampling for sharper text
+    fontConfig.PixelSnapH = false;  // Better subpixel rendering
+    
+    // Try to load Segoe UI font (Windows system font) for better quality
+    ImFont* font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 17.0f, &fontConfig);
+    
+    // If Segoe UI fails to load, fall back to default font with high quality settings
+    if (!font)
+    {
+        wcout << "Warning: Could not load Segoe UI font, using default ImGui font" << endl;
+        io.Fonts->AddFontDefault(&fontConfig);
+    }
+
+    // Build font atlas with higher quality
+    io.Fonts->Build();
+
     // Setup ImGui style
     ImGui::StyleColorsDark();
+    
+    // Adjust style for better text rendering
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.AntiAliasedLines = true;
+    style.AntiAliasedFill = true;
+    style.AntiAliasedLinesUseTex = true;
+    
+    // Slightly adjust rounding for modern look
+    style.WindowRounding = 6.0f;
+    style.FrameRounding = 4.0f;
+    style.GrabRounding = 4.0f;
 
     // Create descriptor heap for ImGui (1 descriptor for font texture)
     mImGuiSrvHeap.Initialize(mDevice.Get(), 1);

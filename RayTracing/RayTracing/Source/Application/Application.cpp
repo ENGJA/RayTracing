@@ -12,6 +12,43 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 using std::cout, std::cerr, std::endl;
 
+// Enable DPI awareness for proper scaling
+static void EnableDPIAwareness()
+{
+	// Try modern DPI awareness API first (Windows 10 1703+)
+	typedef BOOL(WINAPI* SetProcessDpiAwarenessContextFunc)(DPI_AWARENESS_CONTEXT);
+	HMODULE user32 = LoadLibraryW(L"user32.dll");
+	if (user32)
+	{
+		auto SetProcessDpiAwarenessContextPtr = (SetProcessDpiAwarenessContextFunc)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+		if (SetProcessDpiAwarenessContextPtr)
+		{
+			SetProcessDpiAwarenessContextPtr(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+			FreeLibrary(user32);
+			return;
+		}
+		FreeLibrary(user32);
+	}
+
+	// Fallback to older API (Windows 8.1+)
+	typedef HRESULT(WINAPI* SetProcessDpiAwarenessFunc)(int);
+	HMODULE shcore = LoadLibraryW(L"Shcore.dll");
+	if (shcore)
+	{
+		auto SetProcessDpiAwarenessPtr = (SetProcessDpiAwarenessFunc)GetProcAddress(shcore, "SetProcessDpiAwareness");
+		if (SetProcessDpiAwarenessPtr)
+		{
+			SetProcessDpiAwarenessPtr(2); // PROCESS_PER_MONITOR_DPI_AWARE
+			FreeLibrary(shcore);
+			return;
+		}
+		FreeLibrary(shcore);
+	}
+
+	// Last resort: Windows Vista+ API
+	SetProcessDPIAware();
+}
+
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	// Let ImGui handle the message first
@@ -73,11 +110,15 @@ static ATOM RegisterWindowClass(HINSTANCE hInstance, LPCWSTR className)
 	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wc.hInstance = hInstance;
 	wc.lpszClassName = className;
+	wc.style = CS_HREDRAW | CS_VREDRAW; // Redraw on resize
 	return RegisterClass(&wc);
 }
 
 bool Application::Initialize(LPCWSTR className, LPCWSTR windowName, int width, int height)
 {
+	// Enable DPI awareness BEFORE creating the window
+	EnableDPIAwareness();
+
 	mWidth = width;
 	mHeight = height;
 
@@ -237,8 +278,17 @@ void Application::OnDestroy()
 
 void Application::OnResize(int width, int height)
 {
+	if (width <= 0 || height <= 0)
+		return; // Ignore invalid sizes
+
 	mWidth = width;
 	mHeight = height;
+
+	// Update renderer resources (swap chain, depth buffer, viewport)
+	mRenderer.OnResize(static_cast<UINT>(width), static_cast<UINT>(height));
+
+	// Update camera aspect ratio
+	mCameraManager.OnResize(static_cast<UINT>(width), static_cast<UINT>(height));
 }
 
 void Application::ToggleMenu()

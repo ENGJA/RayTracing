@@ -146,3 +146,12 @@ XMFLOAT3 Camera::GetForward() const
     XMStoreFloat3(&forward, frontDir);
     return forward;
 }
+
+void Camera::OnResize(UINT width, UINT height)
+{
+    if (width == 0 || height == 0)
+        return;
+
+    mAspect = static_cast<float>(width) / static_cast<float>(height);
+    mProj = DirectX::XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
+}

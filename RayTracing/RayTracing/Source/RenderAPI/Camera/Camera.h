@@ -97,4 +97,11 @@ public:
     void AddPitch(float delta);
     void MoveLocal(float forward, float right, float up);
     void ChangeFov(float delta);
+
+    /**
+     * @brief Update aspect ratio and rebuild projection matrix.
+     * @param width New render target width.
+     * @param height New render target height.
+     */
+    void OnResize(UINT width, UINT height);
 };

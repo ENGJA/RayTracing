@@ -79,4 +79,11 @@ public:
      * @brief Get current movement speed multiplier.
      */
     float GetMoveSpeedMultiplier() const { return mMoveSpeedMultiplier; }
+
+    /**
+     * @brief Update all cameras' aspect ratio on window resize.
+     * @param width New render target width.
+     * @param height New render target height.
+     */
+    void OnResize(UINT width, UINT height);
 };
