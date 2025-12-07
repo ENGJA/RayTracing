@@ -20,7 +20,7 @@ class Camera
 {
 private:
     // free-mode parameters
-    DirectX::XMFLOAT3 mPosition{ 0.0f, 1.0f, -3.0f }; ///< World-space camera position.
+    DirectX::XMFLOAT3 mPosition{ 8, 5, 0 }; ///< World-space camera position.
     float mYaw = 0.0f;   ///< Yaw angle (radians) — horizontal rotation around world up.
     float mPitch = 0.0f; ///< Pitch angle (radians) — vertical tilt (clamped to avoid flip).
     DirectX::XMFLOAT3 mWorldUp{ 0.0f, 1.0f, 0.0f }; ///< Up vector in world space.

@@ -79,10 +79,11 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_
 
 	// Topology and render target formats
 	gpsDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	gpsDesc.NumRenderTargets = 3;
+	gpsDesc.NumRenderTargets = 4;
 	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;		// Albedo
 	gpsDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT; // Normals
 	gpsDesc.RTVFormats[2] = DXGI_FORMAT_R32G32_FLOAT;		// Material properties
+	gpsDesc.RTVFormats[3] = DXGI_FORMAT_R16G16B16A16_FLOAT; // Emissive
 
 	// Rasterizer
 	gpsDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;

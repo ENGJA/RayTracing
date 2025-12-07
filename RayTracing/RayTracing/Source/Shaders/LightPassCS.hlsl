@@ -13,25 +13,65 @@ struct Light
 Texture2D<float4> gAlbedo : register(t0);
 Texture2D<float3> gNormal : register(t1);
 Texture2D<float2> gMaterial : register(t2); // Metal/Rough
-Texture2D<float> gDepth : register(t3);
+Texture2D<float4> gEmissive : register(t3);
+Texture2D<float> gDepth : register(t4);
 
 // 2. The Scene Structure (For Inline Ray Tracing)
-RaytracingAccelerationStructure gTLAS : register(t4);
+RaytracingAccelerationStructure gTLAS : register(t5);
 
 // 3. Many Lights Data (Structured Buffer instead of Constant Array)
-StructuredBuffer<Light> gLights : register(t5);
+StructuredBuffer<Light> gLights : register(t6);
 
 // 4. Output (The final image or accumulation buffer)
 RWTexture2D<float4> gOutput : register(u0);
 
 cbuffer FrameCB : register(b0)
 {
-    float4x4 vpMatrix; // Offset 0 (Unused in Compute)
-    float4x4 invViewProj;
-    float3 viewPos;
-    int numLights; // Can be thousands now
-    float3 _pad;
+    float4x4 vpMatrix : packoffset(c0);
+    float4x4 invViewProj : packoffset(c4); // For reconstructing world position
+    
+    float3 viewPos : packoffset(c8);
+    int numLights : packoffset(c8.w);
+    
+    int frameCount : packoffset(c9.x);
+    float3 _pad : packoffset(c9.y);
 };
+
+// --- RANDOM HELPERS ---
+uint initRand(uint val0, uint val1, uint backoff = 16)
+{
+    uint v0 = val0, v1 = val1, s0 = 0;
+    for (uint n = 0; n < backoff; n++)
+    {
+        s0 += 0x9e3779b9;
+        v0 += ((v1 << 4) + 0xa341316c) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4);
+        v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
+    }
+    return v0;
+}
+
+float nextRand(inout uint s)
+{
+    s = (1664525u * s + 1013904223u);
+    return float(s & 0x00FFFFFF) / float(0x01000000);
+}
+
+float3 GetConeSample(inout uint seed, float3 L_central, float spreadAngle)
+{
+    float r1 = nextRand(seed);
+    float r2 = nextRand(seed);
+    float z = 1.0f - r2 * (1.0f - cos(spreadAngle));
+    float phi = 6.2831853f * r1;
+    float x = cos(phi) * sqrt(1.0f - z * z);
+    float y = sin(phi) * sqrt(1.0f - z * z);
+    float3 d = float3(x, y, z);
+
+    float3 up = abs(L_central.z) < 0.999f ? float3(0, 0, 1) : float3(1, 0, 0);
+    float3 tangent = normalize(cross(up, L_central));
+    float3 bitangent = cross(L_central, tangent);
+    
+    return d.x * tangent + d.y * bitangent + d.z * L_central;
+}
 
 // Reconstruct World Position from Depth
 float3 GetWorldPosition(float2 uv, float depth)
@@ -72,10 +112,10 @@ float GeometrySchlickGGX(float NdotV, float roughness)
     return NdotV / (NdotV * (1.0 - k) + k);
 }
 
-float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+float GeometrySmith(float3 N, float3 V, float3 L_central, float roughness)
 {
     float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
+    float NdotL = max(dot(N, L_central), 0.0);
     return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
 }
 
@@ -134,40 +174,50 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     // 3. Lighting Loop (Inline Ray Tracing)
     // In a real app, use ReSTIR or tiled culling here. 
-    // For now, we loop up to 128 lights per pixel.
-    uint activeLights = min(numLights, 128);
+    uint seed = initRand(pixel.x + pixel.y * width, frameCount);
 
-    for (uint i = 0; i < activeLights; ++i)
+    for (uint i = 0; i < numLights; ++i)
     {
         Light light = gLights[i];
-        float3 L;
+        float3 L_central;
         float dist;
         float attenuation = 1.0f;
+        float spreadAngle = 0.0f;
 
         if (light.dirType.w > 0.5f) // Directional
         {
-            L = normalize(-light.dirType.xyz);
+            L_central = normalize(-light.dirType.xyz);
             dist = 10000.0f; // Infinite
+            spreadAngle = 0.02f; // ~1 degree soft edge (sun)
         }
         else // Point
         {
             float3 diff = light.position.xyz - worldPos;
             dist = length(diff);
-            L = normalize(diff);
+            L_central = normalize(diff);
             
             // Simple Quadratic falloff
             attenuation = 1.0f / (1.0f + 0.1f * dist + 0.05f * dist * dist);
+            
+            float lightRadius = 1.0f; // Could be a property of the light
+            spreadAngle = atan(lightRadius / max(dist, 0.01f));
         }
 
-        float NdotL = max(dot(normal, L), 0.0f);
+        float NdotL = max(dot(normal, L_central), 0.0f);
         if (NdotL > 0.0f && attenuation > 0.001f)
         {
+            float3 L_shadow = GetConeSample(seed, L_central, spreadAngle);
+            
             // --- INLINE RAY TRACING SHADOWS ---
-            RayQuery < RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES > q;
+            RayQuery < 
+            RAY_FLAG_CULL_NON_OPAQUE | 
+            RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+            RAY_FLAG_CULL_BACK_FACING_TRIANGLES
+            > q;
             RayDesc ray;
             ray.Origin = worldPos + normal * 0.05f; // Bias to prevent self-shadowing acne
-            ray.Direction = L;
-            ray.TMin = 0.0f;
+            ray.Direction = L_shadow;
+            ray.TMin = 0.01f;
             ray.TMax = dist - 0.05f;
 
             q.TraceRayInline(gTLAS, 0, 0xFF, ray);
@@ -179,18 +229,38 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
                 continue;
             }
 
-            // --- PBR SHADING (Simplified) ---
-            // Diffuse
-            float3 diffuse = albedo * light.diffuseColor.rgb * NdotL * attenuation;
+            // --- FULL PBR SHADING (Cook-Torrance) ---
+            // This matches the DXR logic you saw in the other example
             
-            // Specular
-            float3 H = normalize(V + L);
-            float NdotH = max(dot(N, H), 0.0f);
-            float specPower = lerp(10.0f, 500.0f, 1.0f - roughness);
-            float specFactor = pow(NdotH, specPower) * metalness;
-            float3 specular = specFactor * light.specularColor.rgb * attenuation;
+            float3 H = normalize(V + L_central); // Half vector
+            // Use diffuse color as the base light intensity/radiance
+            float3 radiance = light.diffuseColor.rgb * attenuation;
 
-            finalColor += diffuse + specular;
+            // 1. Fresnel (F) - How reflective is it at this angle?
+            // F0: Dielectrics = 0.04, Metals = Albedo
+            float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
+            float3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+            // 2. Normal Distribution (D) - The shape/sharpness of the highlight
+            float NDF = DistributionGGX(normal, H, roughness);
+            
+            // 3. Geometry (G) - Microfacet self-shadowing
+            float G = GeometrySmith(normal, V, L_central, roughness);
+
+            // 4. Calculate Specular (The shiny reflection of the light source)
+            float3 numerator = NDF * G * F;
+            float denominator = 4.0 * max(dot(normal, V), 0.0) * NdotL + 0.0001; // +0.0001 prevents div by zero
+            float3 specular = numerator / denominator;
+
+            // 5. Diffuse (Energy Conservation)
+            // Light that reflects (kS) cannot refract/diffuse (kD)
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= (1.0 - metalness); // Pure metals have 0 diffuse
+
+            // 6. Combine and Add to Pixel
+            // Note: dividing albedo by PI is standard for physically correct diffuse
+            finalColor += (kD * albedo / PI + specular) * radiance * NdotL;
         }
     }
     
@@ -231,7 +301,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         {
         // WE MISSED (Hit the sky)
         // Normally you sample an HDRI skybox texture here.
-            reflectionColor = GetSkyColor(R);
+            float3 sky = GetSkyColor(R);
+            reflectionColor = sky * (1.0f - roughness);
         }
         
         //reflectionColor *= (1.0 - roughness); // Rougher surfaces have dimmer reflections)
@@ -243,6 +314,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 F = FresnelSchlick(max(dot(normal, V), 0.0f), F0);
     
     finalColor += reflectionColor * F;
+    
+    finalColor += gEmissive.Load(uint3(pixel, 0)).rgb;
     
     //finalColor = float3(metalness, metalness, metalness);
     //finalColor = float3(roughness, roughness, roughness);

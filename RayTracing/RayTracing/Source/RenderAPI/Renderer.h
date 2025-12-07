@@ -17,6 +17,12 @@
 #include "RenderAPI/RT/RayTracingBuilder.h"
 #include <unordered_map>
 
+struct AlignedConstantBufferData
+{
+	ConstantBufferData data;
+	UINT8 padding[D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - (sizeof(ConstantBufferData) % D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)]{}; // Padding to 256-byte alignment
+};
+
 /**
  * @brief State of a GPU texture load operation, including async decode future.
  */
@@ -115,6 +121,7 @@ private:
 	D3D12Resource mGBufferAlbedo;    ///< G-buffer render target for albedo (RGBA8).
 	D3D12Resource mGBufferNormal;    ///< G-buffer render target for normals (RGBA16F).
 	D3D12Resource mGBufferMaterial;  ///< G-buffer render target for material properties (RGBA8).
+	D3D12Resource mGBufferEmission;  ///< G-buffer render target for emission (RGBA16F).
 
 	DescriptorHeap mGBufferRtvHeap; ///< RTV heap for G-buffer render targets.
 
@@ -129,6 +136,7 @@ private:
 	int mSrvSlot_GBufferAlbedo = -1;
 	int mSrvSlot_GBufferNormal = -1;
 	int mSrvSlot_GBufferMaterial = -1;
+	int mSrvSlot_GBufferEmissive = -1;
 	int mSrvSlot_Depth = -1;
 
 	int mUavSlot_Output = -1;       // For the Compute Shader Output
@@ -144,6 +152,8 @@ private:
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
+
+	unsigned int mFrameCount = 0;
 
 	// timing
 	LARGE_INTEGER mPrevCounter{};
