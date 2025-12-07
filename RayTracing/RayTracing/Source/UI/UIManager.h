@@ -4,6 +4,7 @@
 
 // Forward declarations
 class CameraManager;
+class PerformanceMonitor;
 
 /**
  * @brief Manages all ImGui UI rendering and state.
@@ -34,8 +35,9 @@ public:
 	 * @brief Initializes UI manager with required dependencies.
 	 * @param hwnd Window handle for file dialogs.
 	 * @param cameraManager Camera manager for settings.
+	 * @param perfMonitor Performance monitor for stats display.
 	 */
-	void Initialize(HWND hwnd, CameraManager* cameraManager);
+	void Initialize(HWND hwnd, CameraManager* cameraManager, PerformanceMonitor* perfMonitor = nullptr);
 
 	/**
 	 * @brief Renders all UI windows based on current state.
@@ -73,6 +75,16 @@ public:
 	 */
 	void ToggleSettings() { mShowSettingsWindow = !mShowSettingsWindow; }
 
+	/**
+	 * @brief Toggle performance overlay visibility.
+	 */
+	void TogglePerformanceOverlay() { mShowPerformanceOverlay = !mShowPerformanceOverlay; }
+
+	/**
+	 * @brief Check if any UI window is open in scene mode (requiring cursor).
+	 */
+	bool IsAnyWindowOpen() const { return mShowSettingsWindow || mShowAboutWindow || mShowControlsWindow; }
+
 private:
 	// Rendering methods
 	void RenderLoadingMenu();
@@ -80,6 +92,7 @@ private:
 	void RenderSettingsWindow();
 	void RenderAboutWindow();
 	void RenderControlsWindow();
+	void RenderPerformanceOverlay();
 
 	// Helper methods
 	bool OpenFileDialog(std::string& outPath);
@@ -87,11 +100,13 @@ private:
 	// Dependencies
 	HWND mHwnd = nullptr;
 	CameraManager* mCameraManager = nullptr;
+	PerformanceMonitor* mPerformanceMonitor = nullptr;
 
 	// UI state
 	bool mShowAboutWindow = false;
 	bool mShowControlsWindow = false;
 	bool mShowSettingsWindow = false;
+	bool mShowPerformanceOverlay = true;
 
 	// Callbacks
 	LoadSceneCallback mLoadSceneCallback;

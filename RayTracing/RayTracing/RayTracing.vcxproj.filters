@@ -228,6 +228,9 @@
     <ClCompile Include="Source\UI\UIManager.cpp">
       <Filter>Pliki źródłowe\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Utils\PerformanceMonitor.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\helpers.h">
@@ -340,6 +343,15 @@
     </ClInclude>
     <ClInclude Include="Source\ResourceLoading\ImageDecoder.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\RT\RayTracingBuilder.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Utils\PerformanceMonitor.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\UI\UIManager.h">
+      <Filter>Pliki nagłówkowe\UI</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

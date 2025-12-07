@@ -251,6 +251,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     wcout << "Selected device: " << desc.Description << endl;
 
+    // Store adapter for VRAM queries
+    mAdapter = adapter;
+
     mHwnd = hwnd;
     mDevice.Initialize(adapter.Get());
     mCommandQueue.Initialize(mDevice.Get());

@@ -1,12 +1,14 @@
 #include "pch.h"
 #include "UIManager.h"
 #include "RenderAPI/Camera/CameraManager.h"
+#include "Utils/PerformanceMonitor.h"
 #include "imgui.h"
 
-void UIManager::Initialize(HWND hwnd, CameraManager* cameraManager)
+void UIManager::Initialize(HWND hwnd, CameraManager* cameraManager, PerformanceMonitor* perfMonitor)
 {
 	mHwnd = hwnd;
 	mCameraManager = cameraManager;
+	mPerformanceMonitor = perfMonitor;
 }
 
 void UIManager::RenderUI(AppState currentState)
@@ -26,6 +28,10 @@ void UIManager::RenderUI(AppState currentState)
 	}
 	else // Scene mode
 	{
+		// Render performance overlay in scene mode (if enabled)
+		if (mShowPerformanceOverlay)
+			RenderPerformanceOverlay();
+
 		// Render settings window in scene mode (can be toggled)
 		if (mShowSettingsWindow)
 			RenderSettingsWindow();
@@ -307,6 +313,7 @@ void UIManager::RenderControlsWindow()
 	ImGui::Text("General:");
 	ImGui::BulletText("ESC - Pause / Resume (toggle menu)");
 	ImGui::BulletText("F1 - Open Settings (in scene mode)");
+	ImGui::BulletText("F2 - Toggle Performance Stats (in scene mode)");
 	ImGui::BulletText("C - Toggle between cameras");
 	ImGui::BulletText("G - Reload shaders (debug)");
 	
@@ -323,6 +330,66 @@ void UIManager::RenderControlsWindow()
 		mShowControlsWindow = false;
 	}
 
+	ImGui::End();
+}
+
+void UIManager::RenderPerformanceOverlay()
+{
+	if (!mPerformanceMonitor)
+		return;
+
+	const float DISTANCE = 10.0f;
+	ImVec2 windowPos = ImVec2(DISTANCE, DISTANCE);
+	ImVec2 windowPosPivot = ImVec2(0.0f, 0.0f);
+
+	ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, windowPosPivot);
+	ImGui::SetNextWindowBgAlpha(0.35f);
+
+	ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration | 
+	                                ImGuiWindowFlags_AlwaysAutoResize | 
+	                                ImGuiWindowFlags_NoSavedSettings | 
+	                                ImGuiWindowFlags_NoFocusOnAppearing | 
+	                                ImGuiWindowFlags_NoNav | 
+	                                ImGuiWindowFlags_NoMove;
+
+	if (ImGui::Begin("Performance", nullptr, windowFlags))
+	{
+		ImGui::Text("Performance Stats (F2 to toggle)");
+		ImGui::Separator();
+		
+		float fps = mPerformanceMonitor->GetFPS();
+		float frameTime = mPerformanceMonitor->GetAvgFrameTimeMS();
+		float cpuUsage = mPerformanceMonitor->GetCPUUsage();
+		float gpuUsage = mPerformanceMonitor->GetGPUUsage();
+		float ramUsage = mPerformanceMonitor->GetRAMUsageMB();
+		float vramUsage = mPerformanceMonitor->GetVRAMUsageMB();
+
+		// FPS with color coding
+		if (fps >= 60.0f)
+			ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "FPS: %.1f", fps);
+		else if (fps >= 30.0f)
+			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "FPS: %.1f", fps);
+		else
+			ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "FPS: %.1f", fps);
+		
+		ImGui::Text("Frame Time: %.2f ms", frameTime);
+		ImGui::Separator();
+		
+		ImGui::Text("CPU: %.1f%%", cpuUsage);
+		
+		if (gpuUsage > 0.0f)
+			ImGui::Text("GPU: %.1f%%", gpuUsage);
+		else
+			ImGui::TextDisabled("GPU: N/A");
+		
+		ImGui::Separator();
+		ImGui::Text("RAM: %.1f MB", ramUsage);
+		
+		if (vramUsage > 0.0f)
+			ImGui::Text("VRAM: %.1f MB", vramUsage);
+		else
+			ImGui::TextDisabled("VRAM: N/A");
+	}
 	ImGui::End();
 }
 

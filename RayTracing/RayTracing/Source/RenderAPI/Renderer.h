@@ -64,6 +64,7 @@ class Renderer
 {
 private:
 	D3D12Device mDevice; ///< Logical D3D12 device wrapper.
+	Microsoft::WRL::ComPtr<IDXGIAdapter3> mAdapter; ///< DXGI adapter for VRAM queries.
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
 
@@ -261,5 +262,11 @@ public:
 	 * @brief Renders ImGui draw data.
 	 */
 	void RenderImGui();
+
+	/**
+	 * @brief Get the DXGI adapter used by the renderer.
+	 * @return Pointer to IDXGIAdapter3, or nullptr if not available.
+	 */
+	IDXGIAdapter3* GetAdapter() const { return mAdapter.Get(); }
 };
 

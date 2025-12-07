@@ -2,6 +2,7 @@
 #include "RenderAPI/Renderer.h"
 #include "RenderAPI/Camera/CameraManager.h"
 #include "UI/UIManager.h"
+#include "Utils/PerformanceMonitor.h"
 
 /**
  * @brief Application bootstrap that owns the window and resources.
@@ -12,6 +13,7 @@ private:
 	Renderer mRenderer; ///< High level renderer instance.
 	CameraManager mCameraManager; ///< Camera manager for view/projection matrices.
 	UIManager mUIManager; ///< UI manager for ImGui windows.
+	PerformanceMonitor mPerformanceMonitor; ///< Performance monitoring for FPS, CPU, GPU, RAM, VRAM.
 
 	UIManager::AppState mCurrentState = UIManager::AppState::LoadingMenu; // Start with loading menu
 

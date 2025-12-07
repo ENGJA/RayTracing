@@ -121,6 +121,9 @@ void Application::Update()
 	double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
 	mPrevCounter = now;
 
+	// Update performance monitor
+	mPerformanceMonitor.Update(static_cast<float>(dt));
+
 	input.ProcessCallbacks(static_cast<float>(dt));
 
 	// Always begin ImGui frame (required for WndProcHandler to work)
@@ -129,10 +132,18 @@ void Application::Update()
 	// Render UI through UIManager
 	mUIManager.RenderUI(mCurrentState);
 
-	// Update camera only in Scene mode
+	// Update camera and cursor lock state only in Scene mode
 	if (mCurrentState == UIManager::AppState::Scene)
 	{
-		mCameraManager.Update(static_cast<float>(dt));
+		// Unlock cursor if any UI window is open, lock it otherwise
+		bool shouldLockCursor = !mUIManager.IsAnyWindowOpen();
+		input.SetCursorLocked(shouldLockCursor);
+		mCameraManager.SetActive(shouldLockCursor);
+		
+		if (shouldLockCursor)
+		{
+			mCameraManager.Update(static_cast<float>(dt));
+		}
 	}
 
 	// Render the scene (if loaded)
@@ -149,8 +160,22 @@ void Application::OnCreate(HWND hwnd)
 	auto& input = InputManager::Instance;
 	input.Initialize(hwnd);
 
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	mSecondsPerCount = 1.0 / static_cast<double>(freq.QuadPart);
+	QueryPerformanceCounter(&mPrevCounter);
+
+	mCameraManager.Initialize(mWidth, mHeight);
+	mRenderer.Initialize(hwnd, mWidth, mHeight);
+	
+	// Initialize performance monitor with adapter from renderer
+	if (!mPerformanceMonitor.Initialize(mRenderer.GetAdapter()))
+	{
+		cerr << "Warning: Failed to initialize performance monitor. Some metrics may be unavailable." << endl;
+	}
+
 	// Initialize UIManager with dependencies
-	mUIManager.Initialize(hwnd, &mCameraManager);
+	mUIManager.Initialize(hwnd, &mCameraManager, &mPerformanceMonitor);
 	
 	// Set UI callbacks
 	mUIManager.SetLoadSceneCallback([this](const std::string& path) {
@@ -185,22 +210,21 @@ void Application::OnCreate(HWND hwnd)
 			mUIManager.ToggleSettings();
 	});
 
-	LARGE_INTEGER freq;
-	QueryPerformanceFrequency(&freq);
-	mSecondsPerCount = 1.0 / static_cast<double>(freq.QuadPart);
-	QueryPerformanceCounter(&mPrevCounter);
-
-	mCameraManager.Initialize(mWidth, mHeight);
-	mRenderer.Initialize(hwnd, mWidth, mHeight);
+	// Toggle performance overlay with F2
+	input.RegisterKeyPressedCallback(VK_F2, [this]() {
+		if (mCurrentState == UIManager::AppState::Scene)
+			mUIManager.TogglePerformanceOverlay();
+	});
 	
 	// Start with cursor visible in loading menu
-input.SetCursorLocked(false);
+	input.SetCursorLocked(false);
 	mCameraManager.SetActive(false);
 }
 
 void Application::OnDestroy()
 {
 	cout << "Application OnDestroy called!" << endl;
+	mPerformanceMonitor.Shutdown();
 	mIsRunning = false;
 }
 

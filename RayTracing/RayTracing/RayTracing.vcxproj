@@ -211,6 +211,7 @@
     <ClCompile Include="Source\ResourceLoading\TextureLoader.cpp" />
     <ClCompile Include="Source\ResourceLoading\Vertex.cpp" />
     <ClCompile Include="Source\UI\UIManager.cpp" />
+    <ClCompile Include="Source\Utils\PerformanceMonitor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\RenderAPI\RT\RayTracingBuilder.h" />
@@ -252,6 +253,7 @@
     <ClInclude Include="Source\ResourceLoading\TextureLoader.h" />
     <ClInclude Include="Source\ResourceLoading\Vertex.h" />
     <ClInclude Include="Source\UI\UIManager.h" />
+    <ClInclude Include="Source\Utils\PerformanceMonitor.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Source\Shaders\PixelShader_Masked.hlsl">
