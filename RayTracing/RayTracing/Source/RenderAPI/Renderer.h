@@ -141,6 +141,7 @@ private:
 
 	int mUavSlot_Output = -1;       // For the Compute Shader Output
 	int mSrvSlot_LightBuffer = -1;  // For the StructuredBuffer<Light>
+	int mRtvIndex_ComputeOutput = -1; // For the Compute Shader Output RTV
 
 
 

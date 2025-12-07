@@ -220,7 +220,7 @@ void Renderer::CollectStaticLights()
     if (mStaticLights.size() < cMaxLights)
     {
 		LightData sunLight{};
-		sunLight.dirType = DirectX::XMFLOAT4(-0.5f, -1.0f, -0.5f, 1.0f); // directional light
+		sunLight.dirType = DirectX::XMFLOAT4(0.5f, -1.0f, 0.5f, 1.0f); // directional light
 		sunLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 0.9f, 1.0f);
 		sunLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 0.9f, 1.0f);
 		mStaticLights.push_back(sunLight);
@@ -342,8 +342,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
     
-    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
+    //const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
     //const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\ABeautifulGame\glTF\ABeautifulGame.gltf)";
+    const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\AlphaBlendModeTest\glTF\AlphaBlendModeTest.gltf)";
     auto modelA = std::make_unique<Model>();
 
 	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
@@ -366,23 +367,23 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     mModels.push_back(std::move(modelA));
 
-	loadStartTime = std::chrono::steady_clock::now();
-	const std::string modelPathB = GetResourcePath("Objects\\pkg_a_curtains\\NewSponza_Curtains_glTF.gltf").string();
-	auto modelB = std::make_unique<Model>();
-	modelB->loadModel(modelPathB);
-	loadEndTime = std::chrono::steady_clock::now();
-	loadElapsedSeconds = loadEndTime - loadStartTime;
-	wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	mModels.push_back(std::move(modelB));
+	//loadStartTime = std::chrono::steady_clock::now();
+	//const std::string modelPathB = GetResourcePath("Objects\\pkg_a_curtains\\NewSponza_Curtains_glTF.gltf").string();
+	//auto modelB = std::make_unique<Model>();
+	//modelB->loadModel(modelPathB);
+	//loadEndTime = std::chrono::steady_clock::now();
+	//loadElapsedSeconds = loadEndTime - loadStartTime;
+	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+	//mModels.push_back(std::move(modelB));
 
-	loadStartTime = std::chrono::steady_clock::now();
-	const std::string modelPathC = GetResourcePath("Objects\\pkg_b_ivy\\NewSponza_IvyGrowth_glTF.gltf").string();
-	auto modelC = std::make_unique<Model>();
-	modelC->loadModel(modelPathC);
-	loadEndTime = std::chrono::steady_clock::now();
-	loadElapsedSeconds = loadEndTime - loadStartTime;
-	wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	mModels.push_back(std::move(modelC));
+	//loadStartTime = std::chrono::steady_clock::now();
+	//const std::string modelPathC = GetResourcePath("Objects\\pkg_b_ivy\\NewSponza_IvyGrowth_glTF.gltf").string();
+	//auto modelC = std::make_unique<Model>();
+	//modelC->loadModel(modelPathC);
+	//loadEndTime = std::chrono::steady_clock::now();
+	//loadElapsedSeconds = loadEndTime - loadStartTime;
+	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+	//mModels.push_back(std::move(modelC));
 
 
 
@@ -474,8 +475,8 @@ void Renderer::InitializeRayTracing()
 void Renderer::InitializeGBufferResources()
 {
     // 1. Initialize Heaps
-    // Create RTV Heap (Capacity 4, Not Visible)
-    mGBufferRtvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 4, false);
+    // Create RTV Heap (Capacity 5, Not Visible)
+    mGBufferRtvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 5, false);
 
     // 2. Define Resource Descriptors (Standard D3DX12 code...)
     auto albedoDescc = CD3DX12_RESOURCE_DESC::Tex2D(
@@ -615,7 +616,7 @@ void Renderer::InitializeComputePipeline()
         1, // mip levels
         1, // sample count
         0, // sample quality
-        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
 	);
 
     mComputeOutputTexture.Initialize(
@@ -637,6 +638,14 @@ void Renderer::InitializeComputePipeline()
         nullptr,
         &uavViewDesc,
 		uavHandle.cpuHandle);
+
+	auto rtvHandle = mGBufferRtvHeap.Allocate();
+	mRtvIndex_ComputeOutput = rtvHandle.index;
+
+    mDevice.Get()->CreateRenderTargetView(
+        mComputeOutputTexture.Get(),
+        nullptr,
+		rtvHandle.cpuHandle);
 }
 
 void Renderer::CreateLightBuffer()
@@ -682,6 +691,7 @@ void Renderer::InitializePipelineState()
     HLSLShader vertexShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
     HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
 	HLSLShader computeShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/LightPassCS.hlsl", L"cs_6_5");
+	HLSLShader transparentPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/TransparentPixelShader.hlsl", L"ps_6_0");
 
     std::vector<ShaderMacro> maskedDefines = {
 		{ L"ALPHA_TEST", L"1" }
@@ -725,7 +735,7 @@ void Renderer::InitializePipelineState()
         mDevice.Get(),
 		mMeshRootSignature.Get(),
         vertexShader,
-        pixelShader,
+        std::move(transparentPixelShader),
 		inputLayoutDesc);
 
 	// 4. Opaque double-sided pipeline state
@@ -733,7 +743,7 @@ void Renderer::InitializePipelineState()
         mDevice.Get(),
 		mMeshRootSignature.Get(),
         vertexShader,
-        pixelShader,
+        std::move(pixelShader),
 		inputLayoutDesc,
 		true);
 
@@ -892,9 +902,9 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 		mCommandList.Get()->SetPipelineState(mPipelineStateMaskedDouble.Get());
 		for (const auto& mesh : mMaskedDoubleSidedMeshes)
 			DrawMesh(mesh);
-		mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
-		for (const auto& mesh : mTransparentMeshes)
-			DrawMesh(mesh);
+		//mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
+		//for (const auto& mesh : mTransparentMeshes)
+		//	DrawMesh(mesh);
     }
 
     // =========================================================================================
@@ -961,6 +971,46 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     }
 
     // =========================================================================================
+    // STAGE 2.5: TRANSPARENT FORWARD PASS
+    // =========================================================================================
+    {
+        D3D12_RESOURCE_BARRIER barriers[2];
+
+        // 1. Transition Output Texture: UAV (from Compute) -> RENDER_TARGET
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            mComputeOutputTexture.Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+        // 2. Transition Depth: SHADER_RESOURCE (from Compute) -> DEPTH_READ
+        // We need to READ depth to occlude glass behind walls, but we don't need to WRITE (usually).
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            mDepthBuffer.GetResource(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_DEPTH_READ);
+
+        mCommandList.Get()->ResourceBarrier(2, barriers);
+
+        // Bind Targets
+        // We write Color to ComputeOutput, and Read Depth from DepthBuffer
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
+        D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
+
+        mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+        mCommandList.Get()->RSSetViewports(1, &mViewport);
+        mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+
+        // Draw Transparent Meshes
+        mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
+        mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
+        mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
+
+        for (const auto& mesh : mTransparentMeshes)
+            DrawMesh(mesh);
+    }
+
+    // =========================================================================================
     // STAGE 3: COPY TO BACKBUFFER
     // =========================================================================================
     {
@@ -968,7 +1018,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 		// Transition Output Texture -> Copy Source
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
             mComputeOutputTexture.Get(),
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
             D3D12_RESOURCE_STATE_COPY_SOURCE);
         // Transition Back Buffer -> Copy Dest
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -978,7 +1028,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 		// Transition Depth Buffer back to Common
 		barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
 			mDepthBuffer.GetResource(),
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_DEPTH_READ,
 			D3D12_RESOURCE_STATE_COMMON);
 		// Transition Emissive G-Buffer back to Common
 		barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(

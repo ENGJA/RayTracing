@@ -27,6 +27,12 @@ void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, ID3D12Root
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc,  true);
 
 	// Specific changes for transparent
+	gpsDesc.NumRenderTargets = 1;
+	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	gpsDesc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN; // Clear others just to be safe
+	gpsDesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+	gpsDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+
 	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 	gpsDesc.BlendState.RenderTarget[0].BlendEnable = TRUE;
 	gpsDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
