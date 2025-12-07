@@ -21,6 +21,9 @@ struct ConstantBufferData
 	DirectX::XMMATRIX InvVpMatrix;    // Compute Shader needs this (NEW)
 	DirectX::XMFLOAT3 viewPos;		///< world-space camera position (w .xyz)
 	int numLights;					///< number of active lights
+
+	int frameCount;
+	int _pad[3];
 	LightData lights[cMaxLights];
 };
 

@@ -57,29 +57,29 @@ void D3D12RootSignature::InitializeMeshRS(ID3D12Device* pDevice)
 void D3D12RootSignature::InitializeComputeRS(ID3D12Device* pDevice)
 {
 	// --- 1. Define Ranges ---
-// Range 1: G-Buffer Inputs (Albedo, Normal, Material, Depth) -> t0-t3
+// Range 1: G-Buffer Inputs (Albedo, Normal, Material, Depth, Emissive) -> t0-t4
 	CD3DX12_DESCRIPTOR_RANGE1 gbufferSrvRange;
-	gbufferSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	gbufferSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
 	// Range 2: Output Texture (UAV) -> u0
 	CD3DX12_DESCRIPTOR_RANGE1 outputUavRange;
 	outputUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
 	// --- 2. Define Parameters ---
-	CD3DX12_ROOT_PARAMETER1 computeParams[5];
+	CD3DX12_ROOT_PARAMETER1 computeParams[5]{};
 
 	// Parameter 0: CBV for Frame Data (b0)
 	computeParams[0].InitAsConstantBufferView(0);
 
-	// Parameter 1: Descriptor Table for G-Buffer (t0-t3)
+	// Parameter 1: Descriptor Table for G-Buffer (t0-t4)
 	computeParams[1].InitAsDescriptorTable(1, &gbufferSrvRange);
 
-	// Parameter 2: Root SRV for TLAS (t4)
+	// Parameter 2: Root SRV for TLAS (t5)
 	// Using Root SRV (SetComputeRootShaderResourceView) is faster/cleaner for TLAS than a table
-	computeParams[2].InitAsShaderResourceView(4);
+	computeParams[2].InitAsShaderResourceView(5);
 
-	// Parameter 3: Root SRV for Light Buffer (t5)
-	computeParams[3].InitAsShaderResourceView(5);
+	// Parameter 3: Root SRV for Light Buffer (t6)
+	computeParams[3].InitAsShaderResourceView(6);
 
 	// Parameter 4: Descriptor Table for Output UAV (u0)
 	computeParams[4].InitAsDescriptorTable(1, &outputUavRange);

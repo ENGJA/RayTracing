@@ -22,6 +22,7 @@ struct PSOutput
     float4 Albedo   : SV_TARGET0; // R8G8B8A8_UNORM
     float4 Normal   : SV_TARGET1; // R16G16B16A16_FLOAT
     float2 Material : SV_TARGET2; // R32G32_FLOAT (Metalness, Roughness)
+    float4 Emissive : SV_TARGET3; // R16G16B16A16_FLOAT
 };
 
 // Light struct matching C++ ConstantBufferData::LightData (position,color,dirType)
@@ -40,8 +41,10 @@ cbuffer CBData : register(b0)
     float4x4 invViewProj : packoffset(c4); // Added for consistency with LightPassCS
     float3 viewPos    : packoffset(c8);
     int numLights     : packoffset(c8.w);
-    //float3 _pad       : packoffset(c9.y);
-    Light lights[25]  : packoffset(c10);
+    
+    int frameCount : packoffset(c9.x);
+    float3 _pad : packoffset(c9.y);
+    Light lights[25] : packoffset(c10);
 };
 
 cbuffer MaterialData : register(b1)
@@ -63,6 +66,10 @@ PSOutput main(PSInput input)
     float3 albedo = albedoSample.rgb * gBaseColorFactor.rgb;
     float alpha = albedoSample.a * gBaseColorFactor.a;
 
+    float4 emissiveSample = gEmissive.Sample(gSampler, input.uv);
+    float3 emissive = emissiveSample.rgb * gEmissiveFactor.rgb;
+
+    #define ALPHA_TEST 1
 #ifdef ALPHA_TEST
     clip(alpha - gAlphaCutoff); // Discard pixels with low alpha for alpha testing
 #endif
@@ -91,6 +98,8 @@ PSOutput main(PSInput input)
     output.Normal = float4(N, 0.0f);
     //output.Material = float2(0, 1);
     output.Material = float2(metalness, roughness);
+    output.Emissive = float4(emissive, 1.0f);
+    
     
     return output;
 }
