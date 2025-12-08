@@ -374,6 +374,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
     wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
 
+	InitializeMotionVectors();
     InitializeDenoising();
 
     // Collect static lights once after models are loaded
@@ -394,6 +395,14 @@ void Renderer::InitializeDummyTextures()
         //.black = mTextureLoader.CreateSolidDummyTexture(0xFF000000),    // (0,0,0) in BGRA
         .normal = mTextureLoader.CreateSolidDummyTexture(0xFFFF8080),   // (255,128,128) in BGRA
     };
+
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        mDepthBuffer.GetResource(),
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        D3D12_RESOURCE_STATE_COMMON
+    );
+    mCommandList.Get()->ResourceBarrier(1, &barrier);
+
     mCommandList.Get()->Close();
     ID3D12CommandList* lists[] = { mCommandList.Get() };
     mCommandQueue.ExecuteCommandLists(1, lists);
@@ -488,22 +497,29 @@ void Renderer::InitializeDenoising()
 	);
 
     // 3. Allocate Descriptors
-    // We need 3 slots: t0 (Noisy SRV), t1 (History SRV), u0 (Output UAV)
-    mDenoiseDescriptorTable = mSrvHeap.Allocate(3);
+    // We need 4 slots now: 
+    // [0] t0: Noisy Input (SRV)
+    // [1] t1: History Input (SRV)
+    // [2] t2: Motion Vectors (SRV)
+    // [3] u0: Output (UAV)
+    mDenoiseDescriptorTable = mSrvHeap.Allocate(4);
+    UINT inc = mSrvHeap.GetIncrementSize();
 
     // Create Views
-    // Slot 0: Noisy Input (This points to mRtOutputResource, usually)
-    // NOTE: We will update this descriptor frame-by-frame or just point it to mRtOutputResource now
-	CreateTextureView(mRtOutputResource.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(0, mSrvHeap.GetIncrementSize()), 1);
+    // Slot 0: Noisy Input (R16G16B16A16_FLOAT)
+	CreateTextureView(mRtOutputResource.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(0, inc), 1);
 
     // Slot 1: History Input
-	CreateTextureView(mHistoryTexture.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(1, mSrvHeap.GetIncrementSize()), 1);
+	CreateTextureView(mHistoryTexture.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(1, inc), 1);
 
-    // Slot 2: Output UAV
+    // Slot 2: Motion Vectors (R16G16_FLOAT)
+    CreateTextureView(mMotionVectorTexture.Get(), DXGI_FORMAT_R16G16_FLOAT, mDenoiseDescriptorTable.GetCpuHandle(2, inc), 1);
+
+    // Slot 3: Output UAV
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	mDevice.Get()->CreateUnorderedAccessView(mDenoiseOutput.Get(), nullptr, &uavDesc, mDenoiseDescriptorTable.GetCpuHandle(2, mSrvHeap.GetIncrementSize()));
+	mDevice.Get()->CreateUnorderedAccessView(mDenoiseOutput.Get(), nullptr, &uavDesc, mDenoiseDescriptorTable.GetCpuHandle(3, inc));
 
     CreateDenoisePipeline();
 }
@@ -512,6 +528,141 @@ void Renderer::CreateDenoisePipeline()
 {
     HLSLShader denoiseShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DenoiseCS.hlsl", L"cs_6_0");
     mDenoisePipelineState.InitializeCompute(mDevice.Get(), std::move(denoiseShader));
+}
+
+void Renderer::InitializeMotionVectors()
+{
+    // 1. Create Motion Vector Texture (R16G16_FLOAT for precision)
+    D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+        DXGI_FORMAT_R16G16_FLOAT, // 2 Channels (X, Y Velocity)
+        mWidth, mHeight,
+        1, 1, 1, 0,
+        D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+    );
+
+    // Optimized Clear Value (0 velocity)
+    D3D12_CLEAR_VALUE clearVal = {};
+    clearVal.Format = DXGI_FORMAT_R16G16_FLOAT;
+    clearVal.Color[0] = 0.0f;
+    clearVal.Color[1] = 0.0f;
+
+    mMotionVectorTexture.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &clearVal);
+
+    // 2. Create RTV Descriptor Heap (Capacity 1 for MV)
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+    rtvHeapDesc.NumDescriptors = 1;
+    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	mRtvHeap.Initialize(mDevice.Get(), rtvHeapDesc);
+
+    mMotionVectorRtvHandle = mRtvHeap.Get()->GetCPUDescriptorHandleForHeapStart();
+    mDevice.Get()->CreateRenderTargetView(mMotionVectorTexture.Get(), nullptr, mMotionVectorRtvHandle);
+
+    // 3. Create PSO
+    // Compile your new shaders
+    HLSLShader vs = mShaderCompiler.CompileFromFile(L"Source/Shaders/MotionGenVertexShader.hlsl", L"vs_6_0");
+    HLSLShader ps = mShaderCompiler.CompileFromFile(L"Source/Shaders/MotionGenPixelShader.hlsl", L"ps_6_0");
+
+    // Re-use the existing Input Layout from InitializePipelineState
+    constexpr D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    };
+    D3D12_INPUT_LAYOUT_DESC inputLayout = { inputElementDescs, _countof(inputElementDescs) };
+
+    // Initialize with the FLOAT16 format
+    mMotionVectorPipelineState.InitializeOpaque(
+        mDevice.Get(),
+        std::move(vs),
+        std::move(ps),
+        inputLayout,
+        false,
+        DXGI_FORMAT_R16G16_FLOAT // <--- Important!
+    );
+
+    // 4. Create SRV for Denoising (Bind to t2 in Reprojection Shader)
+    // Note: mDenoiseDescriptorTable needs to be size 3 now in InitializeDenoising!
+    // Or create a new table. Let's assume you resized mDenoiseDescriptorTable allocation to 3 or 4.
+
+    // In InitializeDenoising, add this:
+    // CreateTextureView(mMotionVectorTexture.Get(), DXGI_FORMAT_R16G16_FLOAT, mDenoiseDescriptorTable.GetCpuHandle(2, inc), 1);
+}
+
+void Renderer::RenderMotionVectors()
+{
+    // 1. Transition Motion Vector Texture
+    D3D12_RESOURCE_BARRIER barriers[2]{};
+    barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mMotionVectorTexture.Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, // Or SRV if coming from prev frame
+        D3D12_RESOURCE_STATE_RENDER_TARGET
+    );
+    // 2. Transition Depth Buffer
+    barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mDepthBuffer.GetResource(),
+        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE
+	);
+	mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+
+    // Clear
+    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    mCommandList.Get()->ClearRenderTargetView(mMotionVectorRtvHandle, clearColor, 0, nullptr);
+
+    mCommandList.Get()->ClearDepthStencilView(
+        mDepthBuffer.GetDSVHandle(),
+        D3D12_CLEAR_FLAG_DEPTH,
+        1.0f,
+        0,
+        0,
+        nullptr
+	);
+
+	ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
+	mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+
+    // Bind Targets
+    // Note: We bind the Depth Buffer too so we can Z-Test!
+    D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
+    mCommandList.Get()->OMSetRenderTargets(1, &mMotionVectorRtvHandle, FALSE, &dsv);
+
+    // Set State
+    mCommandList.Get()->SetPipelineState(mMotionVectorPipelineState.Get());
+    mCommandList.Get()->SetGraphicsRootSignature(mMotionVectorPipelineState.GetRootSignature()); // Reuses generic Mesh Root Sig
+    mCommandList.Get()->RSSetViewports(1, &mViewport);
+    mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+
+	mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    // Bind Constants (ViewProj + PrevViewProj)
+    mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
+
+    // Draw Opaque Meshes
+    // Note: Motion Vectors for transparent objects are complex. Usually skipped or handled separately.
+    for (const auto& mesh : mOpaqueSingleSidedMeshes) DrawMesh(mesh);
+    for (const auto& mesh : mOpaqueDoubleSidedMeshes) DrawMesh(mesh);
+
+    // 3. Cleanup Transitions
+    D3D12_RESOURCE_BARRIER cleanupBarriers[2];
+
+    // MV Texture: RT -> SRV (Ready for Denoising Shader to read)
+    cleanupBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mMotionVectorTexture.Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    );
+
+    // Depth Buffer: WRITE -> COMMON (Clean state for next frame/pass)
+    cleanupBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mDepthBuffer.GetResource(),
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        D3D12_RESOURCE_STATE_COMMON
+    );
+	mCommandList.Get()->ResourceBarrier(_countof(cleanupBarriers), cleanupBarriers);
 }
 
 void Renderer::CreateRayTracingOutput()
@@ -1003,6 +1154,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     mPrevCounter = now;
 
     mConstantBufferData.vpMatrix = viewProj;
+    mConstantBufferData.prevVpMatrix = mPrevViewProj;
     mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
 	mConstantBufferData.frameCount = mFrameCount++;
 
@@ -1052,9 +1204,12 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
     // Open command list
     mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+
+
     if (mRayTracingEnabled)
     {
         // Ray tracing rendering path
+        RenderMotionVectors();
         RenderRayTracing(viewProj, cameraPos, cameraForward);
     }
     else
@@ -1065,16 +1220,18 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         // Bind descriptor heap
         ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
         mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+        D3D12_RESOURCE_BARRIER barriers[2]{};
+		// Transition depth buffer to DEPTH_WRITE
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            mDepthBuffer.GetResource(),
+            D3D12_RESOURCE_STATE_COMMON,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            mSwapChain.GetCurrentBackBuffer(),
+            D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-        // Transition back buffer to render target
-        D3D12_RESOURCE_BARRIER barrier{};
-        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barrier.Transition.pResource = mSwapChain.GetCurrentBackBuffer();
-        barrier.Transition.Subresource = 0;
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        mCommandList.Get()->ResourceBarrier(1, &barrier);
+		mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
         const FLOAT clearColor[4] = { 0 };
 
@@ -1117,12 +1274,28 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         for (const auto& mesh : mTransparentMeshes)
             DrawMesh(mesh);
 
-        // Transition back buffer to present
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-        mCommandList.Get()->ResourceBarrier(1, &barrier);
+        D3D12_RESOURCE_BARRIER cleanupBarriers[2]{};
+
+        // 1. BackBuffer: RENDER_TARGET -> PRESENT (Existing)
+        cleanupBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            mSwapChain.GetCurrentBackBuffer(),
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            D3D12_RESOURCE_STATE_PRESENT);
+
+        // 2. DepthBuffer: DEPTH_WRITE -> COMMON (NEW!)
+        // This ensures the Depth Buffer is in COMMON for the start of the next frame
+        // (whether it be another Raster frame or a Ray Tracing frame).
+        cleanupBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            mDepthBuffer.GetResource(),
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            D3D12_RESOURCE_STATE_COMMON);
+
+        mCommandList.Get()->ResourceBarrier(_countof(cleanupBarriers), cleanupBarriers);
 
     }
+	mPrevViewProj = viewProj;
+
+
     // Execute command list
     mCommandList.Get()->Close();
     ID3D12CommandList* commandLists[] = { mCommandList.Get() };

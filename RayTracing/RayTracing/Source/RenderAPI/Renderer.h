@@ -151,6 +151,20 @@ private:
 	DirectX::XMFLOAT3 mPrevCameraForward{}; ///< Previous frame camera forward vector (for accumulation reset).
 	// END DENOISING
 
+	// MOTION VECTORS
+	D3D12Resource mMotionVectorTexture; ///< Motion vector texture.
+	D3D12PipelineState mMotionVectorPipelineState; ///< Motion vector pipeline state.
+
+	D3D12DescriptorHeap mRtvHeap; ///< RTV heap for motion vector texture.
+	D3D12_CPU_DESCRIPTOR_HANDLE mMotionVectorRtvHandle{}; ///< RTV handle for motion vector texture.
+
+	DirectX::XMMATRIX mPrevViewProj{}; ///< Previous frame view-projection matrix (for motion vector calculation).
+
+	void InitializeMotionVectors();
+	void RenderMotionVectors();
+
+	// END MOTION VECTORS
+
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
 	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).

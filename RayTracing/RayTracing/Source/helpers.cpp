@@ -2,7 +2,7 @@
 #include "helpers.h"
 
 using Microsoft::WRL::ComPtr, std::wcerr, std::endl;
-void CreateRootSignature(ID3D12Device* pDevice, D3D12_VERSIONED_ROOT_SIGNATURE_DESC& rootSignatureDesc, ComPtr<ID3D12RootSignature>& mRootSignature)
+void CreateRootSignature(ID3D12Device* pDevice, const D3D12_VERSIONED_ROOT_SIGNATURE_DESC& rootSignatureDesc, ComPtr<ID3D12RootSignature>& mRootSignature)
 {
     ComPtr<ID3DBlob> serializedRootSig;
     ComPtr<ID3DBlob> errorBlob;

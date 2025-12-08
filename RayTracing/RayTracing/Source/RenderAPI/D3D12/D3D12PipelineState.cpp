@@ -4,10 +4,10 @@
 #include "helpers.h"
 //#include "RenderAPI/HLSL/HLSLCompiler.h"
 
-void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided)
+void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided, DXGI_FORMAT rtvFormat)
 {
 	InitializeCommon(pDevice, std::move(vertexShader), std::move(pixelShader));
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc, doubleSided);
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc, doubleSided, rtvFormat);
 
 	// Specific changes for opaque
 	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
@@ -59,7 +59,7 @@ void D3D12PipelineState::InitializeCompute(ID3D12Device* pDevice, HLSLShader com
     ASSERT_HR(hr, "Failed to create Compute PSO.");
 }
 
-D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided) const
+D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided, DXGI_FORMAT rtvFormat) const
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc{};
 	gpsDesc.pRootSignature = mRootSignature.Get();
@@ -78,7 +78,7 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_
 	// Topology and render target formats
 	gpsDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	gpsDesc.NumRenderTargets = 1;
-	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	gpsDesc.RTVFormats[0] = rtvFormat;
 
 	// Rasterizer
 	gpsDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;

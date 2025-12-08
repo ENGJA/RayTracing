@@ -66,26 +66,37 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 void D3D12RootSignature::InitializeCompute(ID3D12Device* pDevice)
 {
 	// Denoise Root Sig: 
-	// Slot 0: Constants (b0) - Blend Factor
-	// Slot 1: Table (t0, t1, u0) - Noisy, History, Output
-
 	CD3DX12_ROOT_PARAMETER1 rootParameters[2] = {};
 
-	// 1. Constants (b0)
+	// b0 - blend factor`
 	rootParameters[0].InitAsConstants(1, 0);
 
 	// 2. Descriptor Table (t0, t1, u0)
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[2] = {};
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0); // t0, t1
-	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // u0
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[2]{};
+	// Range 0: SRVs (t0, t1, t2) -> NumDescriptors = 3
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+
+	// Range 1: UAV (u0) -> NumDescriptors = 1
+	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 
 	rootParameters[1].InitAsDescriptorTable(2, ranges);
 
-	D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
-	rootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
-	rootSignatureDesc.Desc_1_1.NumParameters = 2;
-	rootSignatureDesc.Desc_1_1.pParameters = rootParameters;
-	rootSignatureDesc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+	CD3DX12_STATIC_SAMPLER_DESC staticSampler(
+		0, // ShaderRegister (s0)
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP
+	);
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init_1_1(
+		_countof(rootParameters),
+		rootParameters,
+		1,
+		&staticSampler,
+		D3D12_ROOT_SIGNATURE_FLAG_NONE
+	);
 
 	CreateRootSignature(pDevice, rootSignatureDesc, mRootSignature);
 }

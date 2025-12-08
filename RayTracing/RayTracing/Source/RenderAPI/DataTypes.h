@@ -18,6 +18,7 @@ struct LightData
 struct ConstantBufferData
 {
 	DirectX::XMMATRIX vpMatrix;		///< View-Projection matrix
+	DirectX::XMMATRIX prevVpMatrix; //< Previous frame View-Projection matrix
 	DirectX::XMFLOAT4 viewPos;		///< world-space camera position (w .xyz)
 	int numLights;					///< number of active lights
 	UINT frameCount;				///< frame count since start

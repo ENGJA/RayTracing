@@ -30,10 +30,12 @@ struct Light
 cbuffer CBData : register(b0)
 {
     float4x4 vpMatrix : packoffset(c0);
-    float4 viewPos    : packoffset(c4);
-    int numLights     : packoffset(c5.x);
-    float3 _pad       : packoffset(c5.y);
-    Light lights[25]  : packoffset(c6);
+    matrix prevVpMatrix : packoffset(c4); // Not used in this shader
+    float4 viewPos : packoffset(c8);
+    int numLights : packoffset(c9.x);
+    uint frameCount : packoffset(c9.y);
+    float2 _pad : packoffset(c9.z);
+    Light lights[25] : packoffset(c10);
 };
 
 cbuffer MaterialData : register(b1)

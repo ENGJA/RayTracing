@@ -20,7 +20,7 @@ private:
 	* @param doubleSided Whether to disable back-face culling.
 	* @return Configured graphics pipeline state description.
 	*/
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided) const;
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided, DXGI_FORMAT rtvFormat = DXGI_FORMAT_R8G8B8A8_UNORM) const;
 
 	/**
 	 * @brief Initializes common resources for the pipeline state.
@@ -39,7 +39,7 @@ public:
 	 * @param inputLayoutDesc Input layout description for vertex buffers.
 	 * @param doubleSided Whether to disable back-face culling.
 	 */
-	void InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false);
+	void InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false, DXGI_FORMAT rtvFormat = DXGI_FORMAT_R8G8B8A8_UNORM);
 
 	/**
 	 * @brief Builds a PSO for the provided shaders and input layout.
