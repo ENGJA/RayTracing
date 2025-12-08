@@ -12,6 +12,7 @@ private:
 	D3D12RootSignature mRootSignature;
 	HLSLShader mVertexShader;
 	HLSLShader mPixelShader;
+	HLSLShader mComputeShader;
 
 	/**
 	* @brief Creates a base graphics pipeline state description with common settings.
@@ -48,6 +49,10 @@ public:
 	 * @param inputLayoutDesc Input layout description for vertex buffers.
 	 */
 	void InitializeTransparent(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
+
+
+
+	void InitializeCompute(ID3D12Device* pDevice, HLSLShader computeShader);
 	/**
 	 * @brief Returns the native root signature pointer.
 	 */

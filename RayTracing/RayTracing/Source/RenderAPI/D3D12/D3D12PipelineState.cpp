@@ -44,6 +44,21 @@ void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, HLSLShader
 	ASSERT_HR(hr, "Failed to create pipeline state object.");
 }
 
+void D3D12PipelineState::InitializeCompute(ID3D12Device* pDevice, HLSLShader computeShader)
+{
+    // 1. Initialize Root Signature (Use the new Compute method)
+    mRootSignature.InitializeCompute(pDevice);
+    mComputeShader = std::move(computeShader);
+
+    // 2. Create Compute PSO
+    D3D12_COMPUTE_PIPELINE_STATE_DESC computeDesc = {};
+    computeDesc.pRootSignature = mRootSignature.Get();
+    computeDesc.CS = { mComputeShader.GetShaderBlob()->GetBufferPointer(), mComputeShader.GetShaderBlob()->GetBufferSize() };
+    
+    HRESULT hr = pDevice->CreateComputePipelineState(&computeDesc, IID_PPV_ARGS(mPipelineState.ReleaseAndGetAddressOf()));
+    ASSERT_HR(hr, "Failed to create Compute PSO.");
+}
+
 D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12PipelineState::MakeBaseDesc(const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided) const
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc{};

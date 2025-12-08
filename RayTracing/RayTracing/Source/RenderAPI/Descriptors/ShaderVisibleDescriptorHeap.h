@@ -12,6 +12,20 @@ struct DescriptorAllocation
     D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle{};
     /** < Index within the descriptor heap. */
     UINT index = UINT_MAX;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCpuHandle(UINT offset, UINT descriptorIncrementSize) const
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = cpuHandle;
+        handle.ptr += static_cast<SIZE_T>(offset) * descriptorIncrementSize;
+        return handle;
+    }
+
+    D3D12_GPU_DESCRIPTOR_HANDLE GetGpuHandle(UINT offset, UINT descriptorIncrementSize) const
+    {
+        D3D12_GPU_DESCRIPTOR_HANDLE handle = gpuHandle;
+        handle.ptr += static_cast<UINT64>(offset) * descriptorIncrementSize;
+        return handle;
+    }
 };
 
 /**

@@ -62,3 +62,30 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice)
 
 	CreateRootSignature(pDevice, rootSignatureDesc, mRootSignature);
 }
+
+void D3D12RootSignature::InitializeCompute(ID3D12Device* pDevice)
+{
+	// Denoise Root Sig: 
+	// Slot 0: Constants (b0) - Blend Factor
+	// Slot 1: Table (t0, t1, u0) - Noisy, History, Output
+
+	CD3DX12_ROOT_PARAMETER1 rootParameters[2] = {};
+
+	// 1. Constants (b0)
+	rootParameters[0].InitAsConstants(1, 0);
+
+	// 2. Descriptor Table (t0, t1, u0)
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[2] = {};
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0); // t0, t1
+	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // u0
+
+	rootParameters[1].InitAsDescriptorTable(2, ranges);
+
+	D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	rootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+	rootSignatureDesc.Desc_1_1.NumParameters = 2;
+	rootSignatureDesc.Desc_1_1.pParameters = rootParameters;
+	rootSignatureDesc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+	CreateRootSignature(pDevice, rootSignatureDesc, mRootSignature);
+}

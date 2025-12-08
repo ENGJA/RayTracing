@@ -20,7 +20,8 @@ struct ConstantBufferData
 	DirectX::XMMATRIX vpMatrix;		///< View-Projection matrix
 	DirectX::XMFLOAT4 viewPos;		///< world-space camera position (w .xyz)
 	int numLights;					///< number of active lights
-	float _pad[3];					///< padding for alignment
+	UINT frameCount;				///< frame count since start
+	float _pad[2];					///< padding for alignment
 	LightData lights[cMaxLights];
 };
 
@@ -41,6 +42,12 @@ struct RayGenConstantBuffer
 	DirectX::XMMATRIX viewProjInverse;
 	DirectX::XMFLOAT4 cameraPos;
 	int numLights;
-	float _pad[3];
+	UINT frameCount;
+	float _pad[2];
 	LightData lights[cMaxLights];
+};
+
+struct DenoiseConstantBuffer
+{
+	float blendFactor;
 };

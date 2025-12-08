@@ -13,6 +13,10 @@ public:
 	 * @param pDevice D3D12 device.
 	 */
 	void Initialize(ID3D12Device* pDevice);// , const D3D12_ROOT_SIGNATURE_DESC& rootSignatureDesc);
+
+	
+	void InitializeCompute(ID3D12Device* pDevice);
+
 	/**
 	 * @brief Returns the native root signature pointer.
 	 */

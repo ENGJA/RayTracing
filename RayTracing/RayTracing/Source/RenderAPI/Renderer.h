@@ -121,16 +121,35 @@ private:
 
 
 	bool mRayTracingEnabled = false; ///< Whether ray tracing is enabled.
+	UINT mFrameCount = 0; ///< Frame count since start (for accumulation).
+
+
 
 	void CreateRayTracingOutput();
 	void CreateRayTracingPipeline();
 	void CreateShaderBindingTable();
-	void RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& camPos);
+	void RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& camPos, const DirectX::XMFLOAT3& camFwd);
 	/**
 	 * @brief Initializes ray tracing acceleration structures.
 	 */
 	void InitializeRayTracing();
 	// END RAY TRACING
+
+	// DENOISING
+	D3D12Resource mHistoryTexture; ///< History texture for accumulation.
+	D3D12Resource mDenoiseOutput; ///< Noisy texture for accumulation.
+
+	D3D12RootSignature mDenoiseRootSignature; ///< Denoising root signature.
+	D3D12PipelineState mDenoisePipelineState; ///< Denoising pipeline state.
+
+	DescriptorAllocation mDenoiseDescriptorTable; ///< Denoising descriptor table (input/output textures).
+
+	void InitializeDenoising();
+	void CreateDenoisePipeline();
+
+	DirectX::XMFLOAT3 mPrevCameraPos{}; ///< Previous frame camera position (for accumulation reset).
+	DirectX::XMFLOAT3 mPrevCameraForward{}; ///< Previous frame camera forward vector (for accumulation reset).
+	// END DENOISING
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 

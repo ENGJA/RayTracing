@@ -374,6 +374,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
     wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
 
+    InitializeDenoising();
+
     // Collect static lights once after models are loaded
     CollectStaticLights();
 
@@ -458,6 +460,60 @@ void Renderer::InitializeRayTracing()
     mRtBuilder.ClearScratchResources();
 }
 
+void Renderer::InitializeDenoising()
+{
+    // 1. Create History Texture (Same format as RT Output)
+    CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+        DXGI_FORMAT_R8G8B8A8_UNORM,
+        mWidth,
+        mHeight,
+        1, // array size
+        1  // mip levels
+	);
+
+    mHistoryTexture.Initialize(
+        mDevice.Get(),
+        desc,
+        D3D12_HEAP_TYPE_DEFAULT,
+        D3D12_RESOURCE_STATE_COMMON
+	);
+
+    // 2. Create Denoise Output Texture (UAV)
+	desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    mDenoiseOutput.Initialize(
+        mDevice.Get(),
+        desc,
+        D3D12_HEAP_TYPE_DEFAULT,
+        D3D12_RESOURCE_STATE_COMMON
+	);
+
+    // 3. Allocate Descriptors
+    // We need 3 slots: t0 (Noisy SRV), t1 (History SRV), u0 (Output UAV)
+    mDenoiseDescriptorTable = mSrvHeap.Allocate(3);
+
+    // Create Views
+    // Slot 0: Noisy Input (This points to mRtOutputResource, usually)
+    // NOTE: We will update this descriptor frame-by-frame or just point it to mRtOutputResource now
+	CreateTextureView(mRtOutputResource.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(0, mSrvHeap.GetIncrementSize()), 1);
+
+    // Slot 1: History Input
+	CreateTextureView(mHistoryTexture.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(1, mSrvHeap.GetIncrementSize()), 1);
+
+    // Slot 2: Output UAV
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	mDevice.Get()->CreateUnorderedAccessView(mDenoiseOutput.Get(), nullptr, &uavDesc, mDenoiseDescriptorTable.GetCpuHandle(2, mSrvHeap.GetIncrementSize()));
+
+    CreateDenoisePipeline();
+}
+
+void Renderer::CreateDenoisePipeline()
+{
+    HLSLShader denoiseShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DenoiseCS.hlsl", L"cs_6_0");
+    mDenoisePipelineState.InitializeCompute(mDevice.Get(), std::move(denoiseShader));
+}
+
 void Renderer::CreateRayTracingOutput()
 {
     D3D12_RESOURCE_DESC desc = {};
@@ -489,7 +545,7 @@ void Renderer::CreateRayTracingPipeline()
 {
     // --- 1. GLOBAL Root Signature (Output, TLAS, Camera) ---
     CD3DX12_DESCRIPTOR_RANGE uavRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
-    CD3DX12_ROOT_PARAMETER globalParams[3];
+    CD3DX12_ROOT_PARAMETER globalParams[3]{};
     globalParams[0].InitAsDescriptorTable(1, &uavRange);
     globalParams[1].InitAsShaderResourceView(0);
     globalParams[2].InitAsConstantBufferView(0);
@@ -728,44 +784,11 @@ void Renderer::CreateShaderBindingTable()
 }
 
 
-void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& camPos)
+void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& camPos, const DirectX::XMFLOAT3& camForward)
 {
     auto cmdList = mCommandList.Get();
 
     std::vector<D3D12_RESOURCE_BARRIER> preTraceBarriers;
-    // Pre-allocate rough estimate to avoid reallocations
-    //size_t totalMeshes = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
-    //    mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
-    //    mTransparentMeshes.size();
-    //preTraceBarriers.reserve(totalMeshes * 2);
-
-    //auto AddTransitions = [&](const std::vector<MeshGpuData>& meshes)
-    //    {
-    //        for (const auto& mesh : meshes)
-    //        {
-    //            preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-    //                mesh.vb.Get(),
-    //                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-    //            ));
-    //            preTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-    //                mesh.ib.Get(),
-    //                D3D12_RESOURCE_STATE_INDEX_BUFFER,
-    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-    //            ));
-    //        }
-    //    };
-
-    //AddTransitions(mOpaqueSingleSidedMeshes);
-    //AddTransitions(mOpaqueDoubleSidedMeshes);
-    //AddTransitions(mMaskedSingleSidedMeshes);
-    //AddTransitions(mMaskedDoubleSidedMeshes);
-    //AddTransitions(mTransparentMeshes);
-
-    //if (!preTraceBarriers.empty())
-    //{
-    //    cmdList->ResourceBarrier(static_cast<UINT>(preTraceBarriers.size()), preTraceBarriers.data());
-    //}
 
     // 1. Bind Pipeline & Resources
     ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
@@ -785,6 +808,7 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
     cb.viewProjInverse = DirectX::XMMatrixInverse(nullptr, viewProj);
     cb.cameraPos = { camPos.x, camPos.y, camPos.z, 1.0f };
 	cb.numLights = mConstantBufferData.numLights;
+	cb.frameCount = mConstantBufferData.frameCount;
 	memcpy(cb.lights, mConstantBufferData.lights, sizeof(LightData) * cb.numLights);
 
     void* pData;
@@ -820,76 +844,83 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 
     cmdList->DispatchRays(&desc);
 
-    // 3. Copy UAV -> BackBuffer (Prezentacja wyniku)
+	// =========================================================
+	// Denoising Pass
+	// =========================================================
+     
+    // 1. Determine Blend Factor based on movement
+    // Simple distance check. If moved > epsilon, reset history (blend = 1.0)
+    float dist = (pow(camPos.x - mPrevCameraPos.x, 2) + pow(camPos.y - mPrevCameraPos.y, 2) + pow(camPos.z - mPrevCameraPos.z, 2));
+	float rotDist = (pow(camForward.x - mPrevCameraForward.x, 2) + pow(camForward.y - mPrevCameraForward.y, 2) + pow(camForward.z - mPrevCameraForward.z, 2));
+    float blendFactor = (dist > 0.001f || rotDist > 0.001f) ? 0.8f : 0.05f; // 0.8 reduces ghosting on move, 0.05 smooths static
+    mPrevCameraPos = camPos;
+	mPrevCameraForward = camForward;
 
-    // Transition BackBuffer: PRESENT -> COPY_DEST
-    D3D12_RESOURCE_BARRIER b1 = CD3DX12_RESOURCE_BARRIER::Transition(
-        mSwapChain.GetCurrentBackBuffer(),
-        D3D12_RESOURCE_STATE_PRESENT,
-        D3D12_RESOURCE_STATE_COPY_DEST);
+    // 2. Resource Barriers for Denoising
+    D3D12_RESOURCE_BARRIER preDenoiseBarriers[3]{};
 
-    // Transition Output UAV: UAV -> COPY_SOURCE
-    D3D12_RESOURCE_BARRIER b2 = CD3DX12_RESOURCE_BARRIER::Transition(
+    // Transition Noisy Output (RT Result): UAV -> SRV (Read)
+    preDenoiseBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         mRtOutputResource.Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        D3D12_RESOURCE_STATE_COPY_SOURCE);
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-    D3D12_RESOURCE_BARRIER barriers[] = { b1, b2 };
-    cmdList->ResourceBarrier(2, barriers);
+    // Transition History: COMMON/SRV -> SRV (Read)
+    // Note: Assuming it ended in NON_PIXEL_SHADER_RESOURCE last frame
+    preDenoiseBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mHistoryTexture.Get(),
+        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-    cmdList->CopyResource(mSwapChain.GetCurrentBackBuffer(), mRtOutputResource.Get());
-
-    // Restore States
-    // BackBuffer: COPY_DEST -> PRESENT
-    D3D12_RESOURCE_BARRIER b3 = CD3DX12_RESOURCE_BARRIER::Transition(
-        mSwapChain.GetCurrentBackBuffer(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PRESENT);
-
-    // Output UAV: COPY_SOURCE -> UAV (Ready for next frame)
-    D3D12_RESOURCE_BARRIER b4 = CD3DX12_RESOURCE_BARRIER::Transition(
-        mRtOutputResource.Get(),
-        D3D12_RESOURCE_STATE_COPY_SOURCE,
+    // Transition Denoise Output: UAV (Write)
+    preDenoiseBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mDenoiseOutput.Get(),
+        D3D12_RESOURCE_STATE_COMMON, // Assumes first use or reset
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-    D3D12_RESOURCE_BARRIER restoreBarriers[] = { b3, b4 };
-    cmdList->ResourceBarrier(2, restoreBarriers);
+    cmdList->ResourceBarrier(_countof(preDenoiseBarriers), preDenoiseBarriers);
 
+    // 3. Dispatch Denoise CS
+	cmdList->SetPipelineState(mDenoisePipelineState.Get());
+	cmdList->SetComputeRootSignature(mDenoisePipelineState.GetRootSignature());
 
-    // ---------------------------------------------------------
-        // 5. RESTORE GEOMETRY STATES FOR RASTERIZER
-        // ---------------------------------------------------------
-        // If you plan to use these meshes in the Rasterizer next frame, put them back.
-    //std::vector<D3D12_RESOURCE_BARRIER> postTraceBarriers;
-    //postTraceBarriers.reserve(totalMeshes * 2);
+    // Bind constants
+	cmdList->SetComputeRoot32BitConstants(0, 1, &blendFactor, 0);
+	// Bind table (Noisy SRV, History SRV, Output UAV) at t0, t1, u0
+	cmdList->SetComputeRootDescriptorTable(1, mDenoiseDescriptorTable.gpuHandle);
 
-    //auto AddRestoreTransitions = [&](const std::vector<MeshGpuData>& meshes)
-    //    {
-    //        for (const auto& mesh : meshes)
-    //        {
-    //            postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-    //                mesh.vb.Get(),
-    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-    //                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
-    //            ));
-    //            postTraceBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-    //                mesh.ib.Get(),
-    //                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-    //                D3D12_RESOURCE_STATE_INDEX_BUFFER
-    //            ));
-    //        }
-    //    };
+	cmdList->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
 
-    //AddRestoreTransitions(mOpaqueSingleSidedMeshes);
-    //AddRestoreTransitions(mOpaqueDoubleSidedMeshes);
-    //AddRestoreTransitions(mMaskedSingleSidedMeshes);
-    //AddRestoreTransitions(mMaskedDoubleSidedMeshes);
-    //AddRestoreTransitions(mTransparentMeshes);
+	// 4. Copy Result to BackBuffer and History
+    // Transition Denoise Output: UAV -> COPY_SOURCE
+    // Transition BackBuffer: PRESENT -> COPY_DEST
+    // Transition History: SRV -> COPY_DEST
+    D3D12_RESOURCE_BARRIER postDenoiseBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(mDenoiseOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
+        CD3DX12_RESOURCE_BARRIER::Transition(mHistoryTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST)
+    };
 
-    //if (!postTraceBarriers.empty())
-    //{
-    //    cmdList->ResourceBarrier(static_cast<UINT>(postTraceBarriers.size()), postTraceBarriers.data());
-    //}
+	cmdList->ResourceBarrier(_countof(postDenoiseBarriers), postDenoiseBarriers);
+
+	// Copy to BackBuffer
+	cmdList->CopyResource(mSwapChain.GetCurrentBackBuffer(), mDenoiseOutput.Get());
+
+	// Copy to History
+	cmdList->CopyResource(mHistoryTexture.Get(), mDenoiseOutput.Get());
+
+    // 5.Restore States
+	// Transition BackBuffer: COPY_DEST -> PRESENT
+	// Transition RT Output: NON_PIXEL_SHADER_RESOURCE -> UAV (for next frame)
+	// Transition Denoise Output: COPY_SOURCE -> COMMON (reset)
+	// Transition History Texture: COPY_DEST -> COMMON/SRV (Ready for next frame read)
+    D3D12_RESOURCE_BARRIER cleanupBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT),       
+        CD3DX12_RESOURCE_BARRIER::Transition(mRtOutputResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        CD3DX12_RESOURCE_BARRIER::Transition(mDenoiseOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+        CD3DX12_RESOURCE_BARRIER::Transition(mHistoryTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON)
+    };
+    cmdList->ResourceBarrier(_countof(cleanupBarriers), cleanupBarriers);
 }
 
 void Renderer::InitializePipelineState()
@@ -973,6 +1004,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
     mConstantBufferData.vpMatrix = viewProj;
     mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
+	mConstantBufferData.frameCount = mFrameCount++;
 
     // --- use cached static lights, avoid re-scanning models each frame ---
     const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
@@ -1023,7 +1055,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     if (mRayTracingEnabled)
     {
         // Ray tracing rendering path
-        RenderRayTracing(viewProj, cameraPos);
+        RenderRayTracing(viewProj, cameraPos, cameraForward);
     }
     else
     {
