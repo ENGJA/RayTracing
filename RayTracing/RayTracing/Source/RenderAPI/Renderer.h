@@ -15,6 +15,7 @@
 #include "RenderAPI/Descriptors/DescriptorHeap.h"
 #include "RenderAPI/HLSL/HLSLCompiler.h"
 #include "RenderAPI/RT/RayTracingBuilder.h"
+#include "RenderAPI/RT/RayTracingPipeline.h"
 #include <unordered_map>
 
 struct AlignedConstantBufferData
@@ -117,6 +118,8 @@ private:
 	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. TBH I don't know if it should be kept around after build.
 
 
+	// ===========================================
+	// G-buffer resources for deferred rendering
 
 	D3D12Resource mGBufferAlbedo;    ///< G-buffer render target for albedo (RGBA8).
 	D3D12Resource mGBufferNormal;    ///< G-buffer render target for normals (RGBA16F).
@@ -129,6 +132,9 @@ private:
 	//D3D12RootSignature mComputeRootSignature; ///< Root signature for compute shader passes.
 
 	D3D12Resource mComputeOutputTexture; ///< Output texture for compute shader passes.
+
+	D3D12Resource mDirectLightingTexture; ///< Intermediate texture for direct lighting results.
+
 	D3D12Resource mGlobalLightBuffer; ///< Structured buffer for global lights.
 
 
@@ -140,6 +146,10 @@ private:
 	int mSrvSlot_Depth = -1;
 
 	int mUavSlot_Output = -1;       // For the Compute Shader Output
+
+	int mUavSlot_DirectLighting = -1;
+	int mSrvSlot_DirectLighting = -1;
+
 	int mSrvSlot_LightBuffer = -1;  // For the StructuredBuffer<Light>
 	int mRtvIndex_ComputeOutput = -1; // For the Compute Shader Output RTV
 
@@ -148,6 +158,25 @@ private:
 	void InitializeGBufferResources();
 	void InitializeComputePipeline();
 	void CreateLightBuffer();
+
+	// ===========================================
+
+	// ===========================================
+	// Ray tracing pipeline for reflections
+
+	RayTracingPipeline mReflectionsPipeline;
+	D3D12Resource mReflectionTexture;
+	int mUavSlot_Reflection = -1;
+	int mSrvSlot_Reflection = -1;
+
+	D3D12RootSignature mCompositeRootSignature;
+	D3D12PipelineState mPipelineStateComposite;	
+
+	void InitializeReflectionResources();
+	void InitializeCompositePipeline();
+	void DispatchCompositePass();
+
+	// ===========================================
 
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.

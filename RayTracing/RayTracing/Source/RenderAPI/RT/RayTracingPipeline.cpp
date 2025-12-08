@@ -1,0 +1,182 @@
+#include "pch.h"
+#include "helpers.h"
+#include "RenderAPI/Renderer.h"
+#include "RayTracingPipeline.h"
+
+// In RayTracingPipeline.cpp
+
+UINT RayTracingPipeline::GetShaderIdentifierSize(ID3D12Device5* pDevice)
+{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS5 options = {};
+    pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options, sizeof(options));
+    return options.RaytracingTier < D3D12_RAYTRACING_TIER_1_0 ? 0 : D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+}
+
+void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* globalSig, D3D12RootSignature* localSig, IDxcBlob* shaderBlob)
+{
+    // --- 1. Define the Pipeline ---
+    CD3DX12_STATE_OBJECT_DESC pipelineDesc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
+
+    // A. Shader Library (Compile 'Reflections.hlsl' to lib_6_5)
+    // You need to load this blob via your ShaderCompiler
+    auto lib = pipelineDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
+	CD3DX12_SHADER_BYTECODE shaderBytecode(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize());
+     lib->SetDXILLibrary(&shaderBytecode);
+    lib->DefineExport(L"RayGen");
+    lib->DefineExport(L"Miss");
+    //lib->DefineExport(L"ShadowMiss");
+    lib->DefineExport(L"ClosestHit");
+    lib->DefineExport(L"AnyHit"); // For Alpha Test
+
+    // B. Hit Groups
+    // Combines ClosestHit and AnyHit into one named group "HitGroup"
+    auto hitGroup = pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+    hitGroup->SetClosestHitShaderImport(L"ClosestHit");
+    hitGroup->SetAnyHitShaderImport(L"AnyHit"); // Enable Alpha Testing
+    hitGroup->SetHitGroupExport(L"HitGroup");
+    hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+
+    // C. Root Signatures
+    // Global: Bound once (Output UAV, TLAS, G-Buffer)
+    auto globalRoot = pipelineDesc.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
+    globalRoot->SetRootSignature(globalSig->Get());
+
+    // Local: Bound per geometry (Material Constants, Textures)
+    auto localRoot = pipelineDesc.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
+    localRoot->SetRootSignature(localSig->Get());
+
+    // Associate Local Root Sig with the Hit Group
+    auto rootAssoc = pipelineDesc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
+    rootAssoc->SetSubobjectToAssociate(*localRoot);
+    rootAssoc->AddExport(L"HitGroup"); // Only the Hit Shader needs local materials
+
+    // D. Config
+    auto shaderConfig = pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
+    shaderConfig->Config(sizeof(float) * 4, sizeof(float) * 2); // Payload size, Attribute size
+
+    auto pipelineConfig = pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
+    pipelineConfig->Config(1); // Recursion depth (1 bounce is enough for mirror)
+
+    // Create
+    HRESULT hr = pDevice->CreateStateObject(pipelineDesc, IID_PPV_ARGS(&mStateObject));
+    ASSERT_HR(hr, "Failed to create DXR Pipeline");
+}
+
+
+
+
+// In RayTracingPipeline.cpp
+
+void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::vector<MeshGpuData>& meshes)
+{
+    // Hit Group Record = [Shader ID (32B)] + [IndexBuffer Ptr (8B)] + [VertexBuffer Ptr (8B)] + [Texture Handle (8B)]
+    UINT shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES; // 32
+    UINT recordSize = shaderIDSize + 8 * 3; // ID + 1 GPU Descriptor Handle (64-bit)
+    recordSize = (recordSize + 31) & ~31; // Align to 32 bytes
+
+    mRayGenSectionSize = recordSize;    // 1 RayGen shader
+    mMissSectionSize = recordSize * 1;  // 2 Miss shaders (Color + Shadow)
+    mHitGroupSectionSize = recordSize * static_cast<UINT>(meshes.size()); // 1 HitGroup per mesh
+
+    // Total Size: 1 RayGen + 2 Miss (Color/Shadow) + N HitGroups (one per mesh)
+    UINT sbtSize = mRayGenSectionSize + mMissSectionSize + mHitGroupSectionSize;
+    sbtSize = (sbtSize + 255) & ~255; // Align to 256 bytes
+
+    // Create the SBT Buffer
+    auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sbtSize);
+    mSBTStorage.Initialize(pDevice, bufferDesc, heapProps);
+
+    // Map Buffer
+    uint8_t* pData = nullptr;
+    mSBTStorage.Get()->Map(0, nullptr, (void**)&pData);
+
+    Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> props;
+    mStateObject.As(&props);
+
+    // 1. Write RayGen
+    memcpy(pData, props->GetShaderIdentifier(L"RayGen"), shaderIDSize);
+    pData += mRayGenSectionSize;
+
+    // 2. Write Miss
+    memcpy(pData, props->GetShaderIdentifier(L"Miss"), shaderIDSize);
+    pData += mMissSectionSize;
+
+    // 3. Write Shadow Miss
+    //memcpy(pData, props->GetShaderIdentifier(L"ShadowMiss"), shaderIDSize);
+    //pData += mMissSectionSize;
+
+    // 4. Write Hit Groups (Per Mesh)
+    void* hitGroupId = props->GetShaderIdentifier(L"HitGroup");
+    for (const auto& mesh : meshes)
+    {
+        uint8_t* pDataStart = pData;
+
+        // A. Copy Shader ID for "HitGroup"
+        memcpy(pData, hitGroupId, shaderIDSize);
+        pData += shaderIDSize;
+
+        // B. Copy Root Argument: The GPU Pointer to the Index Buffer
+
+        // Arg 0: Index Buffer GPU Address (8 bytes)
+        auto indexBufferAddr = mesh.ib.Get()->GetGPUVirtualAddress();
+        memcpy(pData, &indexBufferAddr, sizeof(indexBufferAddr));
+        pData += sizeof(indexBufferAddr);
+
+        // Arg 1: Vertex Buffer GPU Address (8 bytes)
+        auto vertexBufferAddr = mesh.vb.Get()->GetGPUVirtualAddress();
+        memcpy(pData, &vertexBufferAddr, sizeof(vertexBufferAddr));
+        pData += sizeof(vertexBufferAddr);
+
+        // Arg 2: Texture Descriptor Table Handle (8 bytes)
+        auto textureHandle = mesh.materialTable.gpuHandle;
+        memcpy(pData, &textureHandle, sizeof(textureHandle));
+
+
+        pData = pDataStart + recordSize; // Advance to next record (considering alignment)
+    }
+
+    mSBTStorage.Get()->Unmap(0, nullptr);
+}
+
+void RayTracingPipeline::Dispatch(ID3D12GraphicsCommandList4* pCmd, UINT width, UINT height)
+{
+    // 1. Set the Pipeline State
+    pCmd->SetPipelineState1(mStateObject.Get());
+
+    // 2. Setup Dispatch Description (Pointing to the SBT)
+    D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
+
+    // Base address of the SBT buffer
+    auto sbtAddress = mSBTStorage.Get()->GetGPUVirtualAddress();
+
+    // A. Ray Generation Shader Record
+    // It's the first record in our buffer.
+    dispatchDesc.RayGenerationShaderRecord.StartAddress = sbtAddress;
+    dispatchDesc.RayGenerationShaderRecord.SizeInBytes = mRayGenSectionSize; // Should be aligned to 32 bytes
+
+    // B. Miss Shader Table
+    // Starts after RayGen. 
+    dispatchDesc.MissShaderTable.StartAddress = sbtAddress + mRayGenSectionSize;
+    dispatchDesc.MissShaderTable.SizeInBytes = mMissSectionSize;
+    dispatchDesc.MissShaderTable.StrideInBytes = mMissSectionSize;// / 2; // Assuming 2 Miss Shaders (Regular + Shadow), uniform stride
+
+    // C. Hit Group Table
+    // Starts after Miss Table.
+    dispatchDesc.HitGroupTable.StartAddress = sbtAddress + mRayGenSectionSize + mMissSectionSize;
+    dispatchDesc.HitGroupTable.SizeInBytes = mHitGroupSectionSize;
+    dispatchDesc.HitGroupTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES + 8 * 3; // ID + 3 descriptors (Index, Vertex, Texture)
+
+    // NOTE: Stride MUST be aligned to 32 bytes! 
+    // (32 + 24 = 56). Next multiple of 32 is 64.
+    // Ensure BuildSBT aligned the stride to 64!
+    dispatchDesc.HitGroupTable.StrideInBytes = (dispatchDesc.HitGroupTable.StrideInBytes + 31) & ~31;
+
+    // D. Dimensions
+    dispatchDesc.Width = width;
+    dispatchDesc.Height = height;
+    dispatchDesc.Depth = 1;
+
+    // 3. Launch!
+    pCmd->DispatchRays(&dispatchDesc);
+}

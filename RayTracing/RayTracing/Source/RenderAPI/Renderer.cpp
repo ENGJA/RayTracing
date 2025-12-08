@@ -312,6 +312,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	InitializeComputePipeline();
 	CreateLightBuffer();
 
+    InitializeReflectionResources();
+
     InitializeDummyTextures();
 
 	mRayTracingBuilder.Initialize(mDevice.Get(), mCommandList.Get(), &mCommandQueue);
@@ -469,6 +471,48 @@ void Renderer::InitializeRayTracing()
 
 	// 5. Clear temporary BLAS resources
 	mRayTracingBuilder.ClearScratchResources();
+
+
+    // Reflectios pipeline
+	// 1. mComputeRootSignature can be reused as global root signature
+
+    // 2. Local root signature
+    // 2. Build Local Root Signature 
+    CD3DX12_ROOT_PARAMETER1 localParams[3]{};
+
+    // Param 0: Index buffer (t0)
+    localParams[0].InitAsShaderResourceView(0, 1);
+
+    // Param 1: Vertex buffer (t1)
+	localParams[1].InitAsShaderResourceView(1, 1);
+
+	// Param 2: Texture table (t2)
+    CD3DX12_DESCRIPTOR_RANGE1 texRange{};
+    texRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1); // t0-t4 space1
+	localParams[2].InitAsDescriptorTable(1, &texRange);
+
+    CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_ANISOTROPIC); // s0
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC localDesc{};
+    localDesc.Init_1_1(3, localParams, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+
+    D3D12RootSignature localRootSig;
+    localRootSig.Initialize(mDevice.Get(), localDesc);
+
+	HLSLShader libraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/Reflections.hlsl", L"lib_6_3", {}, L"");
+
+    // 3. Initialize Pipeline
+    mReflectionsPipeline.Initialize(mDevice.Get(), &mComputeRootSignature, &localRootSig, libraryShader.GetShaderBlob());
+
+	// 4. Build Shader Binding Table (SBT)
+	std::vector<MeshGpuData> allMeshes;
+	allMeshes.insert(allMeshes.end(), mOpaqueSingleSidedMeshes.begin(), mOpaqueSingleSidedMeshes.end());
+	allMeshes.insert(allMeshes.end(), mOpaqueDoubleSidedMeshes.begin(), mOpaqueDoubleSidedMeshes.end());
+	allMeshes.insert(allMeshes.end(), mMaskedSingleMeshes.begin(), mMaskedSingleMeshes.end());
+	allMeshes.insert(allMeshes.end(), mMaskedDoubleSidedMeshes.begin(), mMaskedDoubleSidedMeshes.end());
+	allMeshes.insert(allMeshes.end(), mTransparentMeshes.begin(), mTransparentMeshes.end());
+
+	mReflectionsPipeline.BuildSBT(mDevice.Get(), allMeshes);
 }
 
 
@@ -581,8 +625,8 @@ void Renderer::InitializeGBufferResources()
     auto srvAlbedo = mSrvHeap.Allocate();
     auto srvNormal = mSrvHeap.Allocate();
     auto srvMaterial = mSrvHeap.Allocate();
-	auto srvEmissive = mSrvHeap.Allocate();
     auto srvDepth = mSrvHeap.Allocate();
+	auto srvEmissive = mSrvHeap.Allocate();
 
 	mSrvSlot_GBufferAlbedo = srvAlbedo.index;
 	mSrvSlot_GBufferNormal = srvNormal.index;
@@ -607,7 +651,10 @@ void Renderer::InitializeGBufferResources()
 
 void Renderer::InitializeComputePipeline()
 {
-    // 1. Create Output Texture (UAV)
+    // ====================================================================================
+    // 1. Create Final Output Texture (UAV)
+    // This is where the Composite Shader writes the merged result.
+    // ====================================================================================
     auto uavDesc = CD3DX12_RESOURCE_DESC::Tex2D(
         DXGI_FORMAT_R8G8B8A8_UNORM,
         mWidth,
@@ -646,6 +693,50 @@ void Renderer::InitializeComputePipeline()
         mComputeOutputTexture.Get(),
         nullptr,
 		rtvHandle.cpuHandle);
+
+    // ====================================================================================
+    // 2. Create Direct Lighting Intermediate Texture
+    // This is where LightPassCS writes. We use FLOAT format to preserve HDR data.
+    // ====================================================================================
+
+    // We reuse the desc but change format to Float16 for HDR precision
+    auto lightingDesc = uavDesc;
+    lightingDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
+    mDirectLightingTexture.Initialize(
+        mDevice.Get(),
+        lightingDesc,
+        D3D12_HEAP_TYPE_DEFAULT,
+        D3D12_RESOURCE_STATE_COMMON);
+
+    // A. Create UAV (For LightPassCS to WRITE to u0)
+    auto uavDirectHandle = mSrvHeap.Allocate();
+    mUavSlot_DirectLighting = uavDirectHandle.index;
+
+    D3D12_UNORDERED_ACCESS_VIEW_DESC lightingUavViewDesc = {};
+    lightingUavViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    lightingUavViewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+    mDevice.Get()->CreateUnorderedAccessView(
+        mDirectLightingTexture.Get(),
+        nullptr,
+        &lightingUavViewDesc,
+        uavDirectHandle.cpuHandle);
+
+    // B. Create SRV (For CompositeCS to READ from t0)
+    auto srvDirectHandle = mSrvHeap.Allocate();
+    mSrvSlot_DirectLighting = srvDirectHandle.index;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC lightingSrvDesc = {};
+    lightingSrvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    lightingSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    lightingSrvDesc.Texture2D.MipLevels = 1;
+    lightingSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+
+    mDevice.Get()->CreateShaderResourceView(
+        mDirectLightingTexture.Get(),
+        &lightingSrvDesc,
+        srvDirectHandle.cpuHandle);
 }
 
 void Renderer::CreateLightBuffer()
@@ -678,12 +769,48 @@ void Renderer::CreateLightBuffer()
 		srvHandle.cpuHandle);
 }
 
+void Renderer::InitializeReflectionResources()
+{
+    // 1. Create Reflection Texture (Same size as screen, RGBA16F for HDR)
+    auto desc = CD3DX12_RESOURCE_DESC::Tex2D(
+        DXGI_FORMAT_R16G16B16A16_FLOAT, // High precision for reflections
+        mWidth, mHeight, 1, 1, 1, 0,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+    );
+
+    mReflectionTexture.Initialize(
+        mDevice.Get(), desc,
+        D3D12_HEAP_TYPE_DEFAULT,
+        D3D12_RESOURCE_STATE_COMMON
+    );
+
+    // 2. Create UAV (For writing in DXR)
+    auto uavAlloc = mSrvHeap.Allocate();
+    mUavSlot_Reflection = uavAlloc.index;
+
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    mDevice.Get()->CreateUnorderedAccessView(mReflectionTexture.Get(), nullptr, &uavDesc, uavAlloc.cpuHandle);
+
+    // 3. Create SRV (For reading in Composite Pass)
+    auto srvAlloc = mSrvHeap.Allocate();
+    mSrvSlot_Reflection = srvAlloc.index;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels = 1;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    mDevice.Get()->CreateShaderResourceView(mReflectionTexture.Get(), &srvDesc, srvAlloc.cpuHandle);
+}
 
 
 void Renderer::InitializeRootSignatures()
 {
 	mMeshRootSignature.InitializeMeshRS(mDevice.Get());
 	mComputeRootSignature.InitializeComputeRS(mDevice.Get());
+	mCompositeRootSignature.InitializeCompositeRS(mDevice.Get());
 }
 
 void Renderer::InitializePipelineState()
@@ -692,6 +819,7 @@ void Renderer::InitializePipelineState()
     HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
 	HLSLShader computeShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/LightPassCS.hlsl", L"cs_6_5");
 	HLSLShader transparentPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/TransparentPixelShader.hlsl", L"ps_6_0");
+	HLSLShader compositeShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/CompositeCS.hlsl", L"cs_6_0");
 
     std::vector<ShaderMacro> maskedDefines = {
 		{ L"ALPHA_TEST", L"1" }
@@ -756,10 +884,17 @@ void Renderer::InitializePipelineState()
 		inputLayoutDesc,
         true);
 
+	// 6. Compute pipeline state for deferred
     mPipelineStateCompute.InitializeCompute(
         mDevice.Get(),
         mComputeRootSignature.Get(),
 		std::move(computeShader));
+
+	// 7. Composite pipeline state for merging deferred render with reflections
+    mPipelineStateComposite.InitializeCompute(
+        mDevice.Get(),
+        mCompositeRootSignature.Get(),
+		std::move(compositeShader));
 }
 
 void Renderer::InitializeTextureLoader()
@@ -871,7 +1006,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
 		float clearColorBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		float clearColorNormal[4] = { 0.5f, 0.5f, 1.0f, 1.0f };
-		float clearColorMaterial[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		float clearColorMaterial[4] = { 0.0f, 1.0f, 0.0f, 1.0f };
 		float clearDepth = 1.0f;
 		mCommandList.Get()->ClearRenderTargetView(rtvHandles[0], clearColorBlack, 0, nullptr);
 		mCommandList.Get()->ClearRenderTargetView(rtvHandles[1], clearColorNormal, 0, nullptr);
@@ -933,7 +1068,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
             D3D12_RESOURCE_STATE_DEPTH_WRITE,
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         barriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(
-            mComputeOutputTexture.Get(),
+            mDirectLightingTexture.Get(),
             D3D12_RESOURCE_STATE_COMMON,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         barriers[5] = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -963,18 +1098,86 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         mCommandList.Get()->SetComputeRootShaderResourceView(3, mGlobalLightBuffer.Get()->GetGPUVirtualAddress());
 
         // Slot 4: Output UAV Table (u0)
-        mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
+        mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_DirectLighting));
 
         // D. Dispatch
         // Threads (8, 8, 1). Dispatch (Width/8, Height/8, 1)
         mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
     }
 
+    // =========================================================================
+    // STAGE 3: REFLECTIONS (DXR Pipeline)
+    // =========================================================================
+    {
+        // 1. Barrier: Output needs to be UAV
+        auto b = CD3DX12_RESOURCE_BARRIER::Transition(
+            mReflectionTexture.Get(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+        mCommandList.Get()->ResourceBarrier(1, &b);
+
+        // 2. Dispatch Rays
+        // Note: The Global Root Sig needs binding just like a Compute Shader
+        mCommandList.Get()->SetComputeRootSignature(mComputeRootSignature.Get());
+        mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo)); // G-Buffer
+        mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
+
+        // Bind Reflection Output UAV (Slot u0 in Reflections.hlsl)
+        mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Reflection));
+
+        mReflectionsPipeline.Dispatch(mCommandList.Get(), mWidth, mHeight);
+    }
+
+    // =========================================================================
+    // STAGE 4: COMPOSITE (Merge Direct + Reflection)
+    // =========================================================================
+    {
+        // Barriers: Reflection -> Read, DirectLight -> Read, Output -> Write
+        // (For simplicity, let's say we write back into mComputeOutputTexture)
+        D3D12_RESOURCE_BARRIER barriers[3]{};
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(mReflectionTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mDirectLightingTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+
+		// Bind Composite Pipeline
+		mCommandList.Get()->SetComputeRootSignature(mCompositeRootSignature.Get());
+        mCommandList.Get()->SetPipelineState(mPipelineStateComposite.Get());       
+
+        // Bind Descriptors
+        // Slot 0: CBV
+		mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset + offsetof(ConstantBufferData, InvVpMatrix));
+
+		// Slot 1: Direct Lighting Table (t0)
+		mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_DirectLighting));
+
+		// Slot 1: Reflection SRV (t1)
+		mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHeap.GetGpuHandle(mSrvSlot_Reflection));
+
+		// Slot 2: G-Buffer Table (t2 - t5)
+		mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
+
+		// Slot 3: Output UAV (u0)
+		mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
+
+        // Dispatch
+		mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+
+        D3D12_RESOURCE_BARRIER cleanup[3]{};
+
+		cleanup[0] = CD3DX12_RESOURCE_BARRIER::Transition(mReflectionTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
+		cleanup[1] = CD3DX12_RESOURCE_BARRIER::Transition(mDirectLightingTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
+		cleanup[2] = CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+		mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+    }
+
     // =========================================================================================
-    // STAGE 2.5: TRANSPARENT FORWARD PASS
+    // STAGE 5: TRANSPARENT FORWARD PASS
     // =========================================================================================
     {
-        D3D12_RESOURCE_BARRIER barriers[2];
+        D3D12_RESOURCE_BARRIER barriers[2]{};
 
         // 1. Transition Output Texture: UAV (from Compute) -> RENDER_TARGET
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -1010,8 +1213,10 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
             DrawMesh(mesh);
     }
 
+
+
     // =========================================================================================
-    // STAGE 3: COPY TO BACKBUFFER
+    // STAGE 6: COPY TO BACKBUFFER
     // =========================================================================================
     {
         D3D12_RESOURCE_BARRIER barriers[4]{};
