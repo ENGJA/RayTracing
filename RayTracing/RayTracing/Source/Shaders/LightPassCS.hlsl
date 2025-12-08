@@ -15,8 +15,8 @@ struct Light
 Texture2D<float4> gAlbedo : register(t0);
 Texture2D<float3> gNormal : register(t1);
 Texture2D<float2> gMaterial : register(t2); // Metal/Rough
-Texture2D<float4> gEmissive : register(t3);
-Texture2D<float> gDepth : register(t4);
+Texture2D<float> gDepth : register(t3);
+Texture2D<float4> gEmissive : register(t4);
 
 // 2. The Scene Structure (For Inline Ray Tracing)
 RaytracingAccelerationStructure gTLAS : register(t5);
@@ -212,7 +212,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             
             // --- INLINE RAY TRACING SHADOWS ---
             RayQuery < 
-            RAY_FLAG_CULL_NON_OPAQUE | 
+            RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
             RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
             RAY_FLAG_CULL_BACK_FACING_TRIANGLES
             > q;
@@ -266,58 +266,60 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
     }
     
-    float3 reflectionColor = float3(0, 0, 0);
-    if (metalness > 0.1f || roughness < 0.5f)
-    {
-        float3 R = reflect(-V, N);
+//    float3 reflectionColor = float3(0, 0, 0);
+//    if (metalness > 0.1f || roughness < 0.5f)
+//    {
+//        float3 R = reflect(-V, N);
         
-        RayDesc rayReflect;
-        rayReflect.Origin = worldPos + N * 0.05f; // Bias to prevent self-intersection
-        rayReflect.Direction = R; // The reflection vector calculated above
-        rayReflect.TMin = 0.0f;
-        rayReflect.TMax = 1000.0f; // Far distance
+//        RayDesc rayReflect;
+//        rayReflect.Origin = worldPos + N * 0.05f; // Bias to prevent self-intersection
+//        rayReflect.Direction = R; // The reflection vector calculated above
+//        rayReflect.TMin = 0.0f;
+//        rayReflect.TMax = 1000.0f; // Far distance
 
-        RayQuery < RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES > qReflect;
-        qReflect.TraceRayInline(gTLAS, 0, 0xFF, rayReflect);
-        qReflect.Proceed();
+//        RayQuery < RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES > qReflect;
+//        qReflect.TraceRayInline(gTLAS, 0, 0xFF, rayReflect);
+//        qReflect.Proceed();
 
-        if (qReflect.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
-        {
-        // WE HIT ANOTHER OBJECT!
-        // This is the tricky part of RTR. We know we hit something, 
-        // but what color is it *after Lighting*?
+//        if (qReflect.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+//        {
+//        // WE HIT ANOTHER OBJECT!
+//        // This is the tricky part of RTR. We know we hit something, 
+//        // but what color is it *after Lighting*?
         
-        // Option A (Simple, temporary): Just return a solid color to prove it works.
-        reflectionColor = float3(0.05, 0.05, 0.05); // Reflected objects appear red
+//        // Option A (Simple, temporary): Just return a solid color to prove it works.
+//        reflectionColor = float3(0.05, 0.05, 0.05); // Reflected objects appear red
 
-        // Option B (Better, but complex): You need to fetch the Albedo/Material 
-        // of the hit triangle and light it. This usually requires recursion 
-        // (expensive) or sampling a pre-lit structure.
-        // A common hacky start is to sample the previous frame's color buffer 
-        // using screen-space reprojection, but that's advanced.
+//        // Option B (Better, but complex): You need to fetch the Albedo/Material 
+//        // of the hit triangle and light it. This usually requires recursion 
+//        // (expensive) or sampling a pre-lit structure.
+//        // A common hacky start is to sample the previous frame's color buffer 
+//        // using screen-space reprojection, but that's advanced.
 
-        // Option C (Standard PBR approach): Sample an Environment Cube Map (HDRI).
-        // If you hit geometry, it occludes the skybox. If you miss, sample the skybox.
-        }
-        else
-        {
-        // WE MISSED (Hit the sky)
-        // Normally you sample an HDRI skybox texture here.
-            float3 sky = GetSkyColor(R);
-            reflectionColor = sky * (1.0f - roughness);
-        }
+//        // Option C (Standard PBR approach): Sample an Environment Cube Map (HDRI).
+//        // If you hit geometry, it occludes the skybox. If you miss, sample the skybox.
+//        }
+//        else
+//        {
+//        // WE MISSED (Hit the sky)
+//        // Normally you sample an HDRI skybox texture here.
+//            float3 sky = GetSkyColor(R);
+//            reflectionColor = sky * (1.0f - roughness);
+//        }
         
-        //reflectionColor *= (1.0 - roughness); // Rougher surfaces have dimmer reflections)
-    }
+//        //reflectionColor *= (1.0 - roughness); // Rougher surfaces have dimmer reflections)
+//    }
     
-    // Apply Fresnel (Metals reflect more at glancing angles, but are colored at facing angles)
-// Simplified Fresnel for metal: F0 is the albedo color.
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
-    float3 F = FresnelSchlick(max(dot(normal, V), 0.0f), F0);
+//    // Apply Fresnel (Metals reflect more at glancing angles, but are colored at facing angles)
+//// Simplified Fresnel for metal: F0 is the albedo color.
+//    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
+//    float3 F = FresnelSchlick(max(dot(normal, V), 0.0f), F0);
     
-    finalColor += reflectionColor * F;
+//    finalColor += reflectionColor * F;
     
     finalColor += gEmissive.Load(uint3(pixel, 0)).rgb;
+    //finalColor *= 5;
+    //finalColor = finalColor / (finalColor + float3(1.0f, 1.0f, 1.0f)); // Simple tonemapping
     
     //finalColor = float3(metalness, metalness, metalness);
     //finalColor = float3(roughness, roughness, roughness);

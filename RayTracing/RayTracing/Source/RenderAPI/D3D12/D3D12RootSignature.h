@@ -16,6 +16,8 @@ public:
 
 	void InitializeComputeRS(ID3D12Device* pDevice);
 
+	void InitializeCompositeRS(ID3D12Device* pDevice);
+
 	void Initialize(ID3D12Device* pDevice, const D3D12_VERSIONED_ROOT_SIGNATURE_DESC& rootSignatureDesc);
 	/**
 	 * @brief Returns the native root signature pointer.

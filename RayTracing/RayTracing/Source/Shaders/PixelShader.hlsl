@@ -69,7 +69,7 @@ PSOutput main(PSInput input)
     float4 emissiveSample = gEmissive.Sample(gSampler, input.uv);
     float3 emissive = emissiveSample.rgb * gEmissiveFactor.rgb;
 
-    #define ALPHA_TEST 1
+    //#define ALPHA_TEST 1
 #ifdef ALPHA_TEST
     clip(alpha - gAlphaCutoff); // Discard pixels with low alpha for alpha testing
 #endif

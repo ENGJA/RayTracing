@@ -106,5 +106,6 @@ float4 main(PSInput input) : SV_TARGET
         }
     }
 
+    //finalColor = finalColor / (finalColor + float3(1.0f, 1.0f, 1.0f)); // Simple tonemapping
     return float4(finalColor, alpha);
 }
