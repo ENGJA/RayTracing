@@ -1,6 +1,15 @@
 #pragma once
 #include "RenderAPI/Renderer.h"
 #include "RenderAPI/Camera/CameraManager.h"
+#include "UI/UIManager.h"
+#include "Utils/PerformanceMonitor.h"
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <memory>
+
+// Forward declare Model to avoid circular dependency
+class Model;
 
 /**
  * @brief Application bootstrap that owns the window and resources.
@@ -10,6 +19,10 @@ class Application
 private:
 	Renderer mRenderer; ///< High level renderer instance.
 	CameraManager mCameraManager; ///< Camera manager for view/projection matrices.
+	UIManager mUIManager; ///< UI manager for ImGui windows.
+	PerformanceMonitor mPerformanceMonitor; ///< Performance monitoring for FPS, CPU, GPU, RAM, VRAM.
+
+	UIManager::AppState mCurrentState = UIManager::AppState::LoadingMenu; // Start with loading menu
 
 	HWND mHwnd = nullptr; ///< Native Win32 window handle.
 	bool mIsRunning = true; ///< Main loop running flag.
@@ -18,6 +31,28 @@ private:
 
 	LARGE_INTEGER mPrevCounter{}; ///< Previous frame timestamp.
 	double mSecondsPerCount = 0.0; ///< Seconds per performance counter tick.
+
+	std::string mCurrentScenePath; ///< Currently loaded scene path.
+	bool mSceneLoaded = false; ///< Whether a scene is currently loaded.
+	
+	// Async loading
+	std::thread mLoadingThread; ///< Background loading thread
+	std::atomic<bool> mIsLoadingInProgress = false; ///< Whether loading is currently in progress
+	std::atomic<bool> mLoadingComplete = false; ///< Whether loading has completed
+	std::atomic<bool> mLoadingSuccess = false; ///< Whether loading was successful
+	std::mutex mLoadingMutex; ///< Mutex for thread-safe loading operations
+	std::unique_ptr<Model> mPendingModel; ///< Model loaded on background thread
+	std::string mPendingScenePath; ///< Path being loaded
+	
+	// Application logic
+	void ToggleMenu();
+	void LoadScene(const std::string& path);
+	void ProcessSceneLoading();
+	void PerformAsyncLoad(const std::string& path);
+	void UploadModelToGPU();
+	void UnloadScene();
+	void ExitToMainMenu();
+	void ExitApplication();
 
 public:
 	/**
@@ -51,5 +86,10 @@ public:
 	 * @brief Win32 destroy callback.
 	 */
 	void OnDestroy();
+
+	/**
+	 * @brief Called on window resize.
+	 */
+	void OnResize(int width, int height);
 };
 
