@@ -248,7 +248,7 @@ void Application::OnCreate(HWND hwnd)
 	
 	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
-		if (mCurrentState == UIManager::AppState::Scene)
+		if (mCurrentState == UIManager::AppState::Scene || mCurrentState == UIManager::AppState::Menu)
 			this->ToggleMenu();
 	});
 	
@@ -272,6 +272,14 @@ void Application::OnCreate(HWND hwnd)
 void Application::OnDestroy()
 {
 	cout << "Application OnDestroy called!" << endl;
+	
+	// Wait for loading thread to finish if still running
+	if (mLoadingThread.joinable())
+	{
+		cout << "Waiting for loading thread to finish..." << endl;
+		mLoadingThread.join();
+	}
+	
 	mPerformanceMonitor.Shutdown();
 	mIsRunning = false;
 }
@@ -312,61 +320,149 @@ void Application::ToggleMenu()
 
 void Application::LoadScene(const std::string& path)
 {
+	// If already loading, ignore
+	if (mIsLoadingInProgress)
+		return;
+
 	// Extract filename from path for display
 	std::filesystem::path fsPath(path);
 	std::string filename = fsPath.filename().string();
 	
 	mUIManager.SetLoadingSceneName(filename);
-	mPendingSceneLoad = path;
-	mLoadingFrameCount = 0;
+	mPendingScenePath = path;
 	
 	// Switch to loading state
 	mCurrentState = UIManager::AppState::LoadingScene;
 	InputManager::Instance.SetCursorLocked(false);
 	mCameraManager.SetActive(false);
+	
+	// Reset loading flags
+	mLoadingComplete = false;
+	mLoadingSuccess = false;
+	mIsLoadingInProgress = true;
+	mPendingModel.reset();
+	
+	// Start async loading thread (only CPU work - file I/O and Assimp parsing)
+	if (mLoadingThread.joinable())
+		mLoadingThread.join();
+	
+	mLoadingThread = std::thread(&Application::PerformAsyncLoad, this, path);
+}
+
+void Application::PerformAsyncLoad(const std::string& path)
+{
+	cout << "Loading scene in background thread: " << path << endl;
+	
+	try
+	{
+		// This part is safe to do on background thread (only CPU/disk I/O)
+		auto model = std::make_unique<Model>();
+		model->loadModel(path);
+		
+		if (model->mMeshes.empty())
+		{
+			cout << "Warning: Scene loaded but contains no meshes." << endl;
+			
+			// Create fallback quad for testing
+			std::vector<::Vertex> cpuVerts = {
+				{ { -1, -1, 0 }, {0,0,1}, {0,1} },
+				{ { -1,  1, 0 }, {0,0,1}, {0,0} },
+				{ {  1,  1, 0 }, {0,0,1}, {1,0} },
+				{ {  1, -1, 0 }, {0,0,1}, {1,1} },
+			};
+			std::vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
+			model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
+		}
+		
+		// Store the loaded model (thread-safe)
+		{
+			std::lock_guard<std::mutex> lock(mLoadingMutex);
+			mPendingModel = std::move(model);
+			mLoadingSuccess = true;
+		}
+		
+		cout << "Background loading succeeded" << endl;
+	}
+	catch (const std::exception& e)
+	{
+		cerr << "Error loading scene: " << e.what() << endl;
+		std::lock_guard<std::mutex> lock(mLoadingMutex);
+		mLoadingSuccess = false;
+	}
+	
+	// Mark as complete
+	mLoadingComplete = true;
+}
+
+void Application::UploadModelToGPU()
+{
+	// This runs on main thread and can safely use DirectX resources
+	cout << "Uploading model to GPU..." << endl;
+	
+	std::unique_ptr<Model> model;
+	{
+		std::lock_guard<std::mutex> lock(mLoadingMutex);
+		model = std::move(mPendingModel);
+	}
+	
+	if (!model)
+	{
+		cerr << "No model to upload!" << endl;
+		return;
+	}
+	
+	// Now safe to call Renderer::LoadScene equivalent code
+	// This must happen on main thread because it uses DirectX command lists
+	bool success = mRenderer.LoadSceneFromModel(std::move(model));
+	
+	if (success)
+	{
+		mSceneLoaded = true;
+		mCurrentState = UIManager::AppState::Scene;
+		InputManager::Instance.SetCursorLocked(true);
+		mCameraManager.SetActive(true);
+		cout << "Scene loaded successfully!" << endl;
+	}
+	else
+	{
+		cerr << "Failed to upload scene to GPU" << endl;
+		mCurrentState = UIManager::AppState::LoadingMenu;
+	}
+	
+	mCurrentScenePath = mPendingScenePath;
+	mPendingScenePath.clear();
+	mIsLoadingInProgress = false;
+	mLoadingComplete = false;
 }
 
 void Application::ProcessSceneLoading()
 {
-	if (mPendingSceneLoad.empty())
+	if (!mIsLoadingInProgress)
 		return;
 
-	mLoadingFrameCount++;
-
-	// First frame: just show loading screen, don't start loading yet
-	// This ensures the loading UI is presented to the user
-	if (mLoadingFrameCount == 1)
+	// Check if loading is complete
+	if (mLoadingComplete)
 	{
-		// Do nothing, just let the frame render
-		return;
-	}
-
-	// Second frame: actually load the scene
-	if (mLoadingFrameCount == 2)
-	{
-		// Actually load the scene
-		mCurrentScenePath = mPendingSceneLoad;
-		mPendingSceneLoad.clear();
-		mLoadingFrameCount = 0;
+		// Wait for thread to finish
+		if (mLoadingThread.joinable())
+			mLoadingThread.join();
 		
-		cout << "Loading scene: " << mCurrentScenePath << endl;
-		mSceneLoaded = mRenderer.LoadScene(mCurrentScenePath);
-		
-		if (mSceneLoaded)
+		if (mLoadingSuccess)
 		{
-			// Switch to scene mode after successful load
-			mCurrentState = UIManager::AppState::Scene;
-			InputManager::Instance.SetCursorLocked(true);
-			mCameraManager.SetActive(true);
-			cout << "Scene loaded successfully!" << endl;
+			// Upload to GPU on main thread (safe for DirectX)
+			UploadModelToGPU();
 		}
 		else
 		{
 			// Loading failed, return to menu
-			cerr << "Failed to load scene: " << mCurrentScenePath << endl;
+			cerr << "Failed to load scene: " << mPendingScenePath << endl;
 			mCurrentState = UIManager::AppState::LoadingMenu;
+			mPendingScenePath.clear();
+			mIsLoadingInProgress = false;
+			mLoadingComplete = false;
 		}
 	}
+	// Otherwise, keep showing loading screen and processing messages
 }
 
 void Application::UnloadScene()

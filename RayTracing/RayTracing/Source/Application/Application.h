@@ -3,6 +3,13 @@
 #include "RenderAPI/Camera/CameraManager.h"
 #include "UI/UIManager.h"
 #include "Utils/PerformanceMonitor.h"
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <memory>
+
+// Forward declare Model to avoid circular dependency
+class Model;
 
 /**
  * @brief Application bootstrap that owns the window and resources.
@@ -27,13 +34,22 @@ private:
 
 	std::string mCurrentScenePath; ///< Currently loaded scene path.
 	bool mSceneLoaded = false; ///< Whether a scene is currently loaded.
-	std::string mPendingSceneLoad; ///< Path to scene waiting to be loaded.
-	int mLoadingFrameCount = 0; ///< Number of frames rendered in loading state.
+	
+	// Async loading
+	std::thread mLoadingThread; ///< Background loading thread
+	std::atomic<bool> mIsLoadingInProgress = false; ///< Whether loading is currently in progress
+	std::atomic<bool> mLoadingComplete = false; ///< Whether loading has completed
+	std::atomic<bool> mLoadingSuccess = false; ///< Whether loading was successful
+	std::mutex mLoadingMutex; ///< Mutex for thread-safe loading operations
+	std::unique_ptr<Model> mPendingModel; ///< Model loaded on background thread
+	std::string mPendingScenePath; ///< Path being loaded
 	
 	// Application logic
 	void ToggleMenu();
 	void LoadScene(const std::string& path);
 	void ProcessSceneLoading();
+	void PerformAsyncLoad(const std::string& path);
+	void UploadModelToGPU();
 	void UnloadScene();
 	void ExitToMainMenu();
 	void ExitApplication();

@@ -233,6 +233,13 @@ public:
 	bool LoadScene(const std::string& path);
 	
 	/**
+	 * @brief Loads a scene from an already-loaded Model (for async loading).
+	 * @param model Unique pointer to a Model loaded on background thread.
+	 * @return true if scene uploaded successfully, false otherwise.
+	 */
+	bool LoadSceneFromModel(std::unique_ptr<Model> model);
+	
+	/**
 	 * @brief Unloads the currently loaded scene and frees GPU resources.
 	 */
 	void UnloadScene();

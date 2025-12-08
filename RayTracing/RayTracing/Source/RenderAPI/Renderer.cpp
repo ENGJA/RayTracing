@@ -408,13 +408,25 @@ bool Renderer::LoadScene(const std::string& path)
         wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
     }
 
-    mModels.push_back(std::move(model));
+    return LoadSceneFromModel(std::move(model));
+}
 
-    std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
-    BuildMeshGpuData();
+bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
+{
+	if (!model)
+		return false;
+
+	// Wait for GPU to finish all work before loading new scene
+	mCommandQueue.Flush();
+
+	mModels.push_back(std::move(model));
+
+	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+	BuildMeshGpuData();
 	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
 	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+	
 	// Initialize ray tracing acceleration structures
 	std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
 	InitializeRayTracing();
@@ -422,10 +434,10 @@ bool Renderer::LoadScene(const std::string& path)
 	std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
 	wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
 
-    CollectStaticLights();
+	CollectStaticLights();
 
-    wcout << L"Scene loaded successfully!" << endl;
-    return true;
+	wcout << L"Scene uploaded successfully!" << endl;
+	return true;
 }
 
 void Renderer::UnloadScene()
