@@ -17,6 +17,8 @@ void InputManager::Initialize(HWND hwnd)
         mLastMousePos = p;
         mHasLastPos = true;
     }
+
+    SetCursorLocked(true);
 }
 
 void InputManager::BeginFrame()
@@ -59,18 +61,52 @@ void InputManager::OnWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_MOUSEMOVE:
     {
         if (!mHwnd) break;
-        POINT p;
-        p.x = (int)(short)LOWORD(lParam);
-        p.y = (int)(short)HIWORD(lParam);
-        // p is client coords
-        if (!mHasLastPos)
+        if (mIsCursorLocked)
         {
-            mLastMousePos = p;
-            mHasLastPos = true;
+            POINT p;
+            p.x = (int)(short)LOWORD(lParam);
+            p.y = (int)(short)HIWORD(lParam);
+
+            // Calculate window center in Client Space
+            RECT rect;
+            GetClientRect(mHwnd, &rect);
+            POINT center = { (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2 };
+
+            // Calculate delta relative to center
+            float dx = static_cast<float>(p.x - center.x);
+            float dy = static_cast<float>(p.y - center.y);
+
+            // If there is any movement
+            if (dx != 0.0f || dy != 0.0f)
+            {
+                mMouseDeltaX += dx;
+                mMouseDeltaY += dy;
+
+                // Reset cursor to center (Physical Screen Space)
+                POINT screenCenter = center;
+                ClientToScreen(mHwnd, &screenCenter);
+                SetCursorPos(screenCenter.x, screenCenter.y);
+
+                // Update lastPos as center for next delta calculation
+                mLastMousePos = center;
+            }
         }
-        mMouseDeltaX += static_cast<float>(p.x - mLastMousePos.x);
-        mMouseDeltaY += static_cast<float>(p.y - mLastMousePos.y);
-        mLastMousePos = p;
+        else
+        {
+            // Standard handling (Menu Mode)
+            POINT p;
+            p.x = (int)(short)LOWORD(lParam);
+            p.y = (int)(short)HIWORD(lParam);
+
+            if (!mHasLastPos)
+            {
+                mLastMousePos = p;
+                mHasLastPos = true;
+            }
+            mMouseDeltaX += static_cast<float>(p.x - mLastMousePos.x);
+            mMouseDeltaY += static_cast<float>(p.y - mLastMousePos.y);
+            mLastMousePos = p;
+        }
         break;
     }
     case WM_MOUSEWHEEL:
@@ -162,5 +198,38 @@ void InputManager::ProcessCallbacks(float dt)
         {
             if (cb) cb(wheel);
         }
+    }
+}
+
+void InputManager::SetCursorLocked(bool lock)
+{
+    if (mIsCursorLocked == lock) return;
+
+    mIsCursorLocked = lock;
+
+    if (mIsCursorLocked)
+    {
+        // Hide cursor
+        while (ShowCursor(FALSE) >= 0);
+
+        // Calculate window center to reset cursor there
+        RECT rect;
+        GetClientRect(mHwnd, &rect);
+        POINT center = { (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2 };
+
+        // Save center in screen-space
+        POINT screenCenter = center;
+        ClientToScreen(mHwnd, &screenCenter);
+        mScreenCenter = screenCenter;
+
+        // Set cursor to center and reset delta to avoid camera "jump"
+        SetCursorPos(mScreenCenter.x, mScreenCenter.y);
+        mLastMousePos = center;
+        mHasLastPos = true;
+    }
+    else
+    {
+        // Show cursor
+        while (ShowCursor(TRUE) < 0);
     }
 }

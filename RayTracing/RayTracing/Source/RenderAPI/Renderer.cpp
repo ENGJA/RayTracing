@@ -13,6 +13,11 @@
 #include "Renderer.h"
 #include "paths.h"
 
+// ImGui includes
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx12.h"
+
 using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
 
 
@@ -174,7 +179,7 @@ void Renderer::UploadMeshes(const function<void()>& executeBatch)
 void Renderer::BuildMeshGpuData()
 {
     mUploadHeap.Reset();
-    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+    mCommandList.ResetCommandList(0); // Use allocator 0 for one-time upload, not swap chain index
 
     auto executeBatch = [this]()
     {
@@ -184,7 +189,7 @@ void Renderer::BuildMeshGpuData()
         mCommandQueue.Flush();
 
         mUploadHeap.Reset();
-        mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+        mCommandList.ResetCommandList(0); // Always use allocator 0 for uploads
         mTextureLoader.Reset();
     };
 
@@ -246,6 +251,10 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
     wcout << "Selected device: " << desc.Description << endl;
 
+    // Store adapter for VRAM queries
+    mAdapter = adapter;
+
+    mHwnd = hwnd;
     mDevice.Initialize(adapter.Get());
     mCommandQueue.Initialize(mDevice.Get());
     mCommandList.Initialize(mDevice.Get());
@@ -300,7 +309,6 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     mScissorRect.right = static_cast<LONG>(mWidth);
     mScissorRect.bottom = static_cast<LONG>(mHeight);
 
-
 	// view-projection matrix (will be updated each frame)
     mConstantBufferData.vpMatrix = DirectX::XMMatrixIdentity();
 
@@ -310,16 +318,82 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_HEAP_TYPE_UPLOAD,
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
-    
-    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
-    auto modelA = std::make_unique<Model>();
 
-	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
-    modelA->loadModel(modelPath);
-	std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
-    if (modelA->mMeshes.empty())
+    // Initialize ImGui at the end of initialization
+    InitializeImGui(hwnd);
+
+	// For debugging: recompile shaders on 'G' key press
+	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
+}
+
+void Renderer::OnResize(UINT width, UINT height)
+{
+	if (width == 0 || height == 0)
+		return; // Ignore invalid sizes (minimized window)
+
+	if (width == mWidth && height == mHeight)
+		return; // No actual resize
+
+	wcout << "Resizing renderer to " << width << "x" << height << endl;
+
+	// Wait for GPU to complete all work
+	mCommandQueue.Flush();
+
+	// Update dimensions
+	mWidth = width;
+	mHeight = height;
+
+	// Resize swap chain buffers
+	mSwapChain.Resize(width, height);
+
+	// Recreate depth buffer with new dimensions
+	mDepthBuffer.Initialize(mDevice.Get(), width, height);
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
+	dsvDesc.Format = Config::cDepthBufferFormat;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+
+	mDevice.Get()->CreateDepthStencilView(
+		mDepthBuffer.GetResource(),
+		&dsvDesc,
+		mDepthBuffer.GetDSVHandle()
+	);
+
+	// Update viewport
+	mViewport.TopLeftX = 0.0f;
+	mViewport.TopLeftY = 0.0f;
+	mViewport.Width = static_cast<FLOAT>(width);
+	mViewport.Height = static_cast<FLOAT>(height);
+	mViewport.MinDepth = 0.0f;
+	mViewport.MaxDepth = 1.0f;
+
+	// Update scissor rect
+	mScissorRect.left = 0;
+	mScissorRect.top = 0;
+	mScissorRect.right = static_cast<LONG>(width);
+	mScissorRect.bottom = static_cast<LONG>(height);
+
+	wcout << "Resize complete!" << endl;
+}
+
+bool Renderer::LoadScene(const std::string& path)
+{
+    wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
+
+    // Wait for GPU to finish all work before loading new scene
+    mCommandQueue.Flush();
+
+    auto model = std::make_unique<Model>();
+
+    std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
+    model->loadModel(path);
+    std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
+    
+    if (model->mMeshes.empty())
     {
+        wcout << L"Warning: Scene loaded but contains no meshes." << endl;
+        
+        // Create fallback quad for testing
         vector<::Vertex> cpuVerts = {
             { { -1, -1, 0 }, {0,0,1}, {0,1} },
             { { -1,  1, 0 }, {0,0,1}, {0,0} },
@@ -327,39 +401,32 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
             { {  1, -1, 0 }, {0,0,1}, {1,1} },
         };
         vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
-        modelA->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
+        model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
     }
     else
-	    wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
+    {
+        wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+    }
 
-    mModels.push_back(std::move(modelA));
+    return LoadSceneFromModel(std::move(model));
+}
 
-	//loadStartTime = std::chrono::steady_clock::now();
-	//const std::string modelPathB = GetResourcePath("Objects\\pkg_a_curtains\\NewSponza_Curtains_glTF.gltf").string();
-	//auto modelB = std::make_unique<Model>();
-	//modelB->loadModel(modelPathB);
-	//loadEndTime = std::chrono::steady_clock::now();
-	//loadElapsedSeconds = loadEndTime - loadStartTime;
-	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	//mModels.push_back(std::move(modelB));
+bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
+{
+	if (!model)
+		return false;
 
-	//loadStartTime = std::chrono::steady_clock::now();
-	//const std::string modelPathC = GetResourcePath("Objects\\pkg_b_ivy\\NewSponza_IvyGrowth_glTF.gltf").string();
-	//auto modelC = std::make_unique<Model>();
-	//modelC->loadModel(modelPathC);
-	//loadEndTime = std::chrono::steady_clock::now();
-	//loadElapsedSeconds = loadEndTime - loadStartTime;
-	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	//mModels.push_back(std::move(modelC));
+	// Wait for GPU to finish all work before loading new scene
+	mCommandQueue.Flush();
 
-
+	mModels.push_back(std::move(model));
 
 	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
-    // Build GPU buffers and material descriptor tables
-    BuildMeshGpuData();
+	BuildMeshGpuData();
 	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
 	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+	
 	// Initialize ray tracing acceleration structures
 	std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
 	InitializeRayTracing();
@@ -367,11 +434,42 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
 	wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
 
-    // Collect static lights once after models are loaded
-    CollectStaticLights();
+	CollectStaticLights();
 
-	// For debugging: recompile shaders on 'G' key press
-	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
+	wcout << L"Scene uploaded successfully!" << endl;
+	return true;
+}
+
+void Renderer::UnloadScene()
+{
+    wcout << L"Unloading scene..." << endl;
+
+    // Wait for GPU to finish all work
+    mCommandQueue.Flush();
+
+    // Clear all GPU resources - now we have separate mesh lists
+    mOpaqueSingleSidedMeshes.clear();
+    mOpaqueDoubleSidedMeshes.clear();
+    mMaskedSingleMeshes.clear();
+    mMaskedDoubleSidedMeshes.clear();
+    mTransparentMeshes.clear();
+    
+    mModels.clear();
+    mTextureCache.clear();
+    mStaticLights.clear();
+
+    // Reset heaps
+    mUploadHeap.Reset();
+    mTextureLoader.Reset();
+
+    // Reset constant buffer data
+    mConstantBufferData.numLights = 0;
+    for (int i = 0; i < cMaxLights; ++i)
+    {
+        mConstantBufferData.lights[i] = LightData{};
+    }
+
+    wcout << L"Scene unloaded." << endl;
 }
 
 void Renderer::InitializeDummyTextures()
@@ -573,7 +671,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
     mCommandList.Get()->ResourceBarrier(1, &barrier);
 
-    const FLOAT clearColor[4] = { 0 };
+    const FLOAT clearColor[4] = { 0.1f, 0.1f, 0.15f, 1.0f }; // Dark blue background
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mSwapChain.GetCurrentBackBufferView();
     D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = mDepthBuffer.GetDSVHandle();
@@ -613,6 +711,13 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 	mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
 	for (const auto& mesh : mTransparentMeshes)
 		DrawMesh(mesh);
+
+    // Render ImGui if a frame was started
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.BackendRendererUserData != nullptr) // Check if ImGui frame is active
+    {
+        RenderImGui();
+    }
 
     // Transition back buffer to present
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -655,4 +760,122 @@ void Renderer::SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos)
         {
             return a.distanceToCamera > b.distanceToCamera;
         });
+}
+
+void Renderer::InitializeImGui(HWND hwnd)
+{
+    // Create ImGui context
+    IMGUI_CHECKVERSION();
+    mImGuiContext = ImGui::CreateContext();
+    ImGui::SetCurrentContext(mImGuiContext);
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    // Configure font rendering for better quality
+    ImFontConfig fontConfig;
+    fontConfig.OversampleH = 3;  // Horizontal oversampling for sharper text
+    fontConfig.OversampleV = 3;  // Vertical oversampling for sharper text
+    fontConfig.PixelSnapH = false;  // Better subpixel rendering
+    
+    // Try to load Segoe UI font (Windows system font) for better quality
+    ImFont* font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 17.0f, &fontConfig);
+    
+    // If Segoe UI fails to load, fall back to default font with high quality settings
+    if (!font)
+    {
+        wcout << "Warning: Could not load Segoe UI font, using default ImGui font" << endl;
+        io.Fonts->AddFontDefault(&fontConfig);
+    }
+
+    // Build font atlas with higher quality
+    io.Fonts->Build();
+
+    // Setup ImGui style
+    ImGui::StyleColorsDark();
+    
+    // Adjust style for better text rendering
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.AntiAliasedLines = true;
+    style.AntiAliasedFill = true;
+    style.AntiAliasedLinesUseTex = true;
+    
+    // Slightly adjust rounding for modern look
+    style.WindowRounding = 6.0f;
+    style.FrameRounding = 4.0f;
+    style.GrabRounding = 4.0f;
+
+    // Create descriptor heap for ImGui (1 descriptor for font texture)
+    mImGuiSrvHeap.Initialize(mDevice.Get(), 1);
+
+    // Initialize Win32 backend first
+    ImGui_ImplWin32_Init(hwnd);
+    
+    // Initialize DX12 backend
+    ImGui_ImplDX12_Init(
+        mDevice.Get(),
+        Config::cFrameCount,
+        Config::cBackBufferFormat,
+        mImGuiSrvHeap.Get(),
+        mImGuiSrvHeap.GetCPUHandle(0),
+        mImGuiSrvHeap.GetGPUHandle(0)
+    );
+
+    // CRITICAL: Manually build and upload font atlas
+    // Get font texture data
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    
+    // Open command list for upload
+    mCommandList.ResetCommandList(0);
+    
+    // Bind ImGui descriptor heap
+    ID3D12DescriptorHeap* heaps[] = { mImGuiSrvHeap.Get() };
+    mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+    
+    // Create device objects (this uploads the font texture)
+    ImGui_ImplDX12_CreateDeviceObjects();
+    
+    // Close and execute command list
+    mCommandList.Get()->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    mCommandQueue.ExecuteCommandLists(1, lists);
+    mCommandQueue.Flush();
+    
+    wcout << "ImGui initialized: Font atlas " << width << "x" << height << " uploaded to GPU" << endl;
+}
+
+void Renderer::ShutdownImGui()
+{
+    if (mImGuiContext)
+    {
+        ImGui_ImplDX12_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext(mImGuiContext);
+        mImGuiContext = nullptr;
+    }
+}
+
+void Renderer::BeginImGuiFrame()
+{
+    ImGui::SetCurrentContext(mImGuiContext);
+    
+    // Correct order: DX12 backend first (builds font atlas), then Win32, then ImGui
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+}
+
+void Renderer::RenderImGui()
+{
+    ImGui::SetCurrentContext(mImGuiContext);
+    ImGui::Render();
+
+    // Bind ImGui descriptor heap
+    ID3D12DescriptorHeap* imguiHeaps[] = { mImGuiSrvHeap.Get() };
+    mCommandList.Get()->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+
+    // Render ImGui draw data
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 }

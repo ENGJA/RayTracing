@@ -80,6 +80,31 @@ void DXGISwapChain::CreateBufferViews()
 	}
 }
 
+void DXGISwapChain::Resize(UINT width, UINT height)
+{
+	// Release all references to back buffers
+	for (UINT i = 0; i < Config::cBufferCount; ++i)
+	{
+		mBackBuffers[i].Reset();
+	}
+
+	// Resize buffers
+	HRESULT hr = mSwapChain->ResizeBuffers(
+		Config::cBufferCount,
+		width,
+		height,
+		DXGI_FORMAT_R8G8B8A8_UNORM,
+		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH
+	);
+	ASSERT_HR(hr, "Failed to resize swap chain buffers.");
+
+	mWidth = width;
+	mHeight = height;
+
+	// Recreate render target views
+	CreateBufferViews();
+}
+
 
 
 
