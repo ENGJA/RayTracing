@@ -156,7 +156,7 @@
     <ClCompile Include="Source\ResourceLoading\Model.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
-    <ClCompile Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.cpp">
+    <ClCompile Include="Source\RenderAPI\Descriptors\DescriptorHeap.cpp">
       <Filter>Pliki źródłowe\ResourceLoading</Filter>
     </ClCompile>
     <ClCompile Include="Source\ResourceLoading\Texture.cpp">
@@ -287,7 +287,7 @@
     <ClInclude Include="Source\ResourceLoading\Mesh.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
-    <ClInclude Include="Source\RenderAPI\Descriptors\ShaderVisibleDescriptorHeap.h">
+    <ClInclude Include="Source\RenderAPI\Descriptors\DescriptorHeap.h">
       <Filter>Pliki nagłówkowe\ResourceLoading</Filter>
     </ClInclude>
     <ClInclude Include="Source\Input\InputManager.h">
@@ -321,11 +321,13 @@
     <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
     <FxCompile Include="Source\Shaders\PixelShader_Masked.hlsl" />
     <FxCompile Include="Source\Shaders\RayTracing.hlsl" />
+    <FxCompile Include="Source\Shaders\DenoiseCS.hlsl" />
+    <FxCompile Include="Source\Shaders\MotionGenPixelShader.hlsl" />
+    <FxCompile Include="Source\Shaders\MotionGenVertexShader.hlsl" />
+    <FxCompile Include="Source\Shaders\ReprojectionCS.hlsl" />
+    <FxCompile Include="Source\Shaders\ToneMapCS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll" />
   </ItemGroup>
 </Project>

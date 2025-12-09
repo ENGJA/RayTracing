@@ -12,10 +12,10 @@
 #include "DXGI/DXGISwapChain.h"
 #include "ResourceLoading/Model.h"
 #include "ResourceLoading/TextureLoader.h"
-#include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include "RenderAPI/Descriptors/DescriptorHeap.h"
 #include "RenderAPI/HLSL/HLSLCompiler.h"
 #include "RenderAPI/RT/RayTracingBuilder.h"
-#include <unordered_map>
+#include "nrd/NRD.h"
 
 /**
  * @brief State of a GPU texture load operation, including async decode future.
@@ -82,7 +82,7 @@ private:
 	ConstantBufferData mConstantBufferData{}; ///< CPU-side constant buffer data (view-projection matrix).
 	D3D12Resource mConstantBuffer; ///< GPU upload heap constant buffer.
 
-	ShaderVisibleDescriptorHeap mSrvHeap; ///< Global shader-visible SRV heap for textures.
+	DescriptorHeap mSrvHeap; ///< Global shader-visible SRV heap for textures.
 	TextureLoader mTextureLoader; ///< CPU/GPU texture loading helper.
 	UploadHeap mUploadHeap; ///< Shared linear upload heap for staging data.
 
@@ -164,6 +164,42 @@ private:
 	void RenderMotionVectors();
 
 	// END MOTION VECTORS
+
+	// NRD
+	D3D12Resource mNormalRoughnessTex;
+	D3D12Resource mViewZTex;
+
+	nrd::Instance* mNrdInstance = nullptr;
+	nrd::Denoiser* mNrdDenoiser = nullptr;
+	std::vector<Microsoft::WRL::ComPtr<ID3D12PipelineState>> mNrdPipelines;
+	std::vector<Microsoft::WRL::ComPtr<ID3D12RootSignature>> mNrdRootSignatures;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE mMotionVectorSrvCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mNormalRoughnessSrvCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mViewZSrvCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mRtOutputSrvCpuHandle; // Noisy Input
+	D3D12_CPU_DESCRIPTOR_HANDLE mDenoiseOutputUavCpuHandle; // Final Output
+
+	DescriptorHeap mCpuHeap;
+	DescriptorHeap mFrameHeap;
+
+	// Transient Texture Pool (Required by NRD)
+	struct NrdPoolEntry
+	{
+		GPUTexture texture;
+		D3D12_CPU_DESCRIPTOR_HANDLE srvHandle;
+		D3D12_CPU_DESCRIPTOR_HANDLE uavHandle;
+	};
+
+	// Storage for the pools
+	std::vector<NrdPoolEntry> mPermanentPool; // Persists across frames (History)
+	std::vector<NrdPoolEntry> mTransientPool; // Reused/Discarded every frame
+
+	void CreateNrdRootSignature(const nrd::PipelineDesc& pipeDesc, uint32_t index);
+	void InitializeNRD();
+	void DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMFLOAT3& camPos);
+	NrdPoolEntry& GetNrdPoolEntry(size_t index, nrd::ResourceType type);
+	// END NRD
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
@@ -264,6 +300,6 @@ public:
 	 * @param cameraPos Camera world position.
 	 * @param cameraForward Camera forward vector.
 	 */
-	void Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
+	void Update(const DirectX::XMMATRIX & view, const DirectX::XMMATRIX & proj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
 };
 

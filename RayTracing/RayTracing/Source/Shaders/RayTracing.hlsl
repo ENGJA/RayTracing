@@ -1,6 +1,8 @@
 // --- GLOBAL RESOURCES (Space 0) ---
 // Bound once per frame
-RWTexture2D<float4> gOutput : register(u0);
+RWTexture2D<float4> gOutputColor : register(u0);
+RWTexture2D<float4> gOutputNormalRoughness : register(u1);
+RWTexture2D<float> gOutputViewZ : register(u2);
 RaytracingAccelerationStructure gScene : register(t0);
 
 #define MAX_LIGHTS 25
@@ -17,6 +19,7 @@ cbuffer GlobalCB : register(b0)
 {
     float4x4 viewProjInverse;
     float4 cameraPos;
+    float4 cameraForward;
     uint numLights;
     uint frameCount;
     float2 _pad;
@@ -61,6 +64,10 @@ struct RayPayload
     float4 color;
     float  hitT;
     uint recursionDepth;
+    
+    // NRD data
+    float3 normal; // World Space Normal
+    float roughness; // Material Roughness
 };
 
 struct Attributes 
@@ -543,12 +550,34 @@ void MyRayGen()
     payload.color = float4(0, 0, 0, 0);
     payload.hitT  = -1.0f;
     payload.recursionDepth = 0;
+    // Default NRD data (Sky)
+    payload.normal = float3(0, 1, 0);
+    payload.roughness = 0.0f;
 
     // Trace
-    // U¿ywamy natywnej flagi systemowej
     TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, payload);
+    
+    float hitDist = (payload.hitT < 0.0f) ? 100000.0f : payload.hitT;
+    
+    // --- WRITE OUTPUTS FOR NRD ---
 
-    gOutput[launchIndex] = payload.color;
+    // 1. Color
+    gOutputColor[launchIndex] = float4(payload.color.rgb, hitDist);
+    
+    // 2. Normal (Encoded [-1, 1] -> [0,1]) and Roughness
+    float3 encodedNormal = payload.normal * 0.5f + 0.5f; // Encode to [0,1]
+    gOutputNormalRoughness[launchIndex] = float4( payload.normal, payload.roughness);
+    
+    // 3. ViewZ (Linear Depth)
+    float viewZ = 100000.0f;
+    if (payload.hitT > 0.0f)
+    {
+        // Project the ray distance onto the camera forward axis
+        // hitT is Euclidean distance, ViewZ is Planar distance.
+        viewZ = payload.hitT * dot(rayDir, cameraForward.xyz);
+    }
+    
+    gOutputViewZ[launchIndex] = viewZ;
 }
 
 // --- 2. MISS ---
@@ -560,6 +589,8 @@ void MyMiss(inout RayPayload payload)
     float t = 0.5 * (rayDir.y + 1.0);
     payload.color = float4(lerp(float3(1.0, 1.0, 1.0), float3(0.5, 0.7, 1.0), t), 1.0f);
     payload.hitT = -1.0f;
+    payload.normal = float3(0, 0, 0); // Up direction
+    payload.roughness = 0.0f;
 }
 [shader("miss")]
 void MyShadowMiss(inout RayPayload payload) // Change to RayPayload
@@ -603,6 +634,14 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
     float3 emissive = gEmissiveMap.SampleLevel(gSampler, surface.uv, 0).rgb * gEmissiveFactor.rgb;
 
     float3 finalColor = directLight + emissive;
+    
+    // Store NRD data
+    // Only store for the primary ray (depth 0)
+    if (payload.recursionDepth == 0)
+    {
+        payload.normal = N;
+        payload.roughness = roughness;
+    }
 
     // -------------------------------------------------------------
     // 3. REFLECTION (MIRROR) LOGIC
@@ -665,6 +704,7 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
         // Reflective surface color + Transmitted background color
         finalColor = lerp(transPayload.color.rgb, finalColor, alpha);
     }
+
 
     payload.color = float4(finalColor, 1.0f);
     payload.hitT = RayTCurrent();

@@ -9,7 +9,7 @@
 #include "Input/InputManager.h"
 #include "ResourceLoading/Model.h"
 #include "ResourceLoading/TextureLoader.h"
-#include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include "RenderAPI/Descriptors/DescriptorHeap.h"
 #include "Renderer.h"
 #include "paths.h"
 
@@ -274,7 +274,12 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
     QueryPerformanceCounter(&mPrevCounter);
 
     // Shader-visible SRV heap for textures (increase capacity for many material descriptors)
-    mSrvHeap.Initialize(mDevice.Get(), Config::cNumberOfSrvDescriptors);
+	mSrvHeap.Initialize(mDevice.Get(), Config::cNumberOfSrvDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+	mSrvHeap.Get()->SetName(L"Shader-visible SRV Heap");
+	mCpuHeap.Initialize(mDevice.Get(), 128, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, false);
+	mCpuHeap.Get()->SetName(L"CPU-only Descriptor Heap");
+    mFrameHeap.Initialize(mDevice.Get(), 2048, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+	mFrameHeap.Get()->SetName(L"Frame Descriptor Heap");
 
     // Shared upload heap (64 MB)
     mUploadHeap.Initialize(mDevice.Get(), 512ull * 1024ull * 1024ull);
@@ -376,6 +381,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	InitializeMotionVectors();
     InitializeDenoising();
+    InitializeNRD();
 
     // Collect static lights once after models are loaded
     CollectStaticLights();
@@ -473,19 +479,19 @@ void Renderer::InitializeDenoising()
 {
     // 1. Create History Texture (Same format as RT Output)
     CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
-        DXGI_FORMAT_R8G8B8A8_UNORM,
+        DXGI_FORMAT_R16G16B16A16_FLOAT,
         mWidth,
         mHeight,
         1, // array size
         1  // mip levels
 	);
 
-    mHistoryTexture.Initialize(
-        mDevice.Get(),
-        desc,
-        D3D12_HEAP_TYPE_DEFAULT,
-        D3D12_RESOURCE_STATE_COMMON
-	);
+ //   mHistoryTexture.Initialize(
+ //       mDevice.Get(),
+ //       desc,
+ //       D3D12_HEAP_TYPE_DEFAULT,
+ //       D3D12_RESOURCE_STATE_COMMON
+	//);
 
     // 2. Create Denoise Output Texture (UAV)
 	desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -493,7 +499,7 @@ void Renderer::InitializeDenoising()
         mDevice.Get(),
         desc,
         D3D12_HEAP_TYPE_DEFAULT,
-        D3D12_RESOURCE_STATE_COMMON
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
 	);
 
     // 3. Allocate Descriptors
@@ -507,21 +513,32 @@ void Renderer::InitializeDenoising()
 
     // Create Views
     // Slot 0: Noisy Input (R16G16B16A16_FLOAT)
-	CreateTextureView(mRtOutputResource.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(0, inc), 1);
+	CreateTextureView(mRtOutputResource.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoiseDescriptorTable.GetCpuHandle(0, inc), 1);
 
     // Slot 1: History Input
-	CreateTextureView(mHistoryTexture.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(1, inc), 1);
+	//CreateTextureView(mHistoryTexture.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mDenoiseDescriptorTable.GetCpuHandle(1, inc), 1);
 
     // Slot 2: Motion Vectors (R16G16_FLOAT)
     CreateTextureView(mMotionVectorTexture.Get(), DXGI_FORMAT_R16G16_FLOAT, mDenoiseDescriptorTable.GetCpuHandle(2, inc), 1);
 
     // Slot 3: Output UAV
-    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-    uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	mDevice.Get()->CreateUnorderedAccessView(mDenoiseOutput.Get(), nullptr, &uavDesc, mDenoiseDescriptorTable.GetCpuHandle(3, inc));
+    //auto uavAlloc = mSrvHeap.Allocate(1);
+    //// Store the handle
+    //mDenoiseOutputUavCpuHandle = uavAlloc.cpuHandle;
 
-    CreateDenoisePipeline();
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT; // Output format
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    uavDesc.Texture2D.MipSlice = 0;
+
+    //mDevice.Get()->CreateUnorderedAccessView(mDenoiseOutput.Get(), nullptr, &uavDesc, mDenoiseOutputUavCpuHandle);
+
+	auto stagingUavAlloc = mCpuHeap.Allocate(1);
+	mDenoiseOutputUavCpuHandle = stagingUavAlloc.cpuHandle;
+
+	mDevice.Get()->CreateUnorderedAccessView(mDenoiseOutput.Get(), nullptr, &uavDesc, mDenoiseOutputUavCpuHandle);
+
+    //CreateDenoisePipeline();    
 }
 
 void Renderer::CreateDenoisePipeline()
@@ -584,12 +601,17 @@ void Renderer::InitializeMotionVectors()
         DXGI_FORMAT_R16G16_FLOAT // <--- Important!
     );
 
-    // 4. Create SRV for Denoising (Bind to t2 in Reprojection Shader)
-    // Note: mDenoiseDescriptorTable needs to be size 3 now in InitializeDenoising!
-    // Or create a new table. Let's assume you resized mDenoiseDescriptorTable allocation to 3 or 4.
 
-    // In InitializeDenoising, add this:
-    // CreateTextureView(mMotionVectorTexture.Get(), DXGI_FORMAT_R16G16_FLOAT, mDenoiseDescriptorTable.GetCpuHandle(2, inc), 1);
+	auto srvAlloc = mCpuHeap.Allocate(1);
+	mMotionVectorSrvCpuHandle = srvAlloc.cpuHandle;
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = 1;
+
+	mDevice.Get()->CreateShaderResourceView(mMotionVectorTexture.Get(), &srvDesc, mMotionVectorSrvCpuHandle);
 }
 
 void Renderer::RenderMotionVectors()
@@ -645,6 +667,8 @@ void Renderer::RenderMotionVectors()
     // Note: Motion Vectors for transparent objects are complex. Usually skipped or handled separately.
     for (const auto& mesh : mOpaqueSingleSidedMeshes) DrawMesh(mesh);
     for (const auto& mesh : mOpaqueDoubleSidedMeshes) DrawMesh(mesh);
+	for (const auto& mesh : mMaskedSingleSidedMeshes) DrawMesh(mesh);
+	for (const auto& mesh : mMaskedDoubleSidedMeshes) DrawMesh(mesh);
 
     // 3. Cleanup Transitions
     D3D12_RESOURCE_BARRIER cleanupBarriers[2];
@@ -665,37 +689,569 @@ void Renderer::RenderMotionVectors()
 	mCommandList.Get()->ResourceBarrier(_countof(cleanupBarriers), cleanupBarriers);
 }
 
+void Renderer::CreateNrdRootSignature(const nrd::PipelineDesc& pipeDesc, uint32_t index)
+{
+    std::vector<CD3DX12_ROOT_PARAMETER> params;
+    std::vector<CD3DX12_DESCRIPTOR_RANGE> ranges;
+
+    // Reserve memory to prevent pointer invalidation when pushing back
+    ranges.resize(pipeDesc.resourceRangesNum);
+
+    // --- Counters to track register indices ---
+    UINT currentBaseSRV = 0; // Tracks t0, t1, t2...
+    UINT currentBaseUAV = 0; // Tracks u0, u1, u2...
+
+    for (uint32_t r = 0; r < pipeDesc.resourceRangesNum; ++r)
+    {
+        const nrd::ResourceRangeDesc& nrdRange = pipeDesc.resourceRanges[r];
+
+        D3D12_DESCRIPTOR_RANGE_TYPE rangeType;
+		UINT baseRegister = 0;
+        if (nrdRange.descriptorType == nrd::DescriptorType::TEXTURE)
+        {
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            baseRegister = currentBaseSRV;
+            currentBaseSRV += nrdRange.descriptorsNum; // Increment for next range
+        }
+        else if (nrdRange.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE)
+        {
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+            baseRegister = currentBaseUAV;
+            currentBaseUAV += nrdRange.descriptorsNum; // Increment for next range
+        }
+        else
+        {
+            // Should not happen in current NRD, but safety break
+            continue;
+        }
+
+        // Map NRD range to D3D12 range
+        // baseRegisterIndex is the shader register (e.g., t0, u0)
+		ranges[r].Init(rangeType, nrdRange.descriptorsNum, baseRegister);
+
+        CD3DX12_ROOT_PARAMETER param;
+        param.InitAsDescriptorTable(1, &ranges[r]);
+        params.push_back(param);
+    }
+
+    // Add Root Constant / CBV
+    // NRD usually requires a Constant Buffer at b0
+    CD3DX12_DESCRIPTOR_RANGE cbvRange{};
+    if (pipeDesc.hasConstantData)
+    {
+        // Define it as a TABLE RANGE, not a Root View
+        // Type: CBV, Count: 1, Register: b0, Space: 1
+        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 1);
+
+        CD3DX12_ROOT_PARAMETER cbParam{};
+        cbParam.InitAsDescriptorTable(1, &cbvRange);
+        params.push_back(cbParam);
+    }
+    // Static Samplers (Required by NRD)
+    CD3DX12_STATIC_SAMPLER_DESC staticSamplers[2]{};
+    staticSamplers[0].Init(
+        0,                                  // ShaderRegister (s0)
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,    // Filter
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   // AddressU
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   // AddressV
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   // AddressW
+        0.0f,                               // MipLODBias
+        16,                                 // MaxAnisotropy
+        D3D12_COMPARISON_FUNC_NEVER,        // ComparisonFunc
+        D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK, // BorderColor
+        0.0f,                               // MinLOD
+        D3D12_FLOAT32_MAX,                  // MaxLOD
+        D3D12_SHADER_VISIBILITY_ALL,        // Visibility
+        1                                   // RegisterSpace (KEY FIX: Must be 1)
+    );
+
+    // Sampler 1: Point (s1, space1)
+    staticSamplers[1].Init(
+        1,                                  // ShaderRegister (s1)
+        D3D12_FILTER_MIN_MAG_MIP_POINT,     // Filter
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   // AddressU
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   // AddressV
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   // AddressW
+        0.0f,                               // MipLODBias
+        16,                                 // MaxAnisotropy
+        D3D12_COMPARISON_FUNC_NEVER,        // ComparisonFunc
+        D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK, // BorderColor
+        0.0f,                               // MinLOD
+        D3D12_FLOAT32_MAX,                  // MaxLOD
+        D3D12_SHADER_VISIBILITY_ALL,        // Visibility
+        1                                   // RegisterSpace (KEY FIX: Must be 1)
+    );
+
+
+    CD3DX12_ROOT_SIGNATURE_DESC rootDesc(
+        (UINT)params.size(),
+        params.data(),
+        _countof(staticSamplers),
+        staticSamplers
+    );
+
+    Microsoft::WRL::ComPtr<ID3DBlob> signature;
+    Microsoft::WRL::ComPtr<ID3DBlob> error;
+    HRESULT hr = D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+
+    if (FAILED(hr))
+    {
+        if (error) OutputDebugStringA((char*)error->GetBufferPointer());
+        throw std::runtime_error("Failed to serialize NRD Root Sig");
+    }
+
+    if (FAILED(mDevice.Get()->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&mNrdRootSignatures[index]))))
+    {
+        throw std::runtime_error("Failed to create NRD Root Signature");
+    }
+}
+
+void Renderer::InitializeNRD()
+{
+    // 1. Setup Denoiser Descriptor
+    // In NRD 4, you define a list of denoisers (methods) to include in the instance.
+    nrd::DenoiserDesc denoiserDesc = {};
+    denoiserDesc.identifier = 0; // Unique ID for this denoiser (you use this in GetComputeDispatches)
+	denoiserDesc.denoiser = nrd::Denoiser::REBLUR_DIFFUSE; // Choose denoiser type
+
+    // Note: In NRD v4.4+, renderWidth/Height were removed from creation. 
+    // Resolution is now handled strictly via CommonSettings per-frame.
+    // If you are on NRD v4.0-v4.3, uncomment these:
+    // denoiserDesc.renderWidth = mWidth;
+    // denoiserDesc.renderHeight = mHeight;
+
+    // 2. Setup Instance Descriptor
+    nrd::InstanceCreationDesc instanceDesc = {};
+    instanceDesc.denoisers = &denoiserDesc;
+    instanceDesc.denoisersNum = 1;
+
+    // 3. Create Instance
+    if (nrd::CreateInstance(instanceDesc, mNrdInstance) != nrd::Result::SUCCESS)
+    {
+        throw std::runtime_error("Failed to create NRD Instance");
+    }
+
+    // 4. Create PSOs (The logic remains similar, but using the Instance)
+    // GetInstanceDesc returns the description of all pipelines needed for the instance.
+    const nrd::InstanceDesc* desc = nrd::GetInstanceDesc(*mNrdInstance);
+
+    // Resize vectors to hold PSOs and Signatures
+    mNrdPipelines.resize(desc->pipelinesNum);
+    mNrdRootSignatures.resize(desc->pipelinesNum);
+
+    for (uint32_t i = 0; i < desc->pipelinesNum; ++i)
+    {
+        const nrd::PipelineDesc& pipeDesc = desc->pipelines[i];
+
+        // A. Create Root Signature (Use the helper from previous step)
+        CreateNrdRootSignature(pipeDesc, i);
+
+        // B. Create Compute PSO
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.pRootSignature = mNrdRootSignatures[i].Get();
+        psoDesc.CS = { pipeDesc.computeShaderDXIL.bytecode, pipeDesc.computeShaderDXIL.size };
+
+        if (FAILED(mDevice.Get()->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&mNrdPipelines[i]))))
+        {
+            throw std::runtime_error("Failed to create NRD PSO");
+        }
+    }
+}
+
+void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMFLOAT3& camPos)
+{
+    // =========================================================
+    // 1. FILL COMMON SETTINGS
+    // =========================================================
+    nrd::CommonSettings common = {};
+
+    // TRANSPOSE MATRICES (Row-Major -> Column-Major)
+    DirectX::XMMATRIX viewT = view;
+    DirectX::XMMATRIX projT = proj;
+
+    // 1. View Matrix (World-to-View)
+    memcpy(common.worldToViewMatrix, &viewT, sizeof(float) * 16);
+
+    // 2. Projection Matrix (View-to-Clip)
+    memcpy(common.viewToClipMatrix, &projT, sizeof(float) * 16);
+
+    // 3. Previous Matrices (Required for Motion Vectors)
+    // For now, we use static variables to hold the previous frame's matrices.
+    // In a real engine, these should be member variables (mPrevView, mPrevProj).
+    static DirectX::XMMATRIX prevViewT = viewT;
+    static DirectX::XMMATRIX prevProjT = projT;
+
+    memcpy(common.worldToViewMatrixPrev, &prevViewT, sizeof(float) * 16);
+    memcpy(common.viewToClipMatrixPrev, &prevProjT, sizeof(float) * 16);
+
+    // Update history for next frame
+    prevViewT = viewT;
+    prevProjT = projT;
+
+    // 4. Resolution & Jitter
+    common.resourceSize[0] = (uint16_t)mWidth;
+    common.resourceSize[1] = (uint16_t)mHeight;
+    common.rectSize[0] = (uint16_t)mWidth;
+    common.rectSize[1] = (uint16_t)mHeight;
+
+    common.resourceSizePrev[0] = (uint16_t)mWidth;
+    common.resourceSizePrev[1] = (uint16_t)mHeight;
+    common.rectSizePrev[0] = (uint16_t)mWidth;
+    common.rectSizePrev[1] = (uint16_t)mHeight;
+
+    // If you are NOT using TAA/DLSS, keep jitter at 0.0f
+    common.cameraJitter[0] = 0.0f;
+    common.cameraJitter[1] = 0.0f;
+
+    // 5. Motion Vector Configuration
+    // Your shader likely outputs UV motion (Screen Space).
+    // If so, keep 'isMotionVectorInWorldSpace' = false.
+    // If your MV texture contains pixel deltas (e.g. +10 pixels), scale by 1/resolution.
+    common.isMotionVectorInWorldSpace = false;
+	common.motionVectorScale[0] = (float)mWidth;
+	common.motionVectorScale[1] = (float)mHeight;
+
+    common.frameIndex = mFrameCount;
+    common.accumulationMode = nrd::AccumulationMode::CONTINUE;
+
+	nrd::SetCommonSettings(*mNrdInstance, common);
+
+    // =========================================================
+    // 2. GET DISPATCHES
+    // =========================================================
+    const nrd::DispatchDesc* dispatches = nullptr;
+    uint32_t dispatchCount = 0;
+    const nrd::Identifier denoisers[] = { 0 }; // The ID we set in InitializeNRD (0)
+
+    nrd::GetComputeDispatches(*mNrdInstance, denoisers, 1, dispatches, dispatchCount);
+
+    // =========================================================
+    // 3. EXECUTE DISPATCHES
+    // =========================================================
+    const nrd::InstanceDesc* instanceDesc = nrd::GetInstanceDesc(*mNrdInstance);
+    ID3D12DescriptorHeap* heaps[] = { mFrameHeap.Get() };
+    mCommandList.Get()->SetDescriptorHeaps(1, heaps);
+
+    for (uint32_t i = 0; i < dispatchCount; ++i)
+    {
+        const nrd::DispatchDesc& d = dispatches[i];
+        const nrd::PipelineDesc& pipeDesc = instanceDesc->pipelines[d.pipelineIndex];
+
+        mCommandList.Get()->SetPipelineState(mNrdPipelines[d.pipelineIndex].Get());
+        mCommandList.Get()->SetComputeRootSignature(mNrdRootSignatures[d.pipelineIndex].Get());
+
+        // A. Bind Constants (Descriptor Table at Space 1)
+        // We set up the Root Signature to expect a CBV Range at Space 1.
+        if (d.constantBufferDataSize > 0)
+        {
+            // 1. Upload Data
+            auto cbAlloc = mUploadHeap.Allocate(d.constantBufferDataSize);
+            memcpy(cbAlloc.cpuPtr, d.constantBufferData, d.constantBufferDataSize);
+
+            // 2. Allocate Descriptor
+            auto cbvSlot = mFrameHeap.Allocate(1);
+
+            // 3. Create CBV
+            D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+            cbvDesc.BufferLocation = mUploadHeap.GetResource()->GetGPUVirtualAddress() + cbAlloc.offset;
+            cbvDesc.SizeInBytes = (d.constantBufferDataSize + 255) & ~255;
+            mDevice.Get()->CreateConstantBufferView(&cbvDesc, cbvSlot.cpuHandle);
+
+            // 4. Bind Table (Last Parameter)
+            mCommandList.Get()->SetComputeRootDescriptorTable(pipeDesc.resourceRangesNum, cbvSlot.gpuHandle);
+        }
+
+        uint32_t resourceCursor = 0;
+
+        // B. Bind Resources (SRV/UAV Tables)
+        for (uint32_t r = 0; r < pipeDesc.resourceRangesNum; ++r)
+        {
+            const nrd::ResourceRangeDesc& range = pipeDesc.resourceRanges[r];
+            auto tableAlloc = mFrameHeap.Allocate(range.descriptorsNum);
+            
+            UINT handleSize = mFrameHeap.GetIncrementSize();
+
+            for (uint32_t dIndex = 0; dIndex < range.descriptorsNum; ++dIndex)
+            {
+                const nrd::ResourceDesc& resDesc = d.resources[resourceCursor++];
+				nrd::ResourceType type = resDesc.type;
+                D3D12_CPU_DESCRIPTOR_HANDLE src = { 0 };
+
+                // --- MAP INPUTS ---
+                if (type == nrd::ResourceType::IN_MV) src = mMotionVectorSrvCpuHandle;
+                else if (type == nrd::ResourceType::IN_NORMAL_ROUGHNESS) src = mNormalRoughnessSrvCpuHandle;
+                else if (type == nrd::ResourceType::IN_VIEWZ) src = mViewZSrvCpuHandle;
+                else if (type == nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST) src = mRtOutputSrvCpuHandle;
+
+                // --- MAP OUTPUTS ---
+                else if (type == nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST) src = mDenoiseOutputUavCpuHandle;
+
+                // --- MAP POOLS (Scratch Memory) ---
+                else if (type == nrd::ResourceType::TRANSIENT_POOL || type == nrd::ResourceType::PERMANENT_POOL)
+                {
+                    // Check if the range expects a UAV (Storage) or SRV (Texture)
+                    bool isUAV = (range.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE);
+
+                    // Use indexInPool from the ResourceDesc!
+                    NrdPoolEntry& entry = GetNrdPoolEntry(resDesc.indexInPool, type);
+                    src = isUAV ? entry.uavHandle : entry.srvHandle;
+                }
+
+                if (src.ptr != 0)
+                {
+                    D3D12_CPU_DESCRIPTOR_HANDLE dst = tableAlloc.GetCpuHandle(dIndex, handleSize);
+                    mDevice.Get()->CopyDescriptorsSimple(1, dst, src, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                }
+            }
+            mCommandList.Get()->SetComputeRootDescriptorTable(r, tableAlloc.gpuHandle);
+        }
+
+        mCommandList.Get()->Dispatch(d.gridWidth, d.gridHeight, 1);
+    }
+
+    // =========================================================
+    // 4. COPY TO BACK BUFFER
+    // =========================================================
+
+    // We need to transition:
+    // 1. Denoise Output: UAV (Write) -> COPY_SOURCE (Read)
+    // 2. BackBuffer: PRESENT (Display) -> COPY_DEST (Write)
+    // 3. History: SRV (Read) -> COPY_DEST (Write) - Only if you want to save history here
+
+    D3D12_RESOURCE_BARRIER preCopyBarriers[3] = {};
+    int barrierCount = 0;
+
+    // Transition Denoise Output to COPY_SOURCE
+    preCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mDenoiseOutput.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_COPY_SOURCE
+    );
+
+    // Transition BackBuffer to COPY_DEST
+    preCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mSwapChain.GetCurrentBackBuffer(),
+        D3D12_RESOURCE_STATE_PRESENT,
+        D3D12_RESOURCE_STATE_COPY_DEST
+    );
+
+    // (Optional) Transition History if you are manually copying it here. 
+    // NRD usually handles history internally via the pools, but if you have a specific 
+    // history texture logic:
+    //preCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+    //    mHistoryTexture.Get(),
+    //    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+    //    D3D12_RESOURCE_STATE_COPY_DEST
+    //);
+
+    mCommandList.Get()->ResourceBarrier(barrierCount, preCopyBarriers);
+
+    // --- EXECUTE COPY ---
+    mCommandList.Get()->CopyResource(mSwapChain.GetCurrentBackBuffer(), mDenoiseOutput.Get());
+
+    // Update history (Current Frame -> History)
+    //mCommandList.Get()->CopyResource(mHistoryTexture.Get(), mDenoiseOutput.Get());
+
+    // =========================================================
+    // 5. RESTORE STATES
+    // =========================================================
+
+    // We need to put things back for the next frame:
+    // 1. BackBuffer: COPY_DEST -> PRESENT (Required for mSwapChain.Present())
+    // 2. Denoise Output: COPY_SOURCE -> UNORDERED_ACCESS (Ready for next frame's Compute Shader)
+    // 3. History: COPY_DEST -> NON_PIXEL_SHADER_RESOURCE (Ready for next frame's Read)
+
+    D3D12_RESOURCE_BARRIER postCopyBarriers[5] = {};
+    barrierCount = 0;
+
+    postCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mSwapChain.GetCurrentBackBuffer(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_PRESENT
+    );
+
+    postCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mDenoiseOutput.Get(),
+        D3D12_RESOURCE_STATE_COPY_SOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    );
+
+    //postCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+    //    mHistoryTexture.Get(),
+    //    D3D12_RESOURCE_STATE_COPY_DEST,
+    //    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    //);
+
+    postCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mRtOutputResource.Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    );
+
+    postCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mNormalRoughnessTex.Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    );
+
+    postCopyBarriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mViewZTex.Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    );
+
+    mCommandList.Get()->ResourceBarrier(barrierCount, postCopyBarriers);
+}
+
+Renderer::NrdPoolEntry& Renderer::GetNrdPoolEntry(size_t index, nrd::ResourceType type)
+{
+    // 1. Select the correct vector based on the request type
+    std::vector<NrdPoolEntry>& pool = (type == nrd::ResourceType::PERMANENT_POOL)
+        ? mPermanentPool
+        : mTransientPool;
+
+    // 2. Expand the vector if this index hasn't been allocated yet
+    if (index >= pool.size())
+        pool.resize(index + 1);
+
+	if (pool[index].texture.resource.Get() == nullptr)
+    {
+
+        // 3. Create the Texture
+        // NRD internal buffers generally require high precision (Float16/Float32).
+        // R16G16B16A16_FLOAT is the safest default for NRD pools.
+        D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+            mWidth,
+            mHeight,
+            1, 1, 1, 0,
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS // Must be a UAV
+        );
+
+        // Use your existing texture creation logic or raw D3D12
+        GPUTexture tex;
+        tex.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        tex.width = mWidth;
+        tex.height = mHeight;
+        tex.resource.Initialize(mDevice.Get(), desc, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT));
+
+        // 4. Create Descriptors (SRV & UAV)
+        // We allocate fresh slots in the heap for this new texture
+        auto srvInfo = mCpuHeap.Allocate(1);
+        auto uavInfo = mCpuHeap.Allocate(1);
+
+        pool[index].texture = tex;
+        pool[index].srvHandle = srvInfo.cpuHandle;
+        pool[index].uavHandle = uavInfo.cpuHandle;
+
+        // Create SRV (Shader Resource View)
+        CreateTextureView(tex.resource.Get(), tex.format, pool[index].srvHandle, 1);
+
+        // Create UAV (Unordered Access View)
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+        uavDesc.Format = tex.format;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        mDevice.Get()->CreateUnorderedAccessView(tex.resource.Get(), nullptr, &uavDesc, pool[index].uavHandle);
+    }
+
+    // 5. Return the entry
+    return pool[index];
+}
+
 void Renderer::CreateRayTracingOutput()
 {
-    D3D12_RESOURCE_DESC desc = {};
-    desc.DepthOrArraySize = 1;
-    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-    desc.Width = mWidth;
-    desc.Height = mHeight;
-    desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-    desc.MipLevels = 1;
-    desc.SampleDesc = { 1, 0 };
+    constexpr DXGI_FORMAT rtOutputFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    // 1. Color Output (u0)
+    {
+        D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+            rtOutputFormat,
+            mWidth,
+            mHeight,
+            1, // array size
+            1,  // mip levels
+			1, // sample count
+			0, // sample quality
+			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+		);
 
-    mRtOutputResource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        mRtOutputResource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
 
-    // Create UAV Descriptor (We need a free slot in a Visible Heap)
-    // For simplicity, let's assume we allocate one from mSrvHeap or a new one.
-    // Ideally, mSrvHeap handles this. Let's assume Allocate() works.
-    auto uavHandle = mSrvHeap.Allocate(1);
-    mRtOutputUavCpuHandle = uavHandle.cpuHandle;
-    mRtOutputUavGpuHandle = uavHandle.gpuHandle;
+    // 2. Normal + Roughness (u1)
+    // NRD recommends high precision for Normals. R10G10B10A2 or R16G16B16A16_FLOAT.
+    {
+        D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+            mWidth,
+            mHeight,
+            1, // array size
+            1,  // mip levels
+			1, // sample count
+			0, // sample quality
+			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+		);
 
+        mNormalRoughnessTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+
+    // 3. ViewZ (u2) - MUST be FLOAT format (R32_FLOAT)
+    {
+        D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+            DXGI_FORMAT_R32_FLOAT,
+            mWidth,
+            mHeight,
+            1, // array size
+			1,  // mip levels
+			1, // sample count
+			0, // sample quality
+			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+            );
+        mViewZTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	}
+
+    // --- Create UAV Descriptors ---
+    // We need 3 CONTIGUOUS descriptors in the heap for the table
+    auto uavTable = mSrvHeap.Allocate(3);
+    mRtOutputUavCpuHandle = uavTable.cpuHandle;
+    mRtOutputUavGpuHandle = uavTable.gpuHandle;
+
+	UINT inc = mSrvHeap.GetIncrementSize();
+    // Slot 0: Color
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-    mDevice.Get()->CreateUnorderedAccessView(mRtOutputResource.Get(), nullptr, &uavDesc, mRtOutputUavCpuHandle);
+    uavDesc.Format = rtOutputFormat;
+    mDevice.Get()->CreateUnorderedAccessView(mRtOutputResource.Get(), nullptr, &uavDesc, uavTable.GetCpuHandle(0, inc));
+
+    // Slot 1: Normal/Roughness
+    uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    mDevice.Get()->CreateUnorderedAccessView(mNormalRoughnessTex.Get(), nullptr, &uavDesc, uavTable.GetCpuHandle(1, inc));
+
+    // Slot 2: ViewZ
+    uavDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    mDevice.Get()->CreateUnorderedAccessView(mViewZTex.Get(), nullptr, &uavDesc, uavTable.GetCpuHandle(2, inc));
+
+
+    // We need 3 SRVs: Color, Normal, ViewZ
+    auto srvTable = mCpuHeap.Allocate(3);
+
+    // 1. Noisy Input (Radiance)
+    mRtOutputSrvCpuHandle = srvTable.GetCpuHandle(0, inc);
+    CreateTextureView(mRtOutputResource.Get(), rtOutputFormat, mRtOutputSrvCpuHandle, 1);
+
+    // 2. Normal + Roughness
+    mNormalRoughnessSrvCpuHandle = srvTable.GetCpuHandle(1, inc);
+    CreateTextureView(mNormalRoughnessTex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mNormalRoughnessSrvCpuHandle, 1);
+
+    // 3. ViewZ
+    mViewZSrvCpuHandle = srvTable.GetCpuHandle(2, inc);
+    // Note: ViewZ is R32_FLOAT, usually needs a specific view desc if not fully typed
+    CreateTextureView(mViewZTex.Get(), DXGI_FORMAT_R32_FLOAT, mViewZSrvCpuHandle, 1);
 }
 
 void Renderer::CreateRayTracingPipeline()
 {
     // --- 1. GLOBAL Root Signature (Output, TLAS, Camera) ---
-    CD3DX12_DESCRIPTOR_RANGE uavRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+    CD3DX12_DESCRIPTOR_RANGE uavRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 3, 0);
     CD3DX12_ROOT_PARAMETER globalParams[3]{};
     globalParams[0].InitAsDescriptorTable(1, &uavRange);
     globalParams[1].InitAsShaderResourceView(0);
@@ -777,7 +1333,10 @@ void Renderer::CreateRayTracingPipeline()
 
     // Shader Config
     auto shaderConfig = rtPipe.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    shaderConfig->Config(sizeof(float) * 4 + 4 + sizeof(uint32_t), sizeof(float) * 2); // Payload + Attributes
+    // Payload Size: 
+    // 16 (Color) + 4 (HitT) + 4 (Depth) + 12 (Normal) + 4 (Roughness) = 40 bytes.
+    // Attributes: 8 bytes (barycentrics)
+    shaderConfig->Config(40, sizeof(float) * 2);
 
     // Local Root Signature Association
     // We must tell the pipeline that HitGroup0 and HitGroup1 use the Local Root Sig
@@ -958,6 +1517,7 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
     RayGenConstantBuffer cb;
     cb.viewProjInverse = DirectX::XMMatrixInverse(nullptr, viewProj);
     cb.cameraPos = { camPos.x, camPos.y, camPos.z, 1.0f };
+	cb.cameraForward = { camForward.x, camForward.y, camForward.z, 0.0f };
 	cb.numLights = mConstantBufferData.numLights;
 	cb.frameCount = mConstantBufferData.frameCount;
 	memcpy(cb.lights, mConstantBufferData.lights, sizeof(LightData) * cb.numLights);
@@ -995,83 +1555,109 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 
     cmdList->DispatchRays(&desc);
 
-	// =========================================================
-	// Denoising Pass
-	// =========================================================
-     
-    // 1. Determine Blend Factor based on movement
-    // Simple distance check. If moved > epsilon, reset history (blend = 1.0)
-    float dist = (pow(camPos.x - mPrevCameraPos.x, 2) + pow(camPos.y - mPrevCameraPos.y, 2) + pow(camPos.z - mPrevCameraPos.z, 2));
-	float rotDist = (pow(camForward.x - mPrevCameraForward.x, 2) + pow(camForward.y - mPrevCameraForward.y, 2) + pow(camForward.z - mPrevCameraForward.z, 2));
-    float blendFactor = (dist > 0.001f || rotDist > 0.001f) ? 0.8f : 0.05f; // 0.8 reduces ghosting on move, 0.05 smooths static
-    mPrevCameraPos = camPos;
-	mPrevCameraForward = camForward;
+    // Transition Ray Tracing Outputs (UAVs) to SRVs for the Denoising pass
+    D3D12_RESOURCE_BARRIER postRtBarriers[3] = {};
 
-    // 2. Resource Barriers for Denoising
-    D3D12_RESOURCE_BARRIER preDenoiseBarriers[3]{};
-
-    // Transition Noisy Output (RT Result): UAV -> SRV (Read)
-    preDenoiseBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+    // 1. Color Output (IN_DIFF_RADIANCE_HITDIST): UAV -> SRV
+    postRtBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         mRtOutputResource.Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    );
 
-    // Transition History: COMMON/SRV -> SRV (Read)
-    // Note: Assuming it ended in NON_PIXEL_SHADER_RESOURCE last frame
-    preDenoiseBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-        mHistoryTexture.Get(),
-        D3D12_RESOURCE_STATE_COMMON,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    // 2. Normal + Roughness (IN_NORMAL_ROUGHNESS): UAV -> SRV
+    postRtBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mNormalRoughnessTex.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    );
 
-    // Transition Denoise Output: UAV (Write)
-    preDenoiseBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-        mDenoiseOutput.Get(),
-        D3D12_RESOURCE_STATE_COMMON, // Assumes first use or reset
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    // 3. ViewZ (IN_VIEWZ): UAV -> SRV
+    postRtBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+        mViewZTex.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    );
 
-    cmdList->ResourceBarrier(_countof(preDenoiseBarriers), preDenoiseBarriers);
+    cmdList->ResourceBarrier(_countof(postRtBarriers), postRtBarriers);
 
-    // 3. Dispatch Denoise CS
-	cmdList->SetPipelineState(mDenoisePipelineState.Get());
-	cmdList->SetComputeRootSignature(mDenoisePipelineState.GetRootSignature());
+	//// =========================================================
+	//// Denoising Pass
+	//// =========================================================
+ //    
+ //   // 1. Determine Blend Factor based on movement
+ //   // Simple distance check. If moved > epsilon, reset history (blend = 1.0)
+ //   float dist = (pow(camPos.x - mPrevCameraPos.x, 2) + pow(camPos.y - mPrevCameraPos.y, 2) + pow(camPos.z - mPrevCameraPos.z, 2));
+	//float rotDist = (pow(camForward.x - mPrevCameraForward.x, 2) + pow(camForward.y - mPrevCameraForward.y, 2) + pow(camForward.z - mPrevCameraForward.z, 2));
+ //   float blendFactor = (dist > 0.001f || rotDist > 0.001f) ? 0.8f : 0.05f; // 0.8 reduces ghosting on move, 0.05 smooths static
+ //   mPrevCameraPos = camPos;
+	//mPrevCameraForward = camForward;
 
-    // Bind constants
-	cmdList->SetComputeRoot32BitConstants(0, 1, &blendFactor, 0);
-	// Bind table (Noisy SRV, History SRV, Output UAV) at t0, t1, u0
-	cmdList->SetComputeRootDescriptorTable(1, mDenoiseDescriptorTable.gpuHandle);
+ //   // 2. Resource Barriers for Denoising
+ //   D3D12_RESOURCE_BARRIER preDenoiseBarriers[3]{};
 
-	cmdList->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+ //   // Transition Noisy Output (RT Result): UAV -> SRV (Read)
+ //   preDenoiseBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+ //       mRtOutputResource.Get(),
+ //       D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+ //       D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-	// 4. Copy Result to BackBuffer and History
-    // Transition Denoise Output: UAV -> COPY_SOURCE
-    // Transition BackBuffer: PRESENT -> COPY_DEST
-    // Transition History: SRV -> COPY_DEST
-    D3D12_RESOURCE_BARRIER postDenoiseBarriers[] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(mDenoiseOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-        CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
-        CD3DX12_RESOURCE_BARRIER::Transition(mHistoryTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST)
-    };
+ //   // Transition History: COMMON/SRV -> SRV (Read)
+ //   // Note: Assuming it ended in NON_PIXEL_SHADER_RESOURCE last frame
+ //   preDenoiseBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+ //       mHistoryTexture.Get(),
+ //       D3D12_RESOURCE_STATE_COMMON,
+ //       D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-	cmdList->ResourceBarrier(_countof(postDenoiseBarriers), postDenoiseBarriers);
+ //   // Transition Denoise Output: UAV (Write)
+ //   preDenoiseBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+ //       mDenoiseOutput.Get(),
+ //       D3D12_RESOURCE_STATE_COMMON, // Assumes first use or reset
+ //       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-	// Copy to BackBuffer
-	cmdList->CopyResource(mSwapChain.GetCurrentBackBuffer(), mDenoiseOutput.Get());
+ //   cmdList->ResourceBarrier(_countof(preDenoiseBarriers), preDenoiseBarriers);
 
-	// Copy to History
-	cmdList->CopyResource(mHistoryTexture.Get(), mDenoiseOutput.Get());
+ //   // 3. Dispatch Denoise CS
+	//cmdList->SetPipelineState(mDenoisePipelineState.Get());
+	//cmdList->SetComputeRootSignature(mDenoisePipelineState.GetRootSignature());
 
-    // 5.Restore States
-	// Transition BackBuffer: COPY_DEST -> PRESENT
-	// Transition RT Output: NON_PIXEL_SHADER_RESOURCE -> UAV (for next frame)
-	// Transition Denoise Output: COPY_SOURCE -> COMMON (reset)
-	// Transition History Texture: COPY_DEST -> COMMON/SRV (Ready for next frame read)
-    D3D12_RESOURCE_BARRIER cleanupBarriers[] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT),       
-        CD3DX12_RESOURCE_BARRIER::Transition(mRtOutputResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-        CD3DX12_RESOURCE_BARRIER::Transition(mDenoiseOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
-        CD3DX12_RESOURCE_BARRIER::Transition(mHistoryTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON)
-    };
-    cmdList->ResourceBarrier(_countof(cleanupBarriers), cleanupBarriers);
+ //   // Bind constants
+	//cmdList->SetComputeRoot32BitConstants(0, 1, &blendFactor, 0);
+	//// Bind table (Noisy SRV, History SRV, Output UAV) at t0, t1, u0
+	//cmdList->SetComputeRootDescriptorTable(1, mDenoiseDescriptorTable.gpuHandle);
+
+	//cmdList->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+
+	//// 4. Copy Result to BackBuffer and History
+ //   // Transition Denoise Output: UAV -> COPY_SOURCE
+ //   // Transition BackBuffer: PRESENT -> COPY_DEST
+ //   // Transition History: SRV -> COPY_DEST
+ //   D3D12_RESOURCE_BARRIER postDenoiseBarriers[] = {
+ //       CD3DX12_RESOURCE_BARRIER::Transition(mDenoiseOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+ //       CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
+ //       CD3DX12_RESOURCE_BARRIER::Transition(mHistoryTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST)
+ //   };
+
+	//cmdList->ResourceBarrier(_countof(postDenoiseBarriers), postDenoiseBarriers);
+
+	//// Copy to BackBuffer
+	//cmdList->CopyResource(mSwapChain.GetCurrentBackBuffer(), mDenoiseOutput.Get());
+
+	//// Copy to History
+	//cmdList->CopyResource(mHistoryTexture.Get(), mDenoiseOutput.Get());
+
+ //   // 5.Restore States
+	//// Transition BackBuffer: COPY_DEST -> PRESENT
+	//// Transition RT Output: NON_PIXEL_SHADER_RESOURCE -> UAV (for next frame)
+	//// Transition Denoise Output: COPY_SOURCE -> COMMON (reset)
+	//// Transition History Texture: COPY_DEST -> COMMON/SRV (Ready for next frame read)
+ //   D3D12_RESOURCE_BARRIER cleanupBarriers[] = {
+ //       CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT),       
+ //       CD3DX12_RESOURCE_BARRIER::Transition(mRtOutputResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+ //       CD3DX12_RESOURCE_BARRIER::Transition(mDenoiseOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+ //       CD3DX12_RESOURCE_BARRIER::Transition(mHistoryTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON)
+ //   };
+ //   cmdList->ResourceBarrier(_countof(cleanupBarriers), cleanupBarriers);
 }
 
 void Renderer::InitializePipelineState()
@@ -1145,7 +1731,7 @@ void Renderer::InitializeTextureLoader()
     mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
 }
 
-void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward)
+void Renderer::Update(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward)
 {
     // compute delta time
     LARGE_INTEGER now;
@@ -1153,6 +1739,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
     mPrevCounter = now;
 
+	DirectX::XMMATRIX viewProj = DirectX::XMMatrixMultiply(view, proj);
     mConstantBufferData.vpMatrix = viewProj;
     mConstantBufferData.prevVpMatrix = mPrevViewProj;
     mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
@@ -1209,8 +1796,10 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     if (mRayTracingEnabled)
     {
         // Ray tracing rendering path
+		mFrameHeap.Reset(); // Reset frame descriptor heap
         RenderMotionVectors();
         RenderRayTracing(viewProj, cameraPos, cameraForward);
+        DenoiseWithNRD(view, proj, cameraPos);
     }
     else
     {
@@ -1333,3 +1922,4 @@ void Renderer::SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos)
             return a.distanceToCamera > b.distanceToCamera;
         });
 }
+////////

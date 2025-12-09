@@ -18,6 +18,7 @@ float4 main(VSOutput input) : SV_Target
 
     // 3. Calculate Velocity
     float2 velocity = curUV - prevUV;
+    //float2 velocity = prevUV - curUV;
 
     return float4(velocity, 0, 0); // Write to R16G16_FLOAT
 }

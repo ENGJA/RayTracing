@@ -1,6 +1,6 @@
 #pragma once
 #include "RenderAPI/D3D12/D3D12Resource.h"
-#include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include "RenderAPI/Descriptors/DescriptorHeap.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandQueue.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandList.h"
 #include "ResourceLoading/UploadHeap.h"
@@ -31,7 +31,7 @@ public:
 	* @param cmdList Command list for recording copy commands.
 	* @param uploadHeap Upload heap for staging texture data.    
     */
-	void Initialize(ID3D12Device* device, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader);
+	void Initialize(ID3D12Device* device, DescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader);
 
 	/**
 	* @brief Creates a GPU texture from decoded image data.
@@ -57,7 +57,7 @@ private:
     ID3D12Device* mDevice = nullptr;
 
 	/** <Shader-visible descriptor heap for SRV allocation. */
-    ShaderVisibleDescriptorHeap* mHeap = nullptr;
+    DescriptorHeap* mHeap = nullptr;
 
 	/** <Command queue for copy execution. */
     D3D12CommandQueue* mQueue = nullptr;

@@ -50,4 +50,8 @@ public:
      * @brief Returns normalized forward vector of the active camera (world-space).
      */
     DirectX::XMFLOAT3 GetActiveCameraForward() const;
+
+    DirectX::XMMATRIX GetActiveProjection() const;
+
+	DirectX::XMMATRIX GetActiveView() const;
 };

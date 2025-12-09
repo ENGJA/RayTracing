@@ -66,11 +66,15 @@ void Camera::ChangeFov(float delta)
 
 XMMATRIX Camera::GetViewProjection() const
 {
+	return GetView() * GetProjection();
+}
+
+DirectX::XMMATRIX Camera::GetView() const
+{
     if (mUseFixed)
     {
-        return mFixedView * mProj;
+        return mFixedView;
     }
-
     // compute view from position + yaw/pitch
     float cy = cosf(mYaw);
     float sy = sinf(mYaw);
@@ -80,10 +84,8 @@ XMMATRIX Camera::GetViewProjection() const
     front = XMVector3Normalize(front);
     XMVECTOR pos = XMLoadFloat3(&mPosition);
     XMVECTOR up = XMLoadFloat3(&mWorldUp);
-    XMVECTOR lookTo = XMMatrixLookToLH(pos, front, up).r[0]; 
-
     XMMATRIX view = XMMatrixLookToLH(pos, front, up);
-    return view * mProj;
+	return view;
 }
 
 DirectX::XMFLOAT3 Camera::GetForward() const

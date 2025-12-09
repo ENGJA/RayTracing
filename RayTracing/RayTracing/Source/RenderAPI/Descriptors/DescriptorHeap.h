@@ -31,20 +31,21 @@ struct DescriptorAllocation
 /**
  * @brief Simple shader-visible CBV/SRV/UAV descriptor heap manager with linear allocations.
  */
-class ShaderVisibleDescriptorHeap
+class DescriptorHeap
 {
 private:
     D3D12DescriptorHeap mHeap; ///< Underlying descriptor heap COM pointer.
     UINT mIncrementSize = 0; ///< Descriptor handle increment size for this heap type.
     UINT mCapacity = 0; ///< Total number of descriptors available.
     UINT mAllocated = 0; ///< Number of descriptors already allocated linearly.
+	bool mShaderVisible = true; ///< Whether the heap is shader-visible.
 public:
     /**
      * @brief Creates a shader-visible descriptor heap with the given capacity.
      * @param device D3D12 device.
      * @param capacity Number of descriptors in the heap.
      */
-    void Initialize(ID3D12Device* device, UINT capacity);
+    //void Initialize(ID3D12Device* device, UINT capacity);
     /**
      * @brief Allocates a consecutive range of descriptors.
      * @param count Number of descriptors to allocate.
@@ -59,4 +60,12 @@ public:
      * @brief Returns the descriptor size increment for this heap type.
      */
     UINT GetIncrementSize() const { return mIncrementSize; }
+
+    void Initialize(ID3D12Device* pDevice, UINT capacity, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCpuHandle(UINT index) const;
+
+    D3D12_GPU_DESCRIPTOR_HANDLE GetGpuHandle(UINT index) const;
+
+	void Reset() { mAllocated = 0; }
 };

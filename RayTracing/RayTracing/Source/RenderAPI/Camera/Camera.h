@@ -70,6 +70,10 @@ public:
      */
     DirectX::XMMATRIX GetViewProjection() const;
 
+	DirectX::XMMATRIX GetProjection() const { return mProj; }
+
+	DirectX::XMMATRIX GetView() const;
+
     /**
     * @brief Returns current camera position.
 	* @return XMFLOAT3 world-space position.
