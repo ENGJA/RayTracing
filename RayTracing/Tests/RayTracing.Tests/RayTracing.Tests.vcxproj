@@ -160,7 +160,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <!-- Source Files from Main Project (Linked) -->
+    <!-- Linked Source Files from Main Project -->
     <ClCompile Include="..\..\RayTracing\Source\RenderAPI\Camera\Camera.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
@@ -174,10 +174,10 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="..\..\RayTracing\Source\Input\InputManager.cpp">
-    <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
-    <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
-    <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-    <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="..\..\RayTracing\Source\Utils\PerformanceMonitor.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
@@ -188,6 +188,9 @@
     <!-- Test Files -->
     <ClCompile Include="Camera\CameraTests.cpp" />
     <ClCompile Include="Camera\CameraManagerTests.cpp" />
+    <ClCompile Include="Camera\CameraParamsTests.cpp" />
+    <ClCompile Include="Config\ConfigTests.cpp" />
+    <ClCompile Include="DataTypes\DataTypesTests.cpp" />
     <ClCompile Include="Utils\PerformanceMonitorTests.cpp" />
     <ClCompile Include="ResourceLoading\VertexTests.cpp" />
     <ClCompile Include="pch.cpp">

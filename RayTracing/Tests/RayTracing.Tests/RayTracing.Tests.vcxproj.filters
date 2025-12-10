@@ -10,6 +10,12 @@
     <Filter Include="Source Files\Camera">
       <UniqueIdentifier>{a1b2c3d4-e5f6-4789-a012-3456789abcde}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Config">
+      <UniqueIdentifier>{b1c2d3e4-f5a6-5890-b123-456789abcde0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\DataTypes">
+      <UniqueIdentifier>{c2d3e4f5-a6b7-6901-c234-56789abcdef1}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\Utils">
       <UniqueIdentifier>{b2c3d4e5-f6a7-5890-b123-456789abcdef}</UniqueIdentifier>
     </Filter>
@@ -39,6 +45,17 @@
     </ClCompile>
     <ClCompile Include="Camera\CameraManagerTests.cpp">
       <Filter>Source Files\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Camera\CameraParamsTests.cpp">
+      <Filter>Source Files\Camera</Filter>
+    </ClCompile>
+    <!-- Config Tests -->
+    <ClCompile Include="Config\ConfigTests.cpp">
+      <Filter>Source Files\Config</Filter>
+    </ClCompile>
+    <!-- DataTypes Tests -->
+    <ClCompile Include="DataTypes\DataTypesTests.cpp">
+      <Filter>Source Files\DataTypes</Filter>
     </ClCompile>
     <!-- Utils Tests -->
     <ClCompile Include="Utils\PerformanceMonitorTests.cpp">

@@ -1,5 +1,6 @@
 #pragma once
 #include <wtypes.h>
+#include <dxgiformat.h>
 
 /**
  * @brief Global configuration constants.
