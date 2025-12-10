@@ -1,9 +1,13 @@
 // --- GLOBAL RESOURCES (Space 0) ---
 // Bound once per frame
-RWTexture2D<float4> gOutputColor : register(u0);
-RWTexture2D<float4> gOutputNormalRoughness : register(u1);
-RWTexture2D<float> gOutputViewZ : register(u2);
+RWTexture2D<float4> gOutputDiffuse : register(u0); // .rgb = Diffuse Radiance, .a = HitDist
+RWTexture2D<float4> gOutputSpecular : register(u1); // .rgb = Specular Radiance, .a = HitDist
+RWTexture2D<float4> gOutputNormalRoughness : register(u2); // .xyz = Normal, .w = Roughnes
+RWTexture2D<float> gOutputViewZ : register(u3); // .r = Linear ViewZ
+RWTexture2D<float3> gOutputAlbedo : register(u4); // .rgb = Albedo
+
 RaytracingAccelerationStructure gScene : register(t0);
+
 
 #define MAX_LIGHTS 25
 
@@ -61,7 +65,9 @@ SamplerState gSampler : register(s0);
 // --- PAYLOADS & ATTRIBUTES ---
 struct RayPayload
 {
-    float4 color;
+    float3 diffuseRadiance;
+    float3 specularRadiance;
+    
     float  hitT;
     uint recursionDepth;
     
@@ -204,6 +210,103 @@ float3 GetConeSample(inout uint seed, float3 L, float spreadAngle)
 
     // Transform d to the basis
     return d.x * tangent + d.y * bitangent + d.z * L;
+}
+
+
+void CalculateLightingSplit(
+    float3 worldPos, float3 N, float3 V, float3 F,
+    float3 albedo, float metallic, float roughness, uint2 pixelCoord,
+    out float3 outDiffuse, out float3 outSpecular)
+{
+    outDiffuse = float3(0, 0, 0);
+    outSpecular = float3(0, 0, 0);
+    
+    // Setup RNG and pick one random light
+    uint seed = initRand(pixelCoord.x * pixelCoord.y, frameCount);
+    int lightIndex = min(int(nextRand(seed) * float(numLights)), int(numLights) - 1);
+    LightData light = lights[lightIndex];
+    
+    // Setup L, attenuation, distance
+    float3 L_central;
+    float lightRadius = 1.0f;
+    float attenuation = 1.0f;
+    float lightDistance = 10000.0f;
+    
+    
+    if (light.dirType.w > 0.5f) // Directional
+    {
+        L_central = normalize(-light.dirType.xyz);
+        lightRadius = 0.02f;
+        lightDistance = 1000.0f;
+    }
+    else // Point
+    {
+        float3 lightToPos = light.position.xyz - worldPos;
+        float dist = length(lightToPos);
+        L_central = normalize(lightToPos);
+        attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+        lightRadius = 0.1f;
+        lightDistance = dist;
+    }
+
+    // 3. Early Out
+    float NdotL = max(dot(N, L_central), 0.0f);
+    if (NdotL <= 0.0f || attenuation <= 0.001f)
+        return;
+
+    // 4. Trace ONE Ray
+    float3 L_shadow = L_central;
+    if (lightRadius > 0.0f)
+        L_shadow = GetConeSample(seed, L_central, lightRadius);
+
+    RayDesc shadowRay;
+    shadowRay.Origin = worldPos + (N * 0.005f);
+    shadowRay.Direction = L_shadow;
+    shadowRay.TMin = 0.001f;
+    shadowRay.TMax = lightDistance;
+
+    RayPayload shadowPayload;
+    shadowPayload.hitT = 0.0f;
+
+    TraceRay(
+        gScene,
+        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_NON_OPAQUE,
+        0xFF, 0, 1, 1,
+        shadowRay,
+        shadowPayload
+    );
+
+    // 5. Weight the Result
+    // If not occluded, we add the light's contribution multiplied by 'numLights'
+    // This compensates for the fact that we only sampled 1 out of N lights.
+    if (shadowPayload.hitT < 0.0f)
+    {
+        float3 H = normalize(V + L_central);
+        float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation * 5.0f;
+
+        // PBR Shading
+        //float3 F0 = float3(0.04f, 0.04f, 0.04f);
+        //F0 = lerp(F0, albedo, metallic);
+        float NDF = DistributionGGX(N, H, roughness);
+        float G = GeometrySmith(N, V, L_central, roughness);
+        //float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+            
+        float3 kS = F;
+        float3 kD = float3(1.0, 1.0, 1.0) - kS;
+        kD *= (1.0 - metallic);
+        
+        // Diffuse = (kd / PI) * radiance * NdotL
+        outDiffuse += (kD / PI) * radiance * NdotL * float(numLights);
+        
+        // Specular = (NDF * G * F) / (4 * NdotV * NdotL) * radiance * NdotL
+        float NdotV = max(dot(N, V), 0.0);
+        float3 numerator = NDF * G * F;
+        float denominator = 4.0 * NdotV * NdotL + 0.0001;
+        float3 specularTerm = numerator / denominator;           
+        
+        outSpecular += specularTerm * radiance * NdotL * float(numLights);
+        
+    }
 }
 
 
@@ -396,51 +499,53 @@ float3 CalculateLighting(float3 worldPos, float3 N, float3 V, float3 albedo, flo
     // 1. Pick ONE random light
     // We treat all lights as "equally likely" to be picked (1 / numLights probability)
     int lightIndex = min(int(nextRand(seed) * float(numLights)), int(numLights) - 1);
-    
-    LightData light = lights[lightIndex];
+    for (lightIndex = 0; lightIndex < int(numLights); ++lightIndex)
+    {
+
+        LightData light = lights[lightIndex];
 
     // 2. Setup Vectors
-    float3 L_central;
-    float lightRadius = 1.0f;
-    float attenuation = 1.0f;
-    float lightDistance = 10000.0f;
+        float3 L_central;
+        float lightRadius = 1.0f;
+        float attenuation = 1.0f;
+        float lightDistance = 10000.0f;
 
-    if (light.dirType.w > 0.5f) // Directional
-    {
-        L_central = normalize(-light.dirType.xyz);
-        lightRadius = 0.02f;
-        lightDistance = 1000.0f;
-    }
-    else // Point
-    {
-        float3 lightToPos = light.position.xyz - worldPos;
-        float dist = length(lightToPos);
-        L_central = normalize(lightToPos);
-        attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-        lightRadius = 0.1f;
-        lightDistance = dist;
-    }
+        if (light.dirType.w > 0.5f) // Directional
+        {
+            L_central = normalize(-light.dirType.xyz);
+            lightRadius = 0.02f;
+            lightDistance = 1000.0f;
+        }
+        else // Point
+        {
+            float3 lightToPos = light.position.xyz - worldPos;
+            float dist = length(lightToPos);
+            L_central = normalize(lightToPos);
+            attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+            lightRadius = 0.1f;
+            lightDistance = dist;
+        }
 
     // 3. Early Out
-    float NdotL = max(dot(N, L_central), 0.0f);
-    if (NdotL <= 0.0f || attenuation <= 0.001f)
-        return finalColor;
+        float NdotL = max(dot(N, L_central), 0.0f);
+        if (NdotL <= 0.0f || attenuation <= 0.001f)
+            continue;
 
     // 4. Trace ONE Ray
-    float3 L_shadow = L_central;
-    if (lightRadius > 0.0f)
-        L_shadow = GetConeSample(seed, L_central, lightRadius);
+        float3 L_shadow = L_central;
+        //if (lightRadius > 0.0f)
+        //    L_shadow = GetConeSample(seed, L_central, lightRadius);
 
-    RayDesc shadowRay;
-    shadowRay.Origin = worldPos + (N * 0.005f);
-    shadowRay.Direction = L_shadow;
-    shadowRay.TMin = 0.001f;
-    shadowRay.TMax = lightDistance;
+        RayDesc shadowRay;
+        shadowRay.Origin = worldPos + (N * 0.005f);
+        shadowRay.Direction = L_shadow;
+        shadowRay.TMin = 0.001f;
+        shadowRay.TMax = lightDistance;
 
-    RayPayload shadowPayload;
-    shadowPayload.hitT = 0.0f;
+        RayPayload shadowPayload;
+        shadowPayload.hitT = 0.0f;
 
-    TraceRay(
+        TraceRay(
         gScene,
         RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_NON_OPAQUE,
         0xFF, 0, 1, 1,
@@ -451,32 +556,32 @@ float3 CalculateLighting(float3 worldPos, float3 N, float3 V, float3 albedo, flo
     // 5. Weight the Result
     // If not occluded, we add the light's contribution multiplied by 'numLights'
     // This compensates for the fact that we only sampled 1 out of N lights.
-    if (shadowPayload.hitT < 0.0f)
-    {
-        float3 H = normalize(V + L_central);
-        float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation * 5.0f;
+        if (shadowPayload.hitT < 0.0f)
+        {
+            float3 H = normalize(V + L_central);
+            float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation * 5.0f;
 
         // PBR Shading
-        float3 F0 = float3(0.04f, 0.04f, 0.04f);
-        F0 = lerp(F0, albedo, metallic);
-        float NDF = DistributionGGX(N, H, roughness);
-        float G = GeometrySmith(N, V, L_central, roughness);
-        float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+            float3 F0 = float3(0.04f, 0.04f, 0.04f);
+            F0 = lerp(F0, albedo, metallic);
+            float NDF = DistributionGGX(N, H, roughness);
+            float G = GeometrySmith(N, V, L_central, roughness);
+            float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
             
-        float3 numerator = NDF * G * F;
-        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L_central), 0.0) + 0.0001;
-        float3 specular = numerator / denominator;
+            float3 numerator = NDF * G * F;
+            float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L_central), 0.0) + 0.0001;
+            float3 specular = numerator / denominator;
             
-        float3 kS = F;
-        float3 kD = float3(1.0, 1.0, 1.0) - kS;
-        kD *= (1.0 - metallic);
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= (1.0 - metallic);
 
-        float NdotL = max(dot(N, L_central), 0.0);
-        float3 lighting = (kD * albedo / PI + specular) * radiance * NdotL;
+            float NdotL = max(dot(N, L_central), 0.0);
+            float3 lighting = (kD * albedo / PI + specular) * radiance * NdotL;
 
-        finalColor += lighting * float(numLights);        
+            finalColor += lighting;
+        }
     }
-
     return finalColor;
 }
 
@@ -547,7 +652,8 @@ void MyRayGen()
     ray.TMax = 1000.0f;
 
     RayPayload payload;
-    payload.color = float4(0, 0, 0, 0);
+    payload.diffuseRadiance = float3(0, 0, 0);
+    payload.specularRadiance = float3(0, 0, 0);
     payload.hitT  = -1.0f;
     payload.recursionDepth = 0;
     // Default NRD data (Sky)
@@ -562,10 +668,10 @@ void MyRayGen()
     // --- WRITE OUTPUTS FOR NRD ---
 
     // 1. Color
-    gOutputColor[launchIndex] = float4(payload.color.rgb, hitDist);
+    gOutputDiffuse[launchIndex] = float4(payload.diffuseRadiance, hitDist);
+    gOutputSpecular[launchIndex] = float4(payload.specularRadiance, hitDist);
     
-    // 2. Normal (Encoded [-1, 1] -> [0,1]) and Roughness
-    float3 encodedNormal = payload.normal * 0.5f + 0.5f; // Encode to [0,1]
+    // 2. Normal and Roughness    
     gOutputNormalRoughness[launchIndex] = float4( payload.normal, payload.roughness);
     
     // 3. ViewZ (Linear Depth)
@@ -587,11 +693,16 @@ void MyMiss(inout RayPayload payload)
     // Simple Sky
     float3 rayDir = WorldRayDirection();
     float t = 0.5 * (rayDir.y + 1.0);
-    payload.color = float4(lerp(float3(1.0, 1.0, 1.0), float3(0.5, 0.7, 1.0), t), 1.0f);
+    payload.diffuseRadiance = float4(lerp(float3(1.0, 1.0, 1.0), float3(0.5, 0.7, 1.0), t), 1.0f);
+    payload.specularRadiance = float3(0, 0, 0);
     payload.hitT = -1.0f;
     payload.normal = float3(0, 0, 0); // Up direction
     payload.roughness = 0.0f;
+    
+    uint2 pixelCoord = DispatchRaysIndex().xy;
+    gOutputAlbedo[pixelCoord] = float3(1, 1, 1);
 }
+
 [shader("miss")]
 void MyShadowMiss(inout RayPayload payload) // Change to RayPayload
 {
@@ -616,7 +727,7 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
     float alpha = isTransparent ? (albedoSample.a * gBaseColorFactor.a) : 1.0f;
     
     float metalness = gMetalnessMap.SampleLevel(gSampler, surface.uv, 0).b * gMetalnessFactor;
-    float roughness = gRoughnessMap.SampleLevel(gSampler, surface.uv, 0).g * gRoughnessFactor;
+    float roughness = gMetalnessMap.SampleLevel(gSampler, surface.uv, 0).g * gRoughnessFactor;
 
     // Normal Mapping (Optional - simplified for now, assuming mesh normal)
     //float3 N = normalize(surface.norm);
@@ -628,20 +739,24 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
 
     // 2. Direct Lighting (Sun / Lights)
     uint2 pixelCoord = DispatchRaysIndex().xy;
-    // Note: Passed V, Metalness and Roughness to the new function
-    float3 directLight = CalculateLighting(worldPos, N, V, albedo, metalness, roughness, pixelCoord);
+    float3 diffuseLight, specularLight;
+    
+    
+    // A. Calculate F0 (Reflectivity at 0 degrees)
+    float3 F0 = float3(0.04, 0.04, 0.04);
+    F0 = lerp(F0, albedo, metalness);
+
+    // B. Calculate Fresnel (How much light reflects vs refracts/absorbs)
+    float3 F = fresnelSchlick(max(dot(N, V), 0.0), F0);
+    
+    CalculateLightingSplit(worldPos, N, V, F, albedo, metalness, roughness, pixelCoord, diffuseLight, specularLight);
+    
+    //float3 directLight = CalculateLighting(worldPos, N, V, albedo, metalness, roughness, pixelCoord);
     
     float3 emissive = gEmissiveMap.SampleLevel(gSampler, surface.uv, 0).rgb * gEmissiveFactor.rgb;
 
-    float3 finalColor = directLight + emissive;
+    //float3 finalColor = directLight + emissive;
     
-    // Store NRD data
-    // Only store for the primary ray (depth 0)
-    if (payload.recursionDepth == 0)
-    {
-        payload.normal = N;
-        payload.roughness = roughness;
-    }
 
     // -------------------------------------------------------------
     // 3. REFLECTION (MIRROR) LOGIC
@@ -650,12 +765,6 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
     // For PBR, everything reflects, but we can optimize high roughness away.
     if (payload.recursionDepth < MAX_RECURSION_DEPTH)
     {
-        // A. Calculate F0 (Reflectivity at 0 degrees)
-        float3 F0 = float3(0.04, 0.04, 0.04);
-        F0 = lerp(F0, albedo, metalness);
-
-        // B. Calculate Fresnel (How much light reflects vs refracts/absorbs)
-        float3 F = fresnelSchlick(max(dot(N, V), 0.0), F0);
 
         // C. Generate Reflection Ray
         // For pure mirror: reflect(-V, N). 
@@ -668,7 +777,8 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
         reflRay.TMax = 1000.0f;
 
         RayPayload reflPayload;
-        reflPayload.color = float4(0, 0, 0, 0);
+        reflPayload.diffuseRadiance = float3(0, 0, 0);
+        reflPayload.specularRadiance = float3(0, 0, 0);
         reflPayload.hitT = -1.0f;
         reflPayload.recursionDepth = payload.recursionDepth + 1;
 
@@ -679,35 +789,48 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
         // For metals: Reflection is tinted by Albedo (handled by F0 interpolation)
         // For dielectrics: Reflection is white (F0=0.04)
         // We multiply by F (Fresnel) because reflections are stronger at glancing angles.
-        finalColor += reflPayload.color.rgb * F;
+        specularLight += reflPayload.specularRadiance * F;
     }
-
-    // -------------------------------------------------------------
-    // 4. TRANSPARENCY LOGIC (Glass / Alpha Blending)
-    // -------------------------------------------------------------
-    if (alpha < 1.0f && payload.recursionDepth < MAX_RECURSION_DEPTH)
-    {
-        RayDesc transRay;
-        transRay.Origin = worldPos + (WorldRayDirection() * 0.001f); // Push forward through surface
-        transRay.Direction = WorldRayDirection();
-        transRay.TMin = 0.001f;
-        transRay.TMax = 1000.0f;
-
-        RayPayload transPayload;
-        transPayload.color = float4(0, 0, 0, 0);
-        transPayload.hitT = -1.0f;
-        transPayload.recursionDepth = payload.recursionDepth + 1;
-
-        TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, transRay, transPayload);
-
-        // Simple Blend:
-        // Reflective surface color + Transmitted background color
-        finalColor = lerp(transPayload.color.rgb, finalColor, alpha);
-    }
-
-
-    payload.color = float4(finalColor, 1.0f);
+    
+    payload.diffuseRadiance = diffuseLight + emissive;
+    payload.specularRadiance = specularLight;
     payload.hitT = RayTCurrent();
+    
+    // Store NRD data
+    // Only store for the primary ray (depth 0)
+    if (payload.recursionDepth == 0)
+    {
+        gOutputAlbedo[pixelCoord] = albedo;
+        //gOutputSpecular[pixelCoord] = float4(specularLight, 1.0f);
+        payload.normal = N;
+        payload.roughness = roughness;
+    }
+
+    //// -------------------------------------------------------------
+    //// 4. TRANSPARENCY LOGIC (Glass / Alpha Blending)
+    //// -------------------------------------------------------------
+    //if (alpha < 1.0f && payload.recursionDepth < MAX_RECURSION_DEPTH)
+    //{
+    //    RayDesc transRay;
+    //    transRay.Origin = worldPos + (WorldRayDirection() * 0.001f); // Push forward through surface
+    //    transRay.Direction = WorldRayDirection();
+    //    transRay.TMin = 0.001f;
+    //    transRay.TMax = 1000.0f;
+
+    //    RayPayload transPayload;
+    //    transPayload.color = float4(0, 0, 0, 0);
+    //    transPayload.hitT = -1.0f;
+    //    transPayload.recursionDepth = payload.recursionDepth + 1;
+
+    //    TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, transRay, transPayload);
+
+    //    // Simple Blend:
+    //    // Reflective surface color + Transmitted background color
+    //    finalColor = lerp(transPayload.color.rgb, finalColor, alpha);
+    //}
+
+
+    //payload.color = float4(finalColor, 1.0f);
 }
 
 // Entry Point 1: For Opaque and Masked Geometry

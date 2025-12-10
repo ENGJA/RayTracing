@@ -17,6 +17,8 @@ public:
 	
 	void InitializeCompute(ID3D12Device* pDevice);
 
+	void InitializeComposite(ID3D12Device* pDevice);
+
 	/**
 	 * @brief Returns the native root signature pointer.
 	 */

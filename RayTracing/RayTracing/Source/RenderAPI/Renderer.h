@@ -109,9 +109,9 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRtLocalRootSignature; ///< Ray tracing local root signature.
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRtGlobalRootSignature; ///< Ray tracing global root signature.
 
-	D3D12Resource mRtOutputResource; ///< Ray tracing output texture resource.
-	D3D12_CPU_DESCRIPTOR_HANDLE mRtOutputUavCpuHandle{}; ///< UAV descriptor handle for ray tracing output.
-	D3D12_GPU_DESCRIPTOR_HANDLE mRtOutputUavGpuHandle{}; ///< GPU handle for ray tracing output UAV.
+	//D3D12Resource mRtOutputResource; ///< Ray tracing output texture resource.
+	//D3D12_CPU_DESCRIPTOR_HANDLE mRtOutputUavCpuHandle{}; ///< UAV descriptor handle for ray tracing output.
+	//D3D12_GPU_DESCRIPTOR_HANDLE mRtOutputUavGpuHandle{}; ///< GPU handle for ray tracing output UAV.
 
 	D3D12Resource mSbtResource; ///< Shader binding table resource.
 	UINT64 mSbtEntrySize = 0; ///< Size of a single SBT entry (aligned).
@@ -177,8 +177,8 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE mMotionVectorSrvCpuHandle;
 	D3D12_CPU_DESCRIPTOR_HANDLE mNormalRoughnessSrvCpuHandle;
 	D3D12_CPU_DESCRIPTOR_HANDLE mViewZSrvCpuHandle;
-	D3D12_CPU_DESCRIPTOR_HANDLE mRtOutputSrvCpuHandle; // Noisy Input
-	D3D12_CPU_DESCRIPTOR_HANDLE mDenoiseOutputUavCpuHandle; // Final Output
+	//D3D12_CPU_DESCRIPTOR_HANDLE mRtOutputSrvCpuHandle; // Noisy Input
+	//D3D12_CPU_DESCRIPTOR_HANDLE mDenoiseOutputUavCpuHandle; // Final Output
 
 	DescriptorHeap mCpuHeap;
 	DescriptorHeap mFrameHeap;
@@ -200,6 +200,40 @@ private:
 	void DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMFLOAT3& camPos);
 	NrdPoolEntry& GetNrdPoolEntry(size_t index, nrd::ResourceType type);
 	// END NRD
+
+	// Demodulation
+	D3D12Resource mAlbedoTex;
+
+	// Resources for Outputs
+	D3D12Resource mRtDiffuseResource; 
+	D3D12Resource mRtSpecularResource; 
+	D3D12Resource mDenoisedDiffuse;    // (UAV output from NRD)
+	D3D12Resource mDenoisedSpecular;   // (UAV output from NRD)
+
+	D3D12Resource mFinalColorOutput;   // Final composited output
+
+	// Descriptors
+	D3D12_GPU_DESCRIPTOR_HANDLE mRtDiffuseUavGpuHandle;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE mRtDiffuseUavCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mRtDiffuseSrvCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mRtSpecularUavCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mRtSpecularSrvCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mDenoisedDiffuseUavCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mDenoisedSpecularUavCpuHandle;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE mDenoisedDiffuseSrvCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mDenoisedSpecularSrvCpuHandle;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE mAlbedoSrvCpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE mSpecularSrvCpuHandle;
+
+	D3D12PipelineState mCompositePipelineState;
+	void InitializeCompositePipeLineState();
+	void DispatchComposite();
+
+	void CreateUAV(ID3D12Resource* pResource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle);
+	/// END Demodulation
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 

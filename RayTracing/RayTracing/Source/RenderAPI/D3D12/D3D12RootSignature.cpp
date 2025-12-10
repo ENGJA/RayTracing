@@ -100,3 +100,32 @@ void D3D12RootSignature::InitializeCompute(ID3D12Device* pDevice)
 
 	CreateRootSignature(pDevice, rootSignatureDesc, mRootSignature);
 }
+
+void D3D12RootSignature::InitializeComposite(ID3D12Device* pDevice)
+{
+	// We need 2 Root Parameters to match Renderer::DispatchComposite logic:
+	// Parameter 0: UAV Table (u0) -> Output
+	// Parameter 1: SRV Table (t0, t1, t2) -> Inputs
+
+	CD3DX12_DESCRIPTOR_RANGE uavRange{};
+	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // u0
+
+	CD3DX12_DESCRIPTOR_RANGE srvRange{};
+	srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0); // t0, t1, t2
+
+	CD3DX12_ROOT_PARAMETER rootParams[2]{};
+
+	// Parameter 0: UAV
+	rootParams[0].InitAsDescriptorTable(1, &uavRange);
+
+	// Parameter 1: SRV
+	rootParams[1].InitAsDescriptorTable(1, &srvRange);
+
+	// Create Root Signature Description with 2 parameters
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc(
+		_countof(rootParams),
+		rootParams
+	);
+
+	CreateRootSignature(pDevice, rootSigDesc, mRootSignature);
+}
