@@ -212,7 +212,7 @@ float3 GetConeSample(inout uint seed, float3 L, float spreadAngle)
     return d.x * tangent + d.y * bitangent + d.z * L;
 }
 
-
+static const uint MAX_SHADOW_RAYS = 2;
 void CalculateLightingSplit(
     float3 worldPos, float3 N, float3 V, float3 F,
     float3 albedo, float metallic, float roughness, uint2 pixelCoord,
@@ -224,51 +224,142 @@ void CalculateLightingSplit(
     // Setup RNG and pick one random light
     uint seed = initRand(pixelCoord.x * pixelCoord.y, frameCount);
     int lightIndex = min(int(nextRand(seed) * float(numLights)), int(numLights) - 1);
-    LightData light = lights[lightIndex];
+    
+    // =================================================================================
+    // PASS 1: SCORING (Find the most important lights)
+    // =================================================================================
+    // Arrays to hold our "Winners"
+    int bestLightIndices[MAX_SHADOW_RAYS];
+    float bestLightScores[MAX_SHADOW_RAYS];
+
+    // Initialize
+    [unroll]
+    for (int l = 0; l < MAX_SHADOW_RAYS; ++l)
+    {
+        bestLightIndices[l] = -1;
+        bestLightScores[l] = -1.0f;
+    }
+    
+    for (uint i = 0; i < numLights; ++i)
+    {
+        LightData light = lights[i];
+        
+        // 1. Calculate basic vectors (Math is cheap!)
+        float3 L_dir;
+        float dist;
+        float attenuation = 1.0f;
+
+        if (light.dirType.w > 0.5f) // Directional
+        {
+            L_dir = normalize(-light.dirType.xyz);
+            attenuation = 1.0f; // Directional lights don't fall off
+        }
+        else // Point
+        {
+            float3 lightToPos = light.position.xyz - worldPos;
+            dist = length(lightToPos);
+            L_dir = normalize(lightToPos);
+            
+            // Simple Inverse Square Falloff
+            attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+        }
+
+        // 2. Culling Checks (Cheap!)
+        float NdotL = dot(N, L_dir);
+        
+        // Skip if light is behind the wall or too dim
+        if (NdotL <= 0.0f || attenuation < 0.001f)
+            continue;
+
+        // 3. Calculate Score
+        // Score = Brightness * Attenuation * Angle
+        // We take the max color channel as "Intensity"
+        float intensity = max(light.diffuseColor.r, max(light.diffuseColor.g, light.diffuseColor.b));
+        float score = intensity * attenuation * NdotL;
+
+        // 4. Insertion Logic: Maintain the Top N
+        // Find the "weakest" light currently in our top list
+        int minIndex = 0;
+        float minScore = bestLightScores[0];
+        
+        [unroll]
+        for (int j = 1; j < MAX_SHADOW_RAYS; ++j)
+        {
+            if (bestLightScores[j] < minScore)
+            {
+                minScore = bestLightScores[j];
+                minIndex = j;
+            }
+        }
+
+        // If the new light is stronger than the weakest winner, replace it
+        if (score > minScore)
+        {
+            bestLightScores[minIndex] = score;
+            bestLightIndices[minIndex] = i;
+        }
+    }
+    
+    // =================================================================================
+    // PASS 2: RAY TRACING (Only for the winners)
+    // =================================================================================
+    
+    //[unroll]
+    for (int k = 0; k < MAX_SHADOW_RAYS; ++k)
+    {
+        int lightIdx = bestLightIndices[k];
+        
+        // If this slot is empty, skip
+        if (lightIdx == -1)
+            continue;
+    
+    //for (lightIndex = 0; lightIndex < int(numLights); ++lightIndex)
+    //{
+        LightData light = lights[lightIdx];
     
     // Setup L, attenuation, distance
-    float3 L_central;
-    float lightRadius = 1.0f;
-    float attenuation = 1.0f;
-    float lightDistance = 10000.0f;
+        float3 L_central;
+        float lightRadius = 1.0f;
+        float attenuation = 1.0f;
+        float lightDistance = 10000.0f;
     
     
-    if (light.dirType.w > 0.5f) // Directional
-    {
-        L_central = normalize(-light.dirType.xyz);
-        lightRadius = 0.02f;
-        lightDistance = 1000.0f;
-    }
-    else // Point
-    {
-        float3 lightToPos = light.position.xyz - worldPos;
-        float dist = length(lightToPos);
-        L_central = normalize(lightToPos);
-        attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-        lightRadius = 0.1f;
-        lightDistance = dist;
-    }
+        if (light.dirType.w > 0.5f) // Directional
+        {
+            L_central = normalize(-light.dirType.xyz);
+            lightRadius = 0.02f;
+            lightDistance = 1000.0f;
+        }
+        else // Point
+        {
+            float3 lightToPos = light.position.xyz - worldPos;
+            float dist = length(lightToPos);
+            L_central = normalize(lightToPos);
+            attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+            lightRadius = 0.1f;
+            lightDistance = dist;
+        }
 
     // 3. Early Out
-    float NdotL = max(dot(N, L_central), 0.0f);
-    if (NdotL <= 0.0f || attenuation <= 0.001f)
-        return;
+        float NdotL = max(dot(N, L_central), 0.0f);
+        if (NdotL <= 0.0f || attenuation <= 0.001f)
+            continue;
 
     // 4. Trace ONE Ray
-    float3 L_shadow = L_central;
-    if (lightRadius > 0.0f)
-        L_shadow = GetConeSample(seed, L_central, lightRadius);
+        float3 L_shadow = L_central;
+        if (lightRadius > 0.0f)
+            L_shadow = GetConeSample(seed, L_central, lightRadius);
 
-    RayDesc shadowRay;
-    shadowRay.Origin = worldPos + (N * 0.005f);
-    shadowRay.Direction = L_shadow;
-    shadowRay.TMin = 0.001f;
-    shadowRay.TMax = lightDistance;
+        RayDesc shadowRay;
+        shadowRay.Origin = worldPos + (N * 0.005f);
+        shadowRay.Direction = L_shadow;
+        shadowRay.TMin = 0.001f;
+        shadowRay.TMax = lightDistance;
 
-    RayPayload shadowPayload;
-    shadowPayload.hitT = 0.0f;
+        RayPayload shadowPayload;
+        shadowPayload.hitT = 0.0f;
 
-    TraceRay(
+        TraceRay(
         gScene,
         RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_NON_OPAQUE,
         0xFF, 0, 1, 1,
@@ -279,34 +370,39 @@ void CalculateLightingSplit(
     // 5. Weight the Result
     // If not occluded, we add the light's contribution multiplied by 'numLights'
     // This compensates for the fact that we only sampled 1 out of N lights.
-    if (shadowPayload.hitT < 0.0f)
-    {
-        float3 H = normalize(V + L_central);
-        float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation * 5.0f;
+        if (shadowPayload.hitT < 0.0f)
+        {
+            float3 H = normalize(V + L_central);
+            float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation * 5.0f;
 
         // PBR Shading
         //float3 F0 = float3(0.04f, 0.04f, 0.04f);
         //F0 = lerp(F0, albedo, metallic);
-        float NDF = DistributionGGX(N, H, roughness);
-        float G = GeometrySmith(N, V, L_central, roughness);
+            float NDF = DistributionGGX(N, H, roughness);
+            float G = GeometrySmith(N, V, L_central, roughness);
         //float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
             
-        float3 kS = F;
-        float3 kD = float3(1.0, 1.0, 1.0) - kS;
-        kD *= (1.0 - metallic);
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= (1.0 - metallic);
+        
+       
         
         // Diffuse = (kd / PI) * radiance * NdotL
-        outDiffuse += (kD / PI) * radiance * NdotL * float(numLights);
+            outDiffuse += (kD / PI) * radiance * NdotL; // * weightingFactor;
         
         // Specular = (NDF * G * F) / (4 * NdotV * NdotL) * radiance * NdotL
-        float NdotV = max(dot(N, V), 0.0);
-        float3 numerator = NDF * G * F;
-        float denominator = 4.0 * NdotV * NdotL + 0.0001;
-        float3 specularTerm = numerator / denominator;           
+            float NdotV = max(dot(N, V), 0.0);
+            float3 numerator = NDF * G * F;
+            float denominator = 4.0 * NdotV * NdotL + 0.0001;
+            float3 specularTerm = numerator / denominator;
         
-        outSpecular += specularTerm * radiance * NdotL * float(numLights);
+            outSpecular += specularTerm * radiance * NdotL; // * weightingFactor;
         
+        }
     }
+        outDiffuse *= float(numLights) / float(MAX_SHADOW_RAYS);
+        outSpecular *= float(numLights) / float(MAX_SHADOW_RAYS);    
 }
 
 
@@ -693,10 +789,10 @@ void MyMiss(inout RayPayload payload)
     // Simple Sky
     float3 rayDir = WorldRayDirection();
     float t = 0.5 * (rayDir.y + 1.0);
-    payload.diffuseRadiance = float4(lerp(float3(1.0, 1.0, 1.0), float3(0.5, 0.7, 1.0), t), 1.0f);
+    payload.diffuseRadiance = lerp(float3(1.0, 1.0, 1.0), float3(0.5, 0.7, 1.0), t);
     payload.specularRadiance = float3(0, 0, 0);
     payload.hitT = -1.0f;
-    payload.normal = float3(0, 0, 0); // Up direction
+    payload.normal = float3(0, 1, 0); // Up direction
     payload.roughness = 0.0f;
     
     uint2 pixelCoord = DispatchRaysIndex().xy;

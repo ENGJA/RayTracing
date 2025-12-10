@@ -117,6 +117,7 @@ private:
 	UINT64 mSbtEntrySize = 0; ///< Size of a single SBT entry (aligned).
 
 	D3D12Resource mRtConstantBuffer; ///< Ray tracing constant buffer resource.
+	UINT mRtConstantBufferStride = 0; ///< Size of a single ray-gen CB slice (bytes).
 	D3D12Resource mMaterialBuffer; ///< Material buffer resource for ray tracing.
 
 

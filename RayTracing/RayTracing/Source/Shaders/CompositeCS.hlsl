@@ -17,8 +17,8 @@ void main(uint3 id : SV_DispatchThreadID)
     float3 finalColor = (diffuse * albedo) + specular;
 
     // 3. Simple Tone Mapping (Reinhard) & Gamma
-    //finalColor = finalColor / (finalColor + 1.0f);
-    //finalColor = pow(finalColor, 1.0f / 2.2f);
+    finalColor = finalColor / (finalColor + 1.0f);
+    finalColor = pow(finalColor, 1.0f / 2.2f);
 
     gOutput[id.xy] = float4(finalColor, 1.0f);
 }

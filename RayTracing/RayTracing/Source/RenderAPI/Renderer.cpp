@@ -456,9 +456,12 @@ void Renderer::InitializeRayTracing()
 		mTLAS_Scratch,
 		mInstanceDescBuffer);
 
+	mRtConstantBufferStride = (sizeof(RayGenConstantBuffer) + 255) & ~255; // 256-byte aligned
+	const UINT totalRtCBSize = mRtConstantBufferStride * Config::cBufferCount;
+
 	mRtConstantBuffer.Initialize(
 		mDevice.Get(),
-		(sizeof(RayGenConstantBuffer) + 255) & ~255, // 256-byte aligned
+		totalRtCBSize, // 256-byte aligned
 		D3D12_HEAP_TYPE_UPLOAD,
 		D3D12_RESOURCE_STATE_GENERIC_READ);
 
@@ -1636,9 +1639,12 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 	cb.frameCount = mConstantBufferData.frameCount;
 	memcpy(cb.lights, mConstantBufferData.lights, sizeof(LightData) * cb.numLights);
 
+	const UINT frameIndex = mSwapChain.GetCurrentBackBufferIndex();
+	const UINT64 rtCbOffset = static_cast<UINT64>(frameIndex) * mRtConstantBufferStride;
 	void* pData;
 	HRESULT hr = mRtConstantBuffer.Get()->Map(0, nullptr, &pData);
-	memcpy(pData, &cb, sizeof(RayGenConstantBuffer));
+	uint8_t* mappedPtr = reinterpret_cast<uint8_t*>(pData);
+	memcpy(mappedPtr + rtCbOffset, &cb, sizeof(RayGenConstantBuffer));
 	mRtConstantBuffer.Get()->Unmap(0, nullptr);
 
 	cmdList->SetComputeRootConstantBufferView(2, mRtConstantBuffer.Get()->GetGPUVirtualAddress());
