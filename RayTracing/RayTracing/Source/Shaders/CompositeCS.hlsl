@@ -15,6 +15,7 @@ cbuffer CB : register(b0)
     float4x4 _vpMatrix; // Unused here, needed in other passes
     float4x4 invViewProj;
     float3 camPos;
+    float _pad0;
 };
 
 // Reconstruct World Position from Depth

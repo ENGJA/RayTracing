@@ -917,33 +917,6 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
     mConstantBufferData.viewPos = cameraPos;
 	mConstantBufferData.frameCount = mFrameCount++;
 
-
-
-  //  // --- use cached static lights, avoid re-scanning models each frame ---
-  //  const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
-
-  //  // light camera light
-  //  const float cameraLightIntensity = 0.15f;
-  //  if (staticCount < cMaxLights)
-  //  {
-  //      LightData camLight{};
-  //      camLight.position = DirectX::XMFLOAT4(
-  //          cameraPos.x + cameraForward.x * 1000.0f,
-  //          cameraPos.y + cameraForward.y * 1000.0f,
-  //          cameraPos.z + cameraForward.z * 1000.0f,
-  //          1.0f);
-  //      camLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
-		//camLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
-  //      camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
-  //      mConstantBufferData.lights[staticCount] = camLight;
-  //      mConstantBufferData.numLights = staticCount + 1;
-  //  }
-  //  else
-  //  {
-  //      // static lights already fill the limit; do not append camera light
-  //      mConstantBufferData.numLights = staticCount;
-  //  }
-
     UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
     size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes
     size_t cbOffset = alignedSize * currentBackBufferIndex;
@@ -1006,7 +979,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
 		float clearColorBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		float clearColorNormal[4] = { 0.5f, 0.5f, 1.0f, 1.0f };
-		float clearColorMaterial[4] = { 0.0f, 1.0f, 0.0f, 1.0f };
+		float clearColorMaterial[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		float clearDepth = 1.0f;
 		mCommandList.Get()->ClearRenderTargetView(rtvHandles[0], clearColorBlack, 0, nullptr);
 		mCommandList.Get()->ClearRenderTargetView(rtvHandles[1], clearColorNormal, 0, nullptr);
@@ -1147,7 +1120,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
         // Bind Descriptors
         // Slot 0: CBV
-		mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset + offsetof(ConstantBufferData, InvVpMatrix));
+		mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
 
 		// Slot 1: Direct Lighting Table (t0)
 		mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_DirectLighting));
@@ -1164,11 +1137,11 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         // Dispatch
 		mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
 
-        D3D12_RESOURCE_BARRIER cleanup[3]{};
+        D3D12_RESOURCE_BARRIER cleanup[2]{};
 
 		cleanup[0] = CD3DX12_RESOURCE_BARRIER::Transition(mReflectionTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
 		cleanup[1] = CD3DX12_RESOURCE_BARRIER::Transition(mDirectLightingTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-		cleanup[2] = CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		//cleanup[2] = CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
     }
