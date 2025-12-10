@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <filesystem>
 #include <cmath>
+#include <algorithm>
 #include <functional>
 #include <future>
 #include <chrono>
