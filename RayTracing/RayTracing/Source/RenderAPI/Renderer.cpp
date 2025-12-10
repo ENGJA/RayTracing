@@ -199,12 +199,16 @@ void Renderer::BuildMeshGpuData()
 
 void Renderer::CollectStaticLights()
 {
+	int dirLightCount = 0;
 	mStaticLights.clear();
 	for (const auto& modelPtr : mModels)
 	{
 		if (!modelPtr) continue;
 		for (const auto& l : modelPtr->mLights)
 		{
+			if (l.dirType.w > 0.5f) // directional light
+				dirLightCount++;
+
 			mStaticLights.push_back(l);
 			if (mStaticLights.size() >= cMaxLights) break;
 		}
@@ -213,12 +217,31 @@ void Renderer::CollectStaticLights()
 
 	// Copy static lights once into CPU-side constant buffer data so Update doesn't have to re-create them.
 	const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
-	for (int i = 0; i < staticCount; ++i)
+
+	if (staticCount < cMaxLights)
 	{
-		mConstantBufferData.lights[i] = mStaticLights[i];
-	}
-	// Set numLights to static count for now; Update will adjust (append camera light) each frame if needed.
+		LightData sunLight{};
+		sunLight.position = DirectX::XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+		sunLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 0.95f, 0.9f, 1.0f);
+		sunLight.specularColor = DirectX::XMFLOAT4(1.0f, 0.95f, 0.9f, 1.0f);
+		sunLight.dirType = DirectX::XMFLOAT4(0.2f, -1.0f, 0.2f, 1.0f); // directional flag
+
+		dirLightCount++;
+		mStaticLights.push_back(sunLight);
+	}	
+
+	std::sort(mStaticLights.begin(), mStaticLights.end(),
+		[](const LightData& a, const LightData& b)
+		{
+			return a.dirType.w > b.dirType.w; // directional lights first
+		});
+
 	mConstantBufferData.numLights = staticCount;
+	memcpy(mConstantBufferData.lights, mStaticLights.data(), staticCount * sizeof(LightData));
+
+	mRtConstantBufferData.numLights = staticCount;
+	mRtConstantBufferData.numDirLights = dirLightCount;
+	memcpy(mRtConstantBufferData.lights, mStaticLights.data(), staticCount * sizeof(LightData));
 }
 
 void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels)
@@ -824,6 +847,7 @@ void Renderer::InitializeNRD()
 	// denoiserDesc.renderWidth = mWidth;
 	// denoiserDesc.renderHeight = mHeight;
 
+
 	// 2. Setup Instance Descriptor
 	nrd::InstanceCreationDesc instanceDesc = {};
 	instanceDesc.denoisers = &denoiserDesc;
@@ -912,8 +936,8 @@ void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMA
 	// If so, keep 'isMotionVectorInWorldSpace' = false.
 	// If your MV texture contains pixel deltas (e.g. +10 pixels), scale by 1/resolution.
 	common.isMotionVectorInWorldSpace = false;
-	common.motionVectorScale[0] = (float)mWidth;
-	common.motionVectorScale[1] = (float)mHeight;
+	common.motionVectorScale[0] = 1.0f; // (float)mWidth;
+	common.motionVectorScale[1] = 1.0f; // (float)mHeight;
 
 	common.frameIndex = mFrameCount;
 	common.accumulationMode = nrd::AccumulationMode::CONTINUE;
@@ -1636,23 +1660,22 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 	cmdList->SetComputeRootShaderResourceView(1, mTLAS.Get()->GetGPUVirtualAddress());
 
 	// Slot 2: Camera CB (Persistent Buffer Update)
-	RayGenConstantBuffer cb;
-	cb.viewProjInverse = DirectX::XMMatrixInverse(nullptr, viewProj);
-	cb.cameraPos = { camPos.x, camPos.y, camPos.z, 1.0f };
-	cb.cameraForward = { camForward.x, camForward.y, camForward.z, 0.0f };
-	cb.numLights = mConstantBufferData.numLights;
-	cb.frameCount = mConstantBufferData.frameCount;
-	memcpy(cb.lights, mConstantBufferData.lights, sizeof(LightData) * cb.numLights);
+	mRtConstantBufferData.viewProjInverse = DirectX::XMMatrixInverse(nullptr, viewProj);
+	mRtConstantBufferData.cameraPos = { camPos.x, camPos.y, camPos.z, 1.0f };
+	mRtConstantBufferData.cameraForward = { camForward.x, camForward.y, camForward.z, 0.0f };
+	//mRtConstantBufferData.numLights = mConstantBufferData.numLights;
+	mRtConstantBufferData.frameCount = mConstantBufferData.frameCount;
+	//memcpy(mRtConstantBufferData.lights, mConstantBufferData.lights, sizeof(LightData) * cb.numLights);
 
 	const UINT frameIndex = mSwapChain.GetCurrentBackBufferIndex();
 	const UINT64 rtCbOffset = static_cast<UINT64>(frameIndex) * mRtConstantBufferStride;
 	void* pData;
 	HRESULT hr = mRtConstantBuffer.Get()->Map(0, nullptr, &pData);
 	uint8_t* mappedPtr = reinterpret_cast<uint8_t*>(pData);
-	memcpy(mappedPtr + rtCbOffset, &cb, sizeof(RayGenConstantBuffer));
+	memcpy(mappedPtr + rtCbOffset, &mRtConstantBufferData, sizeof(RayGenConstantBuffer));
 	mRtConstantBuffer.Get()->Unmap(0, nullptr);
 
-	cmdList->SetComputeRootConstantBufferView(2, mRtConstantBuffer.Get()->GetGPUVirtualAddress());
+	cmdList->SetComputeRootConstantBufferView(2, mRtConstantBuffer.Get()->GetGPUVirtualAddress() + rtCbOffset);
 
 	// 2. Dispatch Rays
 	D3D12_DISPATCH_RAYS_DESC desc = {};
@@ -1795,40 +1818,6 @@ void Renderer::Update(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& pr
 	mConstantBufferData.viewPos = DirectX::XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
 	mConstantBufferData.frameCount = mFrameCount++;
 
-	// --- use cached static lights, avoid re-scanning models each frame ---
-	const int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
-
-	// light camera light
-	const float cameraLightIntensity = 0.5f;
-	if (staticCount < cMaxLights)
-	{
-		//LightData camLight{};
-		//camLight.position = DirectX::XMFLOAT4(
-		//    cameraPos.x + cameraForward.x * 1000.0f,
-		//    cameraPos.y + cameraForward.y * 1000.0f,
-		//    cameraPos.z + cameraForward.z * 1000.0f,
-		//    1.0f);
-		//camLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
-		//camLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
-		//camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
-		//mConstantBufferData.lights[staticCount] = camLight;
-		//mConstantBufferData.numLights = staticCount + 1;
-
-		LightData sunLight{};
-		sunLight.position = DirectX::XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
-		sunLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 0.95f, 0.9f, cameraLightIntensity);
-		sunLight.specularColor = DirectX::XMFLOAT4(1.0f, 0.95f, 0.9f, cameraLightIntensity);
-
-		sunLight.dirType = DirectX::XMFLOAT4(0.2f, -1.0f, 0.2f, 1.0f); // directional flag
-
-		mConstantBufferData.lights[staticCount] = sunLight;
-		mConstantBufferData.numLights = staticCount + 1;
-	}
-	else
-	{
-		// static lights already fill the limit; do not append camera light
-		mConstantBufferData.numLights = staticCount;
-	}
 
 	void* pData;
 	mConstantBuffer.Get()->Map(0, nullptr, &pData);

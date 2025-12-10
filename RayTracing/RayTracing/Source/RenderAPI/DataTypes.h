@@ -44,8 +44,9 @@ struct RayGenConstantBuffer
 	DirectX::XMFLOAT4 cameraPos;
 	DirectX::XMFLOAT4 cameraForward;
 	int numLights;
+	int numDirLights;
 	UINT frameCount;
-	float _pad[2];
+	float _pad;
 	LightData lights[cMaxLights];
 };
 

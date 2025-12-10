@@ -25,8 +25,9 @@ cbuffer GlobalCB : register(b0)
     float4 cameraPos;
     float4 cameraForward;
     uint numLights;
+    uint numDirLights;
     uint frameCount;
-    float2 _pad;
+    float _pad;
     LightData lights[MAX_LIGHTS];
 };
 
@@ -43,16 +44,16 @@ cbuffer GlobalCB : register(b0)
 cbuffer MaterialCB : register(b0, space1)
 {
     float4 gBaseColorFactor;
-    float  gMetalnessFactor;
-    float  gRoughnessFactor;
-    float  gAlphaCutoff;
-    float  _Pad0;
+    float gMetalnessFactor;
+    float gRoughnessFactor;
+    float gAlphaCutoff;
+    float _Pad0;
     float4 gEmissiveFactor;
 };
 
 // 2. Mesh Buffers (Bindless Access)
 ByteAddressBuffer gVertices : register(t0, space1);
-ByteAddressBuffer gIndices  : register(t1, space1);
+ByteAddressBuffer gIndices : register(t1, space1);
 
 Texture2D<float4> gAlbedoMap : register(t2, space1);
 Texture2D<float4> gMetalnessMap : register(t3, space1);
@@ -68,7 +69,7 @@ struct RayPayload
     float3 diffuseRadiance;
     float3 specularRadiance;
     
-    float  hitT;
+    float hitT;
     uint recursionDepth;
     
     // NRD data
@@ -76,7 +77,7 @@ struct RayPayload
     float roughness; // Material Roughness
 };
 
-struct Attributes 
+struct Attributes
 {
     float2 bary;
 };
@@ -93,6 +94,7 @@ struct Vertex
 // Calculate the World Space Normal from the Normal Map
 float3 CalculateNormal(float3 N, float4 tangent, float2 uv)
 {
+    return N;
     // 1. Sample the Normal Map (Range: 0.0 to 1.0)
     float3 normalSample = gNormalMap.SampleLevel(gSampler, uv, 0).rgb;
     
@@ -101,7 +103,7 @@ float3 CalculateNormal(float3 N, float4 tangent, float2 uv)
 
     // 3. Create the TBN Matrix
     // N = World Geometric Normal (from vertex)
-    // T = World Tangent (from vertex)
+    // T = World Tangent (from vertex) 
     // B = World Bitangent (Calculated via cross product)
     
     // Re-orthonormalize T with respect to N (Gram-Schmidt process)
@@ -214,7 +216,7 @@ float3 GetConeSample(inout uint seed, float3 L, float spreadAngle)
 
 static const uint MAX_SHADOW_RAYS = 2;
 void CalculateLightingSplit(
-    float3 worldPos, float3 N, float3 V, float3 F,
+    float3 worldPos, float3 N, float3 V, float3 F0,
     float3 albedo, float metallic, float roughness, uint2 pixelCoord,
     out float3 outDiffuse, out float3 outSpecular)
 {
@@ -223,192 +225,146 @@ void CalculateLightingSplit(
     
     // Setup RNG and pick one random light
     //uint seed = initRand(pixelCoord.x * pixelCoord.y, frameCount);
-    uint seed = initRand(pixelCoord.x + pixelCoord.y * 5281, frameCount);
-    int lightIndex = min(int(nextRand(seed) * float(numLights)), int(numLights) - 1);
     
-    //// =================================================================================
-    //// PASS 1: SCORING (Find the most important lights)
-    //// =================================================================================
-    //// Arrays to hold our "Winners"
-    //int bestLightIndices[MAX_SHADOW_RAYS];
-    //float bestLightScores[MAX_SHADOW_RAYS];
-
-    //// Initialize
-    //[unroll]
-    //for (int l = 0; l < MAX_SHADOW_RAYS; ++l)
-    //{
-    //    bestLightIndices[l] = -1;
-    //    bestLightScores[l] = -1.0f;
-    //}
-    
-    //for (uint i = 0; i < numLights; ++i)
-    //{
-    //    LightData light = lights[i];
+    // -----------------------------------------------------------------
+    // PASS 1: DIRECTIONAL LIGHTS (Always Trace All of Them)
+    // -----------------------------------------------------------------
+    // Usually this is just 1 iteration (The Sun)
+    for (int i = 0; i < numDirLights; ++i)
+    {
+        LightData light = lights[i];
         
-    //    // 1. Calculate basic vectors (Math is cheap!)
-    //    float3 L_dir;
-    //    float dist;
-    //    float attenuation = 1.0f;
-
-    //    if (light.dirType.w > 0.5f) // Directional
-    //    {
-    //        L_dir = normalize(-light.dirType.xyz);
-    //        attenuation = 1.0f; // Directional lights don't fall off
-    //    }
-    //    else // Point
-    //    {
-    //        float3 lightToPos = light.position.xyz - worldPos;
-    //        dist = length(lightToPos);
-    //        L_dir = normalize(lightToPos);
-            
-    //        // Simple Inverse Square Falloff
-    //        attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-    //    }
-
-    //    // 2. Culling Checks (Cheap!)
-    //    float NdotL = dot(N, L_dir);
+        // 1. Setup Directional Light Vector
+        float3 L = normalize(-light.dirType.xyz);
+        float dist = 10000.0f; // Infinite distance
         
-    //    // Skip if light is behind the wall or too dim
-    //    if (NdotL <= 0.0f || attenuation < 0.001f)
-    //        continue;
-
-    //    // 3. Calculate Score
-    //    // Score = Brightness * Attenuation * Angle
-    //    // We take the max color channel as "Intensity"
-    //    float intensity = max(light.diffuseColor.r, max(light.diffuseColor.g, light.diffuseColor.b));
-    //    float score = intensity * attenuation * NdotL;
-
-    //    // 4. Insertion Logic: Maintain the Top N
-    //    // Find the "weakest" light currently in our top list
-    //    int minIndex = 0;
-    //    float minScore = bestLightScores[0];
+        // 2. Early Out (Backface Culling)
+        float NdotL = dot(N, L);
+        if (NdotL <= 0.0f)
+            continue;
         
-    //    [unroll]
-    //    for (int j = 1; j < MAX_SHADOW_RAYS; ++j)
-    //    {
-    //        if (bestLightScores[j] < minScore)
-    //        {
-    //            minScore = bestLightScores[j];
-    //            minIndex = j;
-    //        }
-    //    }
-
-    //    // If the new light is stronger than the weakest winner, replace it
-    //    if (score > minScore)
-    //    {
-    //        bestLightScores[minIndex] = score;
-    //        bestLightIndices[minIndex] = i;
-    //    }
-    //}
-    
-    //// =================================================================================
-    //// PASS 2: RAY TRACING (Only for the winners)
-    //// =================================================================================
-    
-    ////[unroll]
-    //for (int k = 0; k < MAX_SHADOW_RAYS; ++k)
-    //{
-    //    int lightIdx = bestLightIndices[k];
-        
-    //    // If this slot is empty, skip
-    //    if (lightIdx == -1)
-    //        continue;
-    
-    //for (lightIndex = 0; lightIndex < int(numLights); ++lightIndex)
-    //{
-    LightData light = lights[lightIndex];
-    
-    // Setup L, attenuation, distance
-        float3 L_central;
-        float lightRadius = 1.0f;
-        float attenuation = 1.0f;
-        float lightDistance = 10000.0f;
-    
-    
-        if (light.dirType.w > 0.5f) // Directional
-        {
-            L_central = normalize(-light.dirType.xyz);
-            lightRadius = 0.02f;
-            lightDistance = 1000.0f;
-        }
-        else // Point
-        {
-            float3 lightToPos = light.position.xyz - worldPos;
-            float dist = length(lightToPos);
-            L_central = normalize(lightToPos);
-            attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-            lightRadius = 0.1f;
-            lightDistance = dist;
-        }
-
-    // 3. Early Out
-        float NdotL = max(dot(N, L_central), 0.0f);
-        if (NdotL <= 0.0f || attenuation <= 0.001f)
-            return;
-
-    // 4. Trace ONE Ray
-        float3 L_shadow = L_central;
-        //if (lightRadius > 0.0f)
-        //    L_shadow = GetConeSample(seed, L_central, lightRadius);
-
+        // 3. Shadow Ray
         RayDesc shadowRay;
         shadowRay.Origin = worldPos + (N * 0.02f);
-        shadowRay.Direction = L_shadow;
+        shadowRay.Direction = L;
         shadowRay.TMin = 0.001f;
-        shadowRay.TMax = lightDistance;
+        shadowRay.TMax = dist;
 
         RayPayload shadowPayload;
         shadowPayload.hitT = 0.0f;
 
         TraceRay(
-        gScene,
-        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_NON_OPAQUE,
-        0xFF, 0, 1, 1,
-        shadowRay,
-        shadowPayload
-    );
-
-    // 5. Weight the Result
-    // If not occluded, we add the light's contribution multiplied by 'numLights'
-    // This compensates for the fact that we only sampled 1 out of N lights.
+            gScene,
+            RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_NON_OPAQUE,
+            0xFF, 0, 1, 1,
+            shadowRay,
+            shadowPayload
+        );
+        
+        // 4. Accumulate
         if (shadowPayload.hitT < 0.0f)
         {
-            float3 H = normalize(V + L_central);
-            float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation * 5.0f;
-
-        // PBR Shading
-        //float3 F0 = float3(0.04f, 0.04f, 0.04f);
-        //F0 = lerp(F0, albedo, metallic);
+            // Calculate PBR lighting
+            float3 H = normalize(V + L);
+            float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * 5.0f;
+          
             float NDF = DistributionGGX(N, H, roughness);
-            float G = GeometrySmith(N, V, L_central, roughness);
-        //float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+            float G = GeometrySmith(N, V, L, roughness);      
+            float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
             
             float3 kS = F;
-            float3 kD = float3(1.0, 1.0, 1.0) - kS;
-            kD *= (1.0 - metallic);
+            float3 kD = (float3(1.0, 1.0, 1.0) - kS) * (1.0 - metallic);
         
-       
-        float weightingFactor = float(numLights);
-        // Diffuse = (kd / PI) * radiance * NdotL
-            outDiffuse += (kD / PI) * radiance * NdotL * weightingFactor;
+            // Diffuse = (kd / PI) * radiance * NdotL
+            outDiffuse += (kD / PI) * radiance * NdotL;
         
-        // Specular = (NDF * G * F) / (4 * NdotV * NdotL) * radiance * NdotL
+            // Specular = (NDF * G * F) / (4 * NdotV * NdotL) * radiance * NdotL
             float NdotV = max(dot(N, V), 0.0);
             float3 numerator = NDF * G * F;
             float denominator = 4.0 * NdotV * NdotL + 0.0001;
             float3 specularTerm = numerator / denominator;
         
-            outSpecular += specularTerm * radiance * NdotL * weightingFactor;
-        
+            outSpecular += specularTerm * radiance * NdotL;
         }
-    //}
-        //outDiffuse *= float(numLights) / float(MAX_SHADOW_RAYS);
-        //outSpecular *= float(numLights) / float(MAX_SHADOW_RAYS);    
+        
+    }
+    
+    // -----------------------------------------------------------------
+    // PASS 2: POINT LIGHTS (Stochastic / Randomly Trace ONE)
+    // -----------------------------------------------------------------
+    uint numPointLights = numLights - numDirLights;         
+    if (numPointLights > 0)
+    {
+        // 1. Pick ONE random point light index
+        uint seed = initRand(pixelCoord.x + pixelCoord.y * 5281, frameCount);
+        int randomOffset = min(uint(nextRand(seed) * float(numPointLights)), numPointLights - 1);
+        
+        uint lightIndex = numDirLights + randomOffset;
+        
+        LightData light = lights[lightIndex];
+        
+        // 2. Setup Point Light Vector
+        float3 lightToPos = light.position.xyz - worldPos;
+        float dist = length(lightToPos);
+        float3 L = normalize(lightToPos);
+        float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+        
+        float NdotL = max(dot(N, L), 0.0f);
+        
+        // Only trace if light is potentially visible and bright enough
+        if (NdotL > 0.0f && attenuation > 0.001f)
+        {
+            RayDesc shadowRay;
+            shadowRay.Origin = worldPos + (N * 0.02f);
+            shadowRay.Direction = L;
+            shadowRay.TMin = 0.001f;
+            shadowRay.TMax = dist;
+
+            RayPayload shadowPayload;
+            shadowPayload.hitT = 0.0f;
+
+            TraceRay(
+                gScene,
+                RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_NON_OPAQUE,
+                0xFF, 0, 1, 1, shadowRay, shadowPayload
+            );
+            
+            
+            if (shadowPayload.hitT < 0.0f)
+            {
+                // Calculate PBR (Same as above)
+                float3 H = normalize(V + L);
+                float3 radiance = light.diffuseColor.rgb * light.diffuseColor.a * attenuation;
+
+                float NDF = DistributionGGX(N, H, roughness);
+                float G = GeometrySmith(N, V, L, roughness);
+                float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+                
+                float3 kS = F;
+                float3 kD = (float3(1.0, 1.0, 1.0) - kS) * (1.0 - metallic);
+                
+                // IMPORTANT: WEIGHTING
+                // Since we only sampled 1 out of 'numPointLights', we must multiply the result
+                // by 'numPointLights' to compensate for the missing energy.
+                float weight = float(numPointLights);
+
+                outDiffuse += (kD / PI) * radiance * NdotL * weight;
+                
+                float3 nom = NDF * G * kS;
+                float denom = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+                outSpecular += (nom / denom) * radiance * NdotL * weight;
+            }
+        }
+    }       
 }
 
 
 // Load 3 indices for the hit triangle
-uint3 LoadIndices(uint triangleIndex)
+uint3 LoadIndices
+
+    (
+
+    uint triangleIndex)
 {
     // R32_UINT format = 4 bytes per index
     uint offsetInBytes = triangleIndex * 3 * 4;
@@ -416,7 +372,11 @@ uint3 LoadIndices(uint triangleIndex)
 }
 
 // Load a single vertex from the buffer
-Vertex LoadVertex(uint index)
+Vertex LoadVertex
+
+    (
+
+    uint index)
 {
     // Your Vertex Stride is 56 bytes:
     // Pos(12) + Norm(12) + UV(8) + Tan(16) + UV(8)
@@ -424,15 +384,17 @@ Vertex LoadVertex(uint index)
     uint base = index * stride;
 
     Vertex v;
-    v.pos  = asfloat(gVertices.Load3(base + 0));
+    v.pos = asfloat(gVertices.Load3(base + 0));
     v.norm = asfloat(gVertices.Load3(base + 12));
-    v.uv   = asfloat(gVertices.Load2(base + 24));
-    v.tan  = asfloat(gVertices.Load4(base + 32));
+    v.uv = asfloat(gVertices.Load2(base + 24));
+    v.tan = asfloat(gVertices.Load4(base + 32));
     return v;
 }
 
 // Interpolate vertex attributes using barycentrics
-Vertex GetHitSurface(Attributes attr)
+Vertex GetHitSurface
+
+    (Attributes attr)
 {
     uint primitiveID = PrimitiveIndex();
     uint3 indices = LoadIndices(primitiveID);
@@ -444,9 +406,9 @@ Vertex GetHitSurface(Attributes attr)
     float3 bary = float3(1.0 - attr.bary.x - attr.bary.y, attr.bary.x, attr.bary.y);
 
     Vertex result;
-    result.pos  = v0.pos * bary.x + v1.pos * bary.y + v2.pos * bary.z;
+    result.pos = v0.pos * bary.x + v1.pos * bary.y + v2.pos * bary.z;
     result.norm = normalize(v0.norm * bary.x + v1.norm * bary.y + v2.norm * bary.z);
-    result.uv   = v0.uv * bary.x + v1.uv * bary.y + v2.uv * bary.z;
+    result.uv = v0.uv * bary.x + v1.uv * bary.y + v2.uv * bary.z;
     result.tan.xyz = normalize(v0.tan.xyz * bary.x + v1.tan.xyz * bary.y + v2.tan.xyz * bary.z);
     result.tan.w = v0.tan.w;
     return result;
@@ -454,7 +416,10 @@ Vertex GetHitSurface(Attributes attr)
 
 // --- 1. RAY GENERATION ---
 [shader("raygeneration")]
-void MyRayGen()
+
+    void MyRayGen
+
+    ()
 {
     uint2 launchIndex = DispatchRaysIndex().xy;
     uint2 launchDim = DispatchRaysDimensions().xy;
@@ -476,7 +441,7 @@ void MyRayGen()
     RayPayload payload;
     payload.diffuseRadiance = float3(0, 0, 0);
     payload.specularRadiance = float3(0, 0, 0);
-    payload.hitT  = -1.0f;
+    payload.hitT = -1.0f;
     payload.recursionDepth = 0;
     // Default NRD data (Sky)
     payload.normal = float3(0, 1, 0);
@@ -494,7 +459,7 @@ void MyRayGen()
     gOutputSpecular[launchIndex] = float4(payload.specularRadiance, hitDist);
     
     // 2. Normal and Roughness    
-    gOutputNormalRoughness[launchIndex] = float4( payload.normal, payload.roughness);
+    gOutputNormalRoughness[launchIndex] = float4(payload.normal, payload.roughness);
     
     // 3. ViewZ (Linear Depth)
     float viewZ = 10000.0f;
@@ -510,7 +475,11 @@ void MyRayGen()
 
 // --- 2. MISS ---
 [shader("miss")]
-void MyMiss(inout RayPayload payload)
+
+    void MyMiss
+
+    (inout
+    RayPayload payload)
 {
     // Simple Sky
     float3 rayDir = WorldRayDirection();
@@ -526,7 +495,11 @@ void MyMiss(inout RayPayload payload)
 }
 
 [shader("miss")]
-void MyShadowMiss(inout RayPayload payload) // Change to RayPayload
+
+    void MyShadowMiss
+
+    (inout
+    RayPayload payload) // Change to RayPayload
 {
     payload.hitT = -1.0f; // Use -1.0 to signify "Light Visible"
 }
@@ -536,7 +509,14 @@ void MyShadowMiss(inout RayPayload payload) // Change to RayPayload
 static const uint MAX_RECURSION_DEPTH = 3;
 
 //[shader("closesthit")]
-void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
+void DoShading
+
+    (inout
+    RayPayload payload, in Attributes
+
+    attr,
+
+    bool isTransparent)
 {
     Vertex surface = GetHitSurface(attr);
     
@@ -553,7 +533,8 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
 
     // Normal Mapping (Optional - simplified for now, assuming mesh normal)
     //float3 N = normalize(surface.norm);
-    float3 N = CalculateNormal(normalize(surface.norm), surface.tan, surface.uv);
+    surface.norm = normalize(surface.norm);
+    float3 N = CalculateNormal(surface.norm, surface.tan, surface.uv);
 
     // View Vector (Camera to Surface)
     float3 worldPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
@@ -658,15 +639,28 @@ void DoShading(inout RayPayload payload, in Attributes attr, bool isTransparent)
 // Entry Point 1: For Opaque and Masked Geometry
 // Masked geometry handles holes in AnyHit; the remaining surface is opaque.
 [shader("closesthit")]
-void MyClosestHitOpaque(inout RayPayload payload, in Attributes attr)
+
+    void MyClosestHitOpaque
+
+    (inout
+    RayPayload payload, in Attributes
+
+    attr)
 {
     DoShading(payload, attr, false); // false = Disable blending
 }
 
 // Entry Point 2: For Transparent Geometry
 [shader("closesthit")]
-void MyClosestHitTransparent(inout RayPayload payload, in Attributes attr)
+
+    void MyClosestHitTransparent
+
+    (inout
+    RayPayload payload, in Attributes
+
+    attr)
 {
+    //IgnoreHit();
     DoShading(payload, attr, true); // true = Enable blending
 }
 
@@ -674,7 +668,13 @@ void MyClosestHitTransparent(inout RayPayload payload, in Attributes attr)
 // --- 4. ANY HIT (ALPHA TEST) ---
 // Used for Masked Geometry (Leaves, Chain)
 [shader("anyhit")]
-void MyAnyHit(inout RayPayload payload, in Attributes attr)
+
+    void MyAnyHit
+
+    (inout
+    RayPayload payload, in Attributes
+
+    attr)
 {
     // Recalculate barycentrics/UVs just like in ClosestHit
     Vertex surface = GetHitSurface(attr);
