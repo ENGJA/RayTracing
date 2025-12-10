@@ -920,6 +920,11 @@ void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMA
 
 	nrd::SetCommonSettings(*mNrdInstance, common);
 
+	//nrd::ReblurSettings reblurSettings = {};
+	//reblurSettings.enableAntiFirefly = true;
+	//reblurSettings.maxAccumulatedFrameNum = 30;
+	//nrd::SetDenoiserSettings(*mNrdInstance, 0, &reblurSettings); // 0 = REBLUR_DIFFUSE_SPECULAR
+
 	// =========================================================
 	// 2. GET DISPATCHES
 	// =========================================================
@@ -991,8 +996,8 @@ void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMA
 				else if (type == nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST) src = mRtSpecularSrvCpuHandle;
 
 				// --- MAP OUTPUTS ---
-				else if (type == nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST) src = mDenoisedDiffuseSrvCpuHandle;
-				else if (type == nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST) src = mDenoisedSpecularSrvCpuHandle;
+				else if (type == nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST) src = mDenoisedDiffuseUavCpuHandle;
+				else if (type == nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST) src = mDenoisedSpecularUavCpuHandle;
 
 				// --- MAP POOLS (Scratch Memory) ---
 				else if (type == nrd::ResourceType::TRANSIENT_POOL || type == nrd::ResourceType::PERMANENT_POOL)
@@ -1321,7 +1326,7 @@ void Renderer::CreateRayTracingOutput()
 
 
 	// --- Create SRV Descriptors (For NRD Input) ---
-	auto srvTable = mCpuHeap.Allocate(8);
+	auto srvTable = mCpuHeap.Allocate(7);
 
 	// NRD Input SRVs
 	// 1. Diffuse Radiance + HitDist
@@ -1343,15 +1348,15 @@ void Renderer::CreateRayTracingOutput()
 
 	// Composite Inputs (Denoised SRVs)
 	// 4. Denoised Diffuse
-	mDenoisedDiffuseSrvCpuHandle = srvTable.GetCpuHandle(3, inc);
+	mDenoisedDiffuseSrvCpuHandle = srvTable.GetCpuHandle(4, inc);
 	CreateTextureView(mDenoisedDiffuse.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedDiffuseSrvCpuHandle, 1);
 
 	// 5. Denoised Specular
-	mDenoisedSpecularSrvCpuHandle = srvTable.GetCpuHandle(4, inc);
+	mDenoisedSpecularSrvCpuHandle = srvTable.GetCpuHandle(5, inc);
 	CreateTextureView(mDenoisedSpecular.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedSpecularSrvCpuHandle, 1);
 
 	// 6. Albedo
-	mAlbedoSrvCpuHandle = srvTable.GetCpuHandle(5, inc);
+	mAlbedoSrvCpuHandle = srvTable.GetCpuHandle(6, inc);
 	CreateTextureView(mAlbedoTex.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mAlbedoSrvCpuHandle, 1);
 
 	// Create UAVs for NRD Denoise Output
@@ -1663,8 +1668,7 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 	// (Wa¿ne: rozmiar musi obejmowaæ wszystkie rekordy geometrii!)
 	UINT numMeshes = static_cast<UINT>(
 		mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
-		mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
-		mTransparentMeshes.size());
+		mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size());
 
 	desc.HitGroupTable.SizeInBytes = mSbtEntrySize * numMeshes;
 	desc.HitGroupTable.StrideInBytes = mSbtEntrySize;
@@ -1843,6 +1847,7 @@ void Renderer::Update(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& pr
 	{
 		// Ray tracing rendering path
 		mFrameHeap.Reset(); // Reset frame descriptor heap
+		mUploadHeap.Reset(); // Reset upload heap
 		RenderMotionVectors();
 		RenderRayTracing(viewProj, cameraPos, cameraForward);
 		DenoiseWithNRD(view, proj, cameraPos);
