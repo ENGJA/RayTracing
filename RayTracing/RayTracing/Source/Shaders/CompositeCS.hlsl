@@ -7,6 +7,7 @@ Texture2D<float4> gAlbedo : register(t2);
 Texture2D<float3> gNormal : register(t3);
 Texture2D<float2> gMaterial : register(t4);
 Texture2D<float> gDepth : register(t5);
+Texture2D<float4> gEmissive : register(t6);
 
 RWTexture2D<float4> gOutput : register(u0);
 
