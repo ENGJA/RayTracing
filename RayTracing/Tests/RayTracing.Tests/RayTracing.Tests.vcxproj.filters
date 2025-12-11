@@ -22,6 +22,9 @@
     <Filter Include="Source Files\ResourceLoading">
       <UniqueIdentifier>{d4e5f6a7-b8c9-7012-d345-6789abcdef01}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Integration">
+      <UniqueIdentifier>{e4f5a6b7-c8d9-8123-f456-789abcdef012}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Linked Source Files">
       <UniqueIdentifier>{e5f6a7b8-c9d0-8123-e456-789abcdef012}</UniqueIdentifier>
     </Filter>
@@ -33,6 +36,9 @@
     </Filter>
     <Filter Include="Linked Source Files\Utils">
       <UniqueIdentifier>{a7b8c9d0-e1f2-0345-a678-9abcdef01234}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Linked Source Files\ResourceLoading">
+      <UniqueIdentifier>{c8d9e0f1-a2b3-2456-c789-abcdef012346}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -65,6 +71,19 @@
     <ClCompile Include="ResourceLoading\VertexTests.cpp">
       <Filter>Source Files\ResourceLoading</Filter>
     </ClCompile>
+    <!-- Integration Tests -->
+    <ClCompile Include="Integration\ImageDecoderTests.cpp">
+      <Filter>Source Files\Integration</Filter>
+    </ClCompile>
+    <ClCompile Include="Integration\CameraSystemTests.cpp">
+      <Filter>Source Files\Integration</Filter>
+    </ClCompile>
+    <ClCompile Include="Integration\ConfigValidationTests.cpp">
+      <Filter>Source Files\Integration</Filter>
+    </ClCompile>
+    <ClCompile Include="Integration\GeometryDataTests.cpp">
+      <Filter>Source Files\Integration</Filter>
+    </ClCompile>
     <!-- Linked Source Files -->
     <ClCompile Include="..\..\RayTracing\Source\RenderAPI\Camera\Camera.cpp">
       <Filter>Linked Source Files\Camera</Filter>
@@ -77,6 +96,9 @@
     </ClCompile>
     <ClCompile Include="..\..\RayTracing\Source\Utils\PerformanceMonitor.cpp">
       <Filter>Linked Source Files\Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\RayTracing\Source\ResourceLoading\ImageDecoder.cpp">
+      <Filter>Linked Source Files\ResourceLoading</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
