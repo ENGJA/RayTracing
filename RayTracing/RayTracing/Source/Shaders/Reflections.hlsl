@@ -7,8 +7,8 @@ RWTexture2D<float4> gReflectionOutput : register(u0);
 // Inputs from G-Buffer
 Texture2D<float4> gGBufferNormal : register(t1);
 Texture2D<float2> gGBufferMaterial : register(t2);
-// emissive (t3)
-Texture2D<float> gDepth : register(t4);
+Texture2D<float> gDepth : register(t3);
+Texture2D<float4> gEmissive : register(t4);
 
 cbuffer FrameCB : register(b0)
 {
@@ -116,8 +116,13 @@ void RayGen()
 
     RayPayload payload = { float4(0, 0, 0, 0) };
     
+    if (any(isnan(ray.Origin)) || any(isnan(ray.Direction)))
+        return;
+    if (length(ray.Direction) < 0.001)
+        return;
+    
     // 3. Trace
-    TraceRay(gScene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
+    TraceRay(gScene, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 1, 0, ray, payload);
 
     gReflectionOutput[launchIndex] = payload.color;
 }

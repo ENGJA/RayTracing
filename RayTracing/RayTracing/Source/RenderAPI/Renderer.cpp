@@ -344,9 +344,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
         D3D12_RESOURCE_STATE_GENERIC_READ);
 
     
-    //const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
+    const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string(); 
     //const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\ABeautifulGame\glTF\ABeautifulGame.gltf)";
-    const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\AlphaBlendModeTest\glTF\AlphaBlendModeTest.gltf)";
+    //const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\AlphaBlendModeTest\glTF\AlphaBlendModeTest.gltf)";
     auto modelA = std::make_unique<Model>();
 
 	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
@@ -488,7 +488,7 @@ void Renderer::InitializeRayTracing()
 
 	// Param 2: Texture table (t2)
     CD3DX12_DESCRIPTOR_RANGE1 texRange{};
-    texRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1); // t0-t4 space1
+    texRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 2, 1); // t0-t4 space1
 	localParams[2].InitAsDescriptorTable(1, &texRange);
 
     CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_ANISOTROPIC); // s0
@@ -1093,13 +1093,15 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
         // 2. Dispatch Rays
         // Note: The Global Root Sig needs binding just like a Compute Shader
         mCommandList.Get()->SetComputeRootSignature(mComputeRootSignature.Get());
+		mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
         mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo)); // G-Buffer
         mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
+		mCommandList.Get()->SetComputeRootShaderResourceView(3, mGlobalLightBuffer.Get()->GetGPUVirtualAddress());
 
         // Bind Reflection Output UAV (Slot u0 in Reflections.hlsl)
         mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Reflection));
 
-        mReflectionsPipeline.Dispatch(mCommandList.Get(), mWidth, mHeight);
+        //mReflectionsPipeline.Dispatch(mCommandList.Get(), mWidth, mHeight);
     }
 
     // =========================================================================
@@ -1169,21 +1171,21 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
         // Bind Targets
         // We write Color to ComputeOutput, and Read Depth from DepthBuffer
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
-        D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
+        //D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
+        //D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
 
-        mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-        mCommandList.Get()->RSSetViewports(1, &mViewport);
-        mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+        //mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+        //mCommandList.Get()->RSSetViewports(1, &mViewport);
+        //mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
-        // Draw Transparent Meshes
-        mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
-        mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
-        mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
+        //// Draw Transparent Meshes
+        //mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
+        //mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
+        //mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        //mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
 
-        for (const auto& mesh : mTransparentMeshes)
-            DrawMesh(mesh);
+        //for (const auto& mesh : mTransparentMeshes)
+        //    DrawMesh(mesh);
     }
 
 

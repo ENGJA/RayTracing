@@ -64,9 +64,6 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 
 
 
-
-// In RayTracingPipeline.cpp
-
 void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::vector<MeshGpuData>& meshes)
 {
     // Hit Group Record = [Shader ID (32B)] + [IndexBuffer Ptr (8B)] + [VertexBuffer Ptr (8B)] + [Texture Handle (8B)]

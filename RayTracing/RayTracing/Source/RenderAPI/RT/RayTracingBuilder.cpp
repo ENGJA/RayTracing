@@ -168,7 +168,7 @@ void RayTracingBuilder::BuildTLAS(
 
 				desc.InstanceID = instanceID; // Maps to InstanceIndex() in HLSL
 				desc.InstanceMask = 0xFF;     // Visible to all rays
-				desc.InstanceContributionToHitGroupIndex = 0; // 0 for Opaque, we might change this for Masked?
+				desc.InstanceContributionToHitGroupIndex = instanceID; // 0 for Opaque, we might change this for Masked?
 
 				// Flags can override Geometry flags
 				// e.g., D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE
