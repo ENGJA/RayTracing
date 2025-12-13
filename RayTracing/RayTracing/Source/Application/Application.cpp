@@ -230,6 +230,10 @@ void Application::OnCreate(HWND hwnd)
 		LoadScene(path);
 	});
 	
+	mUIManager.SetLoadMultipleScenesCallback([this](const std::vector<std::string>& paths) {
+		LoadMultipleScenes(paths);
+	});
+	
 	mUIManager.SetUnloadSceneCallback([this]() {
 		UnloadScene();
 	});
@@ -330,6 +334,7 @@ void Application::LoadScene(const std::string& path)
 	
 	mUIManager.SetLoadingSceneName(filename);
 	mPendingScenePath = path;
+	mPendingScenePaths.clear();
 	
 	// Switch to loading state
 	mCurrentState = UIManager::AppState::LoadingScene;
@@ -340,13 +345,62 @@ void Application::LoadScene(const std::string& path)
 	mLoadingComplete = false;
 	mLoadingSuccess = false;
 	mIsLoadingInProgress = true;
+	mIsMultiLoad = false;
 	mPendingModel.reset();
+	mPendingModels.clear();
 	
 	// Start async loading thread (only CPU work - file I/O and Assimp parsing)
 	if (mLoadingThread.joinable())
 		mLoadingThread.join();
 	
 	mLoadingThread = std::thread(&Application::PerformAsyncLoad, this, path);
+}
+
+void Application::LoadMultipleScenes(const std::vector<std::string>& paths)
+{
+	// If already loading, ignore
+	if (mIsLoadingInProgress)
+		return;
+
+	if (paths.empty())
+		return;
+
+	// Display loading info
+	std::string loadingText;
+	if (paths.size() == 1)
+	{
+		std::filesystem::path fsPath(paths[0]);
+		loadingText = fsPath.filename().string();
+	}
+	else
+	{
+		std::filesystem::path fsPath(paths[0]);
+		loadingText = fsPath.filename().string();
+		loadingText += "\n+ " + std::to_string(paths.size() - 1) + " additional scene(s)";
+	}
+	
+	mUIManager.SetLoadingSceneName(loadingText);
+	mPendingScenePaths = paths;
+	mPendingScenePath.clear();
+	
+	// Switch to loading state
+	mCurrentState = UIManager::AppState::LoadingScene;
+	InputManager::Instance.SetCursorLocked(false);
+	mCameraManager.SetActive(false);
+	
+	// Reset loading flags
+	mLoadingComplete = false;
+	mLoadingSuccess = false;
+	mIsLoadingInProgress = true;
+	mIsMultiLoad = true;
+	mPendingModel.reset();
+	mPendingModels.clear();
+	
+	// Start async loading thread
+	if (mLoadingThread.joinable())
+		mLoadingThread.join();
+	
+	mLoadingThread = std::thread(&Application::PerformAsyncMultiLoad, this, paths);
 }
 
 void Application::PerformAsyncLoad(const std::string& path)
@@ -386,6 +440,73 @@ void Application::PerformAsyncLoad(const std::string& path)
 	catch (const std::exception& e)
 	{
 		cerr << "Error loading scene: " << e.what() << endl;
+		std::lock_guard<std::mutex> lock(mLoadingMutex);
+		mLoadingSuccess = false;
+	}
+	
+	// Mark as complete
+	mLoadingComplete = true;
+}
+
+void Application::PerformAsyncMultiLoad(const std::vector<std::string>& paths)
+{
+	cout << "Loading " << paths.size() << " scenes in background thread..." << endl;
+	
+	try
+	{
+		std::vector<std::unique_ptr<Model>> models;
+		size_t successCount = 0;
+		
+		for (size_t i = 0; i < paths.size(); ++i)
+		{
+			const auto& path = paths[i];
+			cout << "Loading [" << (i + 1) << "/" << paths.size() << "]: " << path << endl;
+			
+			try
+			{
+				auto model = std::make_unique<Model>();
+				model->loadModel(path);
+				
+				if (!model->mMeshes.empty())
+				{
+					models.push_back(std::move(model));
+					successCount++;
+					cout << "  -> Success (" << models.back()->mMeshes.size() << " meshes)" << endl;
+				}
+				else
+				{
+					cout << "  -> Warning: Scene contains no meshes, skipping." << endl;
+				}
+			}
+			catch (const std::exception& e)
+			{
+				cerr << "  -> Error loading scene: " << e.what() << endl;
+				// Continue with next scene
+			}
+		}
+		
+		if (models.empty())
+		{
+			cerr << "Error: No valid scenes could be loaded from " << paths.size() << " file(s)." << endl;
+			std::lock_guard<std::mutex> lock(mLoadingMutex);
+			mLoadingSuccess = false;
+			mLoadingComplete = true;
+			return;
+		}
+		
+		// Store loaded models (thread-safe)
+		{
+			std::lock_guard<std::mutex> lock(mLoadingMutex);
+			mPendingModels = std::move(models);
+			mLoadingSuccess = true;
+		}
+		
+		cout << "Background multi-loading completed: " << successCount << " / " << paths.size() 
+		     << " scenes loaded successfully" << endl;
+	}
+	catch (const std::exception& e)
+	{
+		cerr << "Critical error during multi-scene loading: " << e.what() << endl;
 		std::lock_guard<std::mutex> lock(mLoadingMutex);
 		mLoadingSuccess = false;
 	}
@@ -435,6 +556,71 @@ void Application::UploadModelToGPU()
 	mLoadingComplete = false;
 }
 
+void Application::UploadModelsToGPU()
+{
+	// This runs on main thread and can safely use DirectX resources
+	cout << "Uploading models to GPU..." << endl;
+	
+	std::vector<std::unique_ptr<Model>> models;
+	{
+		std::lock_guard<std::mutex> lock(mLoadingMutex);
+		models = std::move(mPendingModels);
+	}
+	
+	if (models.empty())
+	{
+		cerr << "No models to upload!" << endl;
+		mCurrentState = UIManager::AppState::LoadingMenu;
+		mIsLoadingInProgress = false;
+		mLoadingComplete = false;
+		return;
+	}
+	
+	size_t totalModels = models.size();
+	
+	// Upload all models - Renderer will handle memory limits
+	bool success = mRenderer.LoadMultipleScenes(std::move(models));
+	
+	if (success)
+	{
+		mSceneLoaded = true;
+		mCurrentState = UIManager::AppState::Scene;
+		InputManager::Instance.SetCursorLocked(true);
+		mCameraManager.SetActive(true);
+		
+		// Get number of loaded models from renderer
+		size_t loadedCount = mRenderer.GetLoadedModelsCount();
+		if (loadedCount < totalModels)
+		{
+			cout << "Warning: Only " << loadedCount << " / " << totalModels 
+			     << " scenes loaded due to memory constraints." << endl;
+			
+			// Show warning in UI
+			std::string warningMsg = "Only " + std::to_string(loadedCount) + " out of " 
+			                       + std::to_string(totalModels) + " scenes could be loaded.\n\n"
+			                       + "The remaining scenes exceeded available GPU memory.";
+			mUIManager.ShowWarning(warningMsg);
+		}
+		else
+		{
+			cout << "All " << totalModels << " scenes loaded successfully!" << endl;
+		}
+	}
+	else
+	{
+		cerr << "Failed to upload scenes to GPU" << endl;
+		mCurrentState = UIManager::AppState::LoadingMenu;
+		
+		// Show error in UI
+		mUIManager.ShowWarning("Failed to load scenes.\n\nThe scenes may be too large for available GPU memory.");
+	}
+	
+	mCurrentScenePath = "Multiple scenes";
+	mPendingScenePaths.clear();
+	mIsLoadingInProgress = false;
+	mLoadingComplete = false;
+}
+
 void Application::ProcessSceneLoading()
 {
 	if (!mIsLoadingInProgress)
@@ -450,14 +636,26 @@ void Application::ProcessSceneLoading()
 		if (mLoadingSuccess)
 		{
 			// Upload to GPU on main thread (safe for DirectX)
-			UploadModelToGPU();
+			if (mIsMultiLoad)
+			{
+				UploadModelsToGPU();
+			}
+			else
+			{
+				UploadModelToGPU();
+			}
 		}
 		else
 		{
 			// Loading failed, return to menu
-			cerr << "Failed to load scene: " << mPendingScenePath << endl;
+			if (mIsMultiLoad)
+				cerr << "Failed to load scenes" << endl;
+			else
+				cerr << "Failed to load scene: " << mPendingScenePath << endl;
+			
 			mCurrentState = UIManager::AppState::LoadingMenu;
 			mPendingScenePath.clear();
+			mPendingScenePaths.clear();
 			mIsLoadingInProgress = false;
 			mLoadingComplete = false;
 		}

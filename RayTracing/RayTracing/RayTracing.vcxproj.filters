@@ -362,6 +362,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="MULTI_SCENE_LOADING.md" />
+    <None Include="IMPLEMENTATION_SUMMARY.md" />
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll" />

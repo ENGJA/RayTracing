@@ -296,6 +296,8 @@
     <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll">
       <FileType>Document</FileType>
     </CopyFileToFolders>
+    <None Include="IMPLEMENTATION_SUMMARY.md" />
+    <None Include="MULTI_SCENE_LOADING.md" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

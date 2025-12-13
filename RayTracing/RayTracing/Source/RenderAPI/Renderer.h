@@ -240,6 +240,14 @@ public:
 	bool LoadSceneFromModel(std::unique_ptr<Model> model);
 	
 	/**
+	 * @brief Loads multiple scenes from already-loaded Models.
+	 * Handles memory limits by loading as many models as fit.
+	 * @param models Vector of unique pointers to Models loaded on background thread.
+	 * @return true if at least one scene uploaded successfully, false otherwise.
+	 */
+	bool LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models);
+	
+	/**
 	 * @brief Unloads the currently loaded scene and frees GPU resources.
 	 */
 	void UnloadScene();
@@ -249,6 +257,12 @@ public:
 	 * @return true if scene is loaded, false otherwise.
 	 */
 	bool HasScene() const { return !mModels.empty(); }
+	
+	/**
+	 * @brief Gets the number of loaded models.
+	 * @return Number of models currently loaded.
+	 */
+	size_t GetLoadedModelsCount() const { return mModels.size(); }
 
 	/**
 	 * @brief Initializes ImGui for DirectX 12 rendering.

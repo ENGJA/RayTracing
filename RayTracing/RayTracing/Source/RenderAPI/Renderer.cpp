@@ -440,6 +440,110 @@ bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
 	return true;
 }
 
+bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
+{
+	if (models.empty())
+		return false;
+
+	wcout << L"Loading " << models.size() << L" scenes..." << endl;
+
+	// Wait for GPU to finish all work before loading new scenes
+	mCommandQueue.Flush();
+
+	// Try to load models one by one, catching any memory allocation failures
+	size_t successfullyLoaded = 0;
+	size_t totalAttempted = models.size();
+	
+	for (size_t i = 0; i < models.size(); ++i)
+	{
+		auto& model = models[i];
+		if (!model)
+			continue;
+
+		try
+		{
+			// Check if we have meshes before trying to add
+			if (model->mMeshes.empty())
+			{
+				wcout << L"Warning: Model " << (i + 1) << L" has no meshes, skipping." << endl;
+				continue;
+			}
+			
+			// Try to add the model
+			mModels.push_back(std::move(model));
+			successfullyLoaded++;
+			
+			wcout << L"Successfully added model " << successfullyLoaded << L" / " << totalAttempted << endl;
+		}
+		catch (const std::bad_alloc& e)
+		{
+			wcout << L"Memory allocation failed at model " << (i + 1) << L": " << e.what() << endl;
+			wcout << L"Stopping further model loading due to memory constraints." << endl;
+			break;
+		}
+		catch (const std::exception& e)
+		{
+			wcout << L"Error adding model " << (i + 1) << L": " << e.what() << endl;
+			// Continue trying with next model
+			continue;
+		}
+	}
+
+	if (successfullyLoaded == 0)
+	{
+		wcout << L"Error: No models could be loaded." << endl;
+		return false;
+	}
+
+	wcout << L"Added " << successfullyLoaded << L" / " << totalAttempted << L" models to scene." << endl;
+
+	// Try to build GPU data for all loaded models
+	try
+	{
+		std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+		BuildMeshGpuData();
+		std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+		wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Error building mesh GPU data: " << e.what() << endl;
+		wcout << L"Attempting to recover with partially loaded data..." << endl;
+		
+		// If BuildMeshGpuData fails, we may have some meshes loaded already
+		// Try to continue with what we have
+	}
+	
+	// Try to build ray tracing structures
+	try
+	{
+		std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
+		InitializeRayTracing();
+		std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
+		wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to build ray tracing structures: " << e.what() << endl;
+		// Non-critical, continue without RT acceleration
+	}
+
+	// Collect lights (this should be safe)
+	try
+	{
+		CollectStaticLights();
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
+	}
+
+	wcout << L"Multiple scenes loaded successfully! (" << successfullyLoaded << L" models)" << endl;
+	return true;
+}
+
 void Renderer::UnloadScene()
 {
     wcout << L"Unloading scene..." << endl;
