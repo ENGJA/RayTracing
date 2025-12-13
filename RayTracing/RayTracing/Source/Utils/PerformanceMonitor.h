@@ -48,6 +48,16 @@ public:
 	float GetGPUUsage() const { return mGPUUsage; }
 
 	/**
+	 * @brief Get current GPU 3D/Graphics engine usage percentage (0-100).
+	 */
+	float GetGPU3DUsage() const { return mGPU3DUsage; }
+
+	/**
+	 * @brief Get current GPU Compute engine usage percentage (0-100).
+	 */
+	float GetGPUComputeUsage() const { return mGPUComputeUsage; }
+
+	/**
 	 * @brief Get current RAM usage in MB.
 	 */
 	float GetRAMUsageMB() const { return mRAMUsageMB; }
@@ -85,6 +95,8 @@ private:
 	PDH_HQUERY mGPUQuery = nullptr;
 	PDH_HCOUNTER mGPUCounter = nullptr;
 	float mGPUUsage = 0.0f;
+	float mGPU3DUsage = 0.0f;
+	float mGPUComputeUsage = 0.0f;
 	bool mGPUCounterAvailable = false;
 
 	// Memory usage tracking

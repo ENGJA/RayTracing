@@ -374,6 +374,8 @@ void UIManager::RenderPerformanceOverlay()
 		float frameTime = mPerformanceMonitor->GetAvgFrameTimeMS();
 		float cpuUsage = mPerformanceMonitor->GetCPUUsage();
 		float gpuUsage = mPerformanceMonitor->GetGPUUsage();
+		float gpu3DUsage = mPerformanceMonitor->GetGPU3DUsage();
+		float gpuComputeUsage = mPerformanceMonitor->GetGPUComputeUsage();
 		float ramUsage = mPerformanceMonitor->GetRAMUsageMB();
 		float vramUsage = mPerformanceMonitor->GetVRAMUsageMB();
 
@@ -391,9 +393,17 @@ void UIManager::RenderPerformanceOverlay()
 		ImGui::Text("CPU: %.1f%%", cpuUsage);
 		
 		if (gpuUsage > 0.0f)
+		{
 			ImGui::Text("GPU: %.1f%%", gpuUsage);
+			if (gpu3DUsage > 0.0f)
+				ImGui::Text("  3D/Graphics: %.1f%%", gpu3DUsage);
+			if (gpuComputeUsage > 0.0f)
+				ImGui::Text("  Compute/RT: %.1f%%", gpuComputeUsage);
+		}
 		else
+		{
 			ImGui::TextDisabled("GPU: N/A");
+		}
 		
 		ImGui::Separator();
 		ImGui::Text("RAM: %.1f MB", ramUsage);
