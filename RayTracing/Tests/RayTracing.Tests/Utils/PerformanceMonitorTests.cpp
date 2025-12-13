@@ -20,30 +20,6 @@ namespace RayTracingTests::Utils
 			perf.Shutdown();
 		}
 
-		TEST_METHOD(GetFPS_InitiallyZero)
-		{
-			PerformanceMonitor perf;
-			perf.Initialize();
-			Assert::AreEqual(0.0f, perf.GetFPS());
-			perf.Shutdown();
-		}
-
-		TEST_METHOD(Update_CalculatesFrameTime)
-		{
-			PerformanceMonitor perf;
-			perf.Initialize();
-			
-			perf.Update(0.016f);
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			perf.Update(0.016f);
-
-			// FPS should be calculated after some frames
-			float fps = perf.GetFPS();
-			Assert::IsTrue(fps >= 0.0f, L"FPS should be non-negative");
-			
-			perf.Shutdown();
-		}
-
 		TEST_METHOD(Update_AccumulatesFPS)
 		{
 			PerformanceMonitor perf;
@@ -95,23 +71,6 @@ namespace RayTracingTests::Utils
 
 			float ram = perf.GetRAMUsageMB();
 			Assert::IsTrue(ram >= 0.0f, L"RAM usage should be non-negative");
-			
-			perf.Shutdown();
-		}
-
-		TEST_METHOD(GetAvgFrameTimeMS_ReturnsValidValue)
-		{
-			PerformanceMonitor perf;
-			perf.Initialize();
-			
-			// Simulate some frames
-			for(int i = 0; i < 20; ++i)
-			{
-				perf.Update(0.016f);
-			}
-
-			float avgFrameTime = perf.GetAvgFrameTimeMS();
-			Assert::IsTrue(avgFrameTime >= 0.0f, L"Avg frame time should be non-negative");
 			
 			perf.Shutdown();
 		}

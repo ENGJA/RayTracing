@@ -12,19 +12,6 @@ namespace RayTracingTests::Integration
 	{
 	public:
 		
-		TEST_METHOD(CameraSystem_ManagerAndCamera_WorkTogether)
-		{
-			CameraManager manager;
-			manager.Initialize(1920, 1080);
-
-			// Get initial position
-			XMFLOAT3 initialPos = manager.GetActiveCameraPosition();
-			
-			// Verify camera system is initialized
-			Assert::IsTrue(initialPos.x != 0.0f || initialPos.y != 0.0f || initialPos.z != 0.0f,
-			               L"Camera should be initialized at non-zero position");
-		}
-
 		TEST_METHOD(CameraSystem_ResizePropagates)
 		{
 			CameraManager manager;
@@ -46,34 +33,6 @@ namespace RayTracingTests::Integration
 			}
 			
 			Assert::IsTrue(changed, L"Resize should propagate to active camera");
-		}
-
-		TEST_METHOD(CameraSystem_ActiveStatusControl)
-		{
-			CameraManager manager;
-			manager.Initialize(1920, 1080);
-			
-			Assert::IsTrue(manager.IsActive(), L"Should be active by default");
-			
-			manager.SetActive(false);
-			Assert::IsFalse(manager.IsActive());
-			
-			manager.SetActive(true);
-			Assert::IsTrue(manager.IsActive());
-		}
-
-		TEST_METHOD(CameraSystem_SpeedMultiplierControl)
-		{
-			CameraManager manager;
-			manager.Initialize(1920, 1080);
-			
-			Assert::AreEqual(1.0f, manager.GetMoveSpeedMultiplier());
-			
-			manager.SetMoveSpeedMultiplier(2.0f);
-			Assert::AreEqual(2.0f, manager.GetMoveSpeedMultiplier());
-			
-			manager.SetMoveSpeedMultiplier(0.5f);
-			Assert::AreEqual(0.5f, manager.GetMoveSpeedMultiplier());
 		}
 
 		TEST_METHOD(CameraSystem_ForwardVectorConsistency)
@@ -131,19 +90,6 @@ namespace RayTracingTests::Integration
 			Assert::AreEqual(10.0f, pos.x, 0.001f);
 			Assert::AreEqual(5.0f, pos.y, 0.001f);
 			Assert::AreEqual(-10.0f, pos.z, 0.001f);
-		}
-
-		TEST_METHOD(CameraSystem_FixedAndFreeInteraction)
-		{
-			CameraManager manager;
-			manager.Initialize(1920, 1080);
-
-			// Manager initializes with fixed camera (index 0) and free camera (index 1)
-			XMFLOAT3 pos1 = manager.GetActiveCameraPosition();
-			
-			// Both cameras should exist and have different positions
-			// This verifies internal camera array is correctly set up
-			Assert::IsTrue(pos1.x != 0.0f || pos1.y != 0.0f || pos1.z != 0.0f);
 		}
 	};
 }

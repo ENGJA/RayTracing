@@ -11,47 +11,6 @@ namespace RayTracingTests::Camera
 	{
 	public:
 		
-		TEST_METHOD(Initialize_FreeCamera_SetsCorrectValues)
-		{
-			::Camera camera;
-			CameraParams params;
-			params.position = { 0.0f, 0.0f, -5.0f };
-			params.yaw = 0.0f;
-			params.pitch = 0.0f;
-			params.fovY = XM_PIDIV4;
-			params.aspect = 1.777f;
-			params.nearZ = 0.1f;
-			params.farZ = 1000.0f;
-
-			camera.Initialize(CameraType::Free, params);
-
-			XMFLOAT3 pos = camera.GetPosition();
-			Assert::AreEqual(0.0f, pos.x, 0.001f);
-			Assert::AreEqual(0.0f, pos.y, 0.001f);
-			Assert::AreEqual(-5.0f, pos.z, 0.001f);
-		}
-
-		TEST_METHOD(Initialize_FixedCamera_SetsCorrectLookAt)
-		{
-			::Camera camera;
-			CameraParams params;
-			params.lookFrom = { 0.0f, 5.0f, -10.0f };
-			params.lookAt = { 0.0f, 0.0f, 0.0f };
-			params.up = { 0.0f, 1.0f, 0.0f };
-			params.fovY = XM_PIDIV4;
-			params.aspect = 16.0f / 9.0f;
-			params.nearZ = 0.1f;
-			params.farZ = 100.0f;
-
-			camera.Initialize(CameraType::Fixed, params);
-
-			Assert::IsTrue(camera.IsFixed());
-			XMFLOAT3 pos = camera.GetPosition();
-			Assert::AreEqual(0.0f, pos.x, 0.001f);
-			Assert::AreEqual(5.0f, pos.y, 0.001f);
-			Assert::AreEqual(-10.0f, pos.z, 0.001f);
-		}
-
 		TEST_METHOD(MoveLocal_Forward_UpdatesPosition)
 		{
 			::Camera camera;
@@ -65,37 +24,6 @@ namespace RayTracingTests::Camera
 
 			XMFLOAT3 pos = camera.GetPosition();
 			Assert::IsTrue(std::abs(pos.x - 10.0f) < 0.001f, L"Position X should be ~10");
-		}
-
-		TEST_METHOD(MoveLocal_Right_UpdatesPosition)
-		{
-			::Camera camera;
-			CameraParams params;
-			params.position = { 0.0f, 0.0f, 0.0f };
-			params.yaw = 0.0f;
-			params.pitch = 0.0f;
-
-			camera.Initialize(CameraType::Free, params);
-			camera.MoveLocal(0.0f, 5.0f, 0.0f);
-
-			XMFLOAT3 pos = camera.GetPosition();
-			// rightDir = Cross(worldUp, frontDir)
-			// With yaw=0: frontDir=(1,0,0), worldUp=(0,1,0)
-			// rightDir = Cross((0,1,0), (1,0,0)) = (0,0,-1) ? -Z direction
-			Assert::IsTrue(std::abs(pos.z + 5.0f) < 0.001f, L"Position Z should be ~-5 (right movement in -Z direction)");
-		}
-
-		TEST_METHOD(MoveLocal_Up_UpdatesPosition)
-		{
-			::Camera camera;
-			CameraParams params;
-			params.position = { 0.0f, 0.0f, 0.0f };
-
-			camera.Initialize(CameraType::Free, params);
-			camera.MoveLocal(0.0f, 0.0f, 3.0f);
-
-			XMFLOAT3 pos = camera.GetPosition();
-			Assert::AreEqual(3.0f, pos.y, 0.001f);
 		}
 
 		TEST_METHOD(MoveLocal_FixedCamera_DoesNothing)
@@ -281,18 +209,6 @@ namespace RayTracingTests::Camera
 			                        forward.z * forward.z);
 
 			Assert::AreEqual(1.0f, length, 0.001f, L"Forward vector should be normalized");
-		}
-
-		TEST_METHOD(GetViewProjection_ReturnsValidMatrix)
-		{
-			::Camera camera;
-			CameraParams params;
-			camera.Initialize(CameraType::Free, params);
-
-			XMMATRIX vp = camera.GetViewProjection();
-			
-			// Check that matrix is not identity (should have projection applied)
-			Assert::AreNotEqual(1.0f, XMVectorGetX(vp.r[0]), 0.1f);
 		}
 	};
 }

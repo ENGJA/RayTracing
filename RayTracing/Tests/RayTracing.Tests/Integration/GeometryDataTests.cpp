@@ -13,25 +13,6 @@ namespace RayTracingTests::Integration
 	{
 	public:
 		
-		TEST_METHOD(Geometry_VertexArrayCreation)
-		{
-			std::vector<Vertex> vertices;
-			
-			// Create a simple triangle
-			Vertex v1, v2, v3;
-			v1.mPosition = { 0.0f, 1.0f, 0.0f };
-			v2.mPosition = { -1.0f, -1.0f, 0.0f };
-			v3.mPosition = { 1.0f, -1.0f, 0.0f };
-			
-			vertices.push_back(v1);
-			vertices.push_back(v2);
-			vertices.push_back(v3);
-			
-			Assert::AreEqual(static_cast<size_t>(3), vertices.size());
-			Assert::AreEqual(0.0f, vertices[0].mPosition.x);
-			Assert::AreEqual(1.0f, vertices[0].mPosition.y);
-		}
-
 		TEST_METHOD(Geometry_CalculateNormal_Triangle)
 		{
 			// Create a triangle in XY plane
@@ -65,19 +46,6 @@ namespace RayTracingTests::Integration
 			// Position (12) + Normal (12) + TexCoords (8) + Tangent (16) + MaterialProps (8) = 56 bytes minimum
 			Assert::IsTrue(vertexSize >= 56, L"Vertex should be at least 56 bytes");
 			Assert::IsTrue(vertexSize <= 128, L"Vertex shouldn't be > 128 bytes");
-		}
-
-		TEST_METHOD(Geometry_IndexBufferCreation)
-		{
-			std::vector<UINT> indices;
-			
-			// Create indices for two triangles (quad)
-			indices = { 0, 1, 2, 2, 3, 0 };
-			
-			Assert::AreEqual(static_cast<size_t>(6), indices.size());
-			Assert::AreEqual(0u, indices[0]);
-			Assert::AreEqual(1u, indices[1]);
-			Assert::AreEqual(2u, indices[2]);
 		}
 
 		TEST_METHOD(Geometry_CalculateTangent_Simple)

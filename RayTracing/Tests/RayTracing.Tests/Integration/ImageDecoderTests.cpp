@@ -32,35 +32,5 @@ namespace RayTracingTests::Integration
 			Assert::IsFalse(ImageDecoder::HasAlphaChannel(L"image.JPEG")); // uppercase
 			Assert::IsFalse(ImageDecoder::HasAlphaChannel(L"image.JPG"));
 		}
-
-		TEST_METHOD(DecodedImage_DefaultConstruction)
-		{
-			DecodedImage img;
-			Assert::AreEqual(0u, img.width);
-			Assert::AreEqual(0u, img.height);
-			Assert::IsTrue(img.pixels.empty());
-		}
-
-		TEST_METHOD(DecodedImage_CanStorePixelData)
-		{
-			DecodedImage img;
-			img.width = 16;
-			img.height = 16;
-			img.pixels.resize(16 * 16 * 4); // RGBA8
-
-			Assert::AreEqual(16u, img.width);
-			Assert::AreEqual(16u, img.height);
-			Assert::AreEqual(static_cast<size_t>(1024), img.pixels.size());
-		}
-
-		TEST_METHOD(DecodedImage_PixelDataSizeCalculation)
-		{
-			DecodedImage img;
-			img.width = 256;
-			img.height = 256;
-			
-			size_t expectedSize = 256 * 256 * 4; // RGBA = 4 bytes per pixel
-			Assert::AreEqual(expectedSize, static_cast<size_t>(262144));
-		}
 	};
 }

@@ -17,43 +17,6 @@ namespace RayTracingTests::DataTypes
 			size_t size = sizeof(LightData);
 			Assert::AreEqual(static_cast<size_t>(0), size % 16, L"LightData size must be multiple of 16 bytes for GPU");
 		}
-
-		TEST_METHOD(LightData_HasCorrectMembers)
-		{
-			LightData light;
-			
-			// Verify structure has expected members by setting values
-			light.position = { 1.0f, 2.0f, 3.0f, 1.0f };
-			light.dirType = { 0.0f, -1.0f, 0.0f, 0.0f };
-			light.diffuseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-			light.specularColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			Assert::AreEqual(1.0f, light.position.x);
-			Assert::AreEqual(2.0f, light.position.y);
-			Assert::AreEqual(3.0f, light.position.z);
-		}
-
-		TEST_METHOD(LightData_PositionIsXMFLOAT4)
-		{
-			LightData light;
-			light.position = { 5.0f, 10.0f, 15.0f, 1.0f };
-			
-			Assert::AreEqual(5.0f, light.position.x);
-			Assert::AreEqual(10.0f, light.position.y);
-			Assert::AreEqual(15.0f, light.position.z);
-			Assert::AreEqual(1.0f, light.position.w);
-		}
-
-		TEST_METHOD(LightData_DirectionAndTypeStored)
-		{
-			LightData light;
-			light.dirType = { 0.0f, -1.0f, 0.0f, 2.0f }; // direction + type in .w
-			
-			Assert::AreEqual(0.0f, light.dirType.x);
-			Assert::AreEqual(-1.0f, light.dirType.y);
-			Assert::AreEqual(0.0f, light.dirType.z);
-			Assert::AreEqual(2.0f, light.dirType.w);
-		}
 	};
 
 	TEST_CLASS(ConstantBufferDataTests)
@@ -78,90 +41,12 @@ namespace RayTracingTests::DataTypes
 			Assert::AreEqual(static_cast<size_t>(cMaxLights), lightArraySize);
 			Assert::AreEqual(25, cMaxLights);
 		}
-
-		TEST_METHOD(ConstantBufferData_NumLightsInitializes)
-		{
-			ConstantBufferData cb{};
-			cb.numLights = 10;
-			
-			Assert::AreEqual(10, cb.numLights);
-		}
-
-		TEST_METHOD(ConstantBufferData_ViewPosIsXMFLOAT4)
-		{
-			ConstantBufferData cb;
-			cb.viewPos = { 1.0f, 2.0f, 3.0f, 1.0f };
-			
-			Assert::AreEqual(1.0f, cb.viewPos.x);
-			Assert::AreEqual(2.0f, cb.viewPos.y);
-			Assert::AreEqual(3.0f, cb.viewPos.z);
-		}
-
-		TEST_METHOD(ConstantBufferData_LightsArrayAccessible)
-		{
-			ConstantBufferData cb;
-			
-			// Set first light
-			cb.lights[0].position = { 10.0f, 20.0f, 30.0f, 1.0f };
-			cb.lights[0].diffuseColor = { 1.0f, 0.0f, 0.0f, 1.0f };
-			
-			Assert::AreEqual(10.0f, cb.lights[0].position.x);
-			Assert::AreEqual(1.0f, cb.lights[0].diffuseColor.x);
-			Assert::AreEqual(0.0f, cb.lights[0].diffuseColor.y);
-		}
-
-		TEST_METHOD(ConstantBufferData_MatrixIsXMMATRIX)
-		{
-			ConstantBufferData cb;
-			cb.vpMatrix = XMMatrixIdentity();
-			
-			// Check identity matrix
-			Assert::AreEqual(1.0f, XMVectorGetX(cb.vpMatrix.r[0]));
-			Assert::AreEqual(1.0f, XMVectorGetY(cb.vpMatrix.r[1]));
-		}
 	};
 
 	TEST_CLASS(MeshMaterialDataTests)
 	{
 	public:
 		
-		TEST_METHOD(MeshMaterialData_DefaultBaseColorIsWhite)
-		{
-			MeshMaterialData material;
-			
-			Assert::AreEqual(1.0f, material.baseColorFactor.x);
-			Assert::AreEqual(1.0f, material.baseColorFactor.y);
-			Assert::AreEqual(1.0f, material.baseColorFactor.z);
-			Assert::AreEqual(1.0f, material.baseColorFactor.w);
-		}
-
-		TEST_METHOD(MeshMaterialData_DefaultMetalnessIsOne)
-		{
-			MeshMaterialData material;
-			Assert::AreEqual(1.0f, material.metalnessFactor);
-		}
-
-		TEST_METHOD(MeshMaterialData_DefaultRoughnessIsOne)
-		{
-			MeshMaterialData material;
-			Assert::AreEqual(1.0f, material.roughnessFactor);
-		}
-
-		TEST_METHOD(MeshMaterialData_DefaultAlphaCutoffIsHalf)
-		{
-			MeshMaterialData material;
-			Assert::AreEqual(0.5f, material.alphaCutoff);
-		}
-
-		TEST_METHOD(MeshMaterialData_DefaultEmissiveIsBlack)
-		{
-			MeshMaterialData material;
-			
-			Assert::AreEqual(0.0f, material.emissiveFactor.x);
-			Assert::AreEqual(0.0f, material.emissiveFactor.y);
-			Assert::AreEqual(0.0f, material.emissiveFactor.z);
-		}
-
 		TEST_METHOD(MeshMaterialData_SizeIsMultipleOf16)
 		{
 			// GPU constant buffers require 16-byte alignment

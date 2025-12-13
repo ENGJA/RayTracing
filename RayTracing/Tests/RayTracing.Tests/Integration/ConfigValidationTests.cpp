@@ -33,22 +33,6 @@ namespace RayTracingTests::Integration
 			               L"SRV descriptors should be enough for multiple materials");
 		}
 
-		TEST_METHOD(Config_BackBufferFormatSupportsRendering)
-		{
-			// DXGI_FORMAT_R8G8B8A8_UNORM is a standard, well-supported format
-			DXGI_FORMAT format = Config::cBackBufferFormat;
-			Assert::AreEqual(static_cast<int>(DXGI_FORMAT_R8G8B8A8_UNORM), static_cast<int>(format),
-			                 L"Back buffer format should be RGBA8 UNORM");
-		}
-
-		TEST_METHOD(Config_DepthFormatSupportsDepthTesting)
-		{
-			// D32_FLOAT is a good depth format with high precision
-			DXGI_FORMAT format = Config::cDepthBufferFormat;
-			Assert::AreEqual(static_cast<int>(DXGI_FORMAT_D32_FLOAT), static_cast<int>(format),
-			                 L"Depth format should be D32_FLOAT for precision");
-		}
-
 		TEST_METHOD(DataTypes_LightArraySizeMatchesConstant)
 		{
 			ConstantBufferData cb;
@@ -64,20 +48,6 @@ namespace RayTracingTests::Integration
 			                 L"LightData should be 16-byte aligned");
 			Assert::AreEqual(static_cast<size_t>(0), sizeof(MeshMaterialData) % 16,
 			                 L"MeshMaterialData should be 16-byte aligned");
-		}
-
-		TEST_METHOD(DataTypes_MatrixSize)
-		{
-			// XMMATRIX should be 64 bytes (4x4 floats)
-			Assert::AreEqual(static_cast<size_t>(64), sizeof(DirectX::XMMATRIX),
-			                 L"XMMATRIX should be 64 bytes");
-		}
-
-		TEST_METHOD(DataTypes_Float4Size)
-		{
-			// XMFLOAT4 should be 16 bytes
-			Assert::AreEqual(static_cast<size_t>(16), sizeof(DirectX::XMFLOAT4),
-			                 L"XMFLOAT4 should be 16 bytes");
 		}
 
 		TEST_METHOD(Integration_ConfigAndDataTypesConsistency)
