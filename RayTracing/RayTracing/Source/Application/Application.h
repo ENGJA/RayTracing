@@ -44,18 +44,14 @@ private:
 	std::mutex mLoadingMutex; ///< Mutex for thread-safe loading operations
 	std::unique_ptr<Model> mPendingModel; ///< Model loaded on background thread
 	std::vector<std::unique_ptr<Model>> mPendingModels; ///< Models loaded on background thread (for multi-load)
-	std::string mPendingScenePath; ///< Path being loaded
-	std::vector<std::string> mPendingScenePaths; ///< Paths being loaded (for multi-load)
-	bool mIsMultiLoad = false; ///< Whether we're loading multiple scenes
+	std::vector<std::string> mPendingScenePaths; ///< Paths being loaded (used for both single and multi-load)
 	
 	// Application logic
 	void ToggleMenu();
 	void LoadScene(const std::string& path);
 	void LoadMultipleScenes(const std::vector<std::string>& paths);
 	void ProcessSceneLoading();
-	void PerformAsyncLoad(const std::string& path);
 	void PerformAsyncMultiLoad(const std::vector<std::string>& paths);
-	void UploadModelToGPU();
 	void UploadModelsToGPU();
 	void UnloadScene();
 	void ExitToMainMenu();

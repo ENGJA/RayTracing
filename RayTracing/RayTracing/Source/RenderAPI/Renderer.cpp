@@ -379,9 +379,6 @@ bool Renderer::LoadScene(const std::string& path)
 {
     wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
 
-    // Wait for GPU to finish all work before loading new scene
-    mCommandQueue.Flush();
-
     auto model = std::make_unique<Model>();
 
     std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
@@ -392,7 +389,7 @@ bool Renderer::LoadScene(const std::string& path)
     if (model->mMeshes.empty())
     {
         wcout << L"Warning: Scene loaded but contains no meshes." << endl;
-        
+
         // Create fallback quad for testing
         vector<::Vertex> cpuVerts = {
             { { -1, -1, 0 }, {0,0,1}, {0,1} },
@@ -402,13 +399,14 @@ bool Renderer::LoadScene(const std::string& path)
         };
         vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
         model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-    }
-    else
-    {
-        wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+        return false;
     }
 
-    return LoadSceneFromModel(std::move(model));
+    wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+
+    std::vector<std::unique_ptr<Model>> models;
+    models.push_back(std::move(model));
+    return LoadMultipleScenes(std::move(models));
 }
 
 bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
@@ -416,28 +414,9 @@ bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
 	if (!model)
 		return false;
 
-	// Wait for GPU to finish all work before loading new scene
-	mCommandQueue.Flush();
-
-	mModels.push_back(std::move(model));
-
-	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
-	BuildMeshGpuData();
-	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
-	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
-	
-	// Initialize ray tracing acceleration structures
-	std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
-	InitializeRayTracing();
-	std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
-	wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
-
-	CollectStaticLights();
-
-	wcout << L"Scene uploaded successfully!" << endl;
-	return true;
+	std::vector<std::unique_ptr<Model>> models;
+	models.push_back(std::move(model));
+	return LoadMultipleScenes(std::move(models));
 }
 
 bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
@@ -445,7 +424,7 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 	if (models.empty())
 		return false;
 
-	wcout << L"Loading " << models.size() << L" scenes..." << endl;
+	wcout << L"Loading " << models.size() << L" scene(s)..." << endl;
 
 	// Wait for GPU to finish all work before loading new scenes
 	mCommandQueue.Flush();
@@ -540,7 +519,7 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
 	}
 
-	wcout << L"Multiple scenes loaded successfully! (" << successfullyLoaded << L" models)" << endl;
+	wcout << L"Scene(s) loaded successfully! (" << successfullyLoaded << L" model(s))" << endl;
 	return true;
 }
 
