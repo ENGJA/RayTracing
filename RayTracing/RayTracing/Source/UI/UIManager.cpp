@@ -391,11 +391,8 @@ void UIManager::RenderPerformanceOverlay()
 		
 		if (gpuUsage > 0.0f)
 		{
-			ImGui::Text("GPU: %.1f%%", gpuUsage);
-			if (gpu3DUsage > 0.0f)
-				ImGui::Text("  3D/Graphics: %.1f%%", gpu3DUsage);
-			if (gpuComputeUsage > 0.0f)
-				ImGui::Text("  Compute/RT: %.1f%%", gpuComputeUsage);
+			ImGui::Text("GPU 3D/Graphics: %.1f%%", gpu3DUsage);
+			ImGui::Text("GPU Compute/RT: %.1f%%", gpuComputeUsage);
 		}
 		else
 		{
