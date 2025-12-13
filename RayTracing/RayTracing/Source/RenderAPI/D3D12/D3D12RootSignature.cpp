@@ -103,28 +103,22 @@ void D3D12RootSignature::InitializeCompute(ID3D12Device* pDevice)
 
 void D3D12RootSignature::InitializeComposite(ID3D12Device* pDevice)
 {
-	// We need 2 Root Parameters to match Renderer::DispatchComposite logic:
-	// Parameter 0: UAV Table (u0) -> Output
-	// Parameter 1: SRV Table (t0, t1, t2) -> Inputs
+	// U¿yj tablicy, aby zapewniæ stabilne adresy pamiêci
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[2]{};
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 
-	CD3DX12_DESCRIPTOR_RANGE uavRange{};
-	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // u0
+	CD3DX12_ROOT_PARAMETER1 rootParams[2]{};
+	rootParams[0].InitAsDescriptorTable(1, &ranges[0]);
+	rootParams[1].InitAsDescriptorTable(1, &ranges[1]);
 
-	CD3DX12_DESCRIPTOR_RANGE srvRange{};
-	srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0); // t0, t1, t2
-
-	CD3DX12_ROOT_PARAMETER rootParams[2]{};
-
-	// Parameter 0: UAV
-	rootParams[0].InitAsDescriptorTable(1, &uavRange);
-
-	// Parameter 1: SRV
-	rootParams[1].InitAsDescriptorTable(1, &srvRange);
-
-	// Create Root Signature Description with 2 parameters
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc(
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+	rootSigDesc.Init_1_1(
 		_countof(rootParams),
-		rootParams
+		rootParams,
+		0,
+		nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_NONE
 	);
 
 	CreateRootSignature(pDevice, rootSigDesc, mRootSignature);

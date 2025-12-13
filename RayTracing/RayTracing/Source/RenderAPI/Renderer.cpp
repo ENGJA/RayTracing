@@ -550,8 +550,8 @@ void Renderer::InitializeDenoising()
 
 	//   // Slot 3: Output UAV
 	//   //auto uavAlloc = mSrvHeap.Allocate(1);
-	//   //// Store the handle
-	//   //mDenoiseOutputUavCpuHandle = uavAlloc.cpuHandle;
+	   //// Store the handle
+	//   mDenoiseOutputUavCpuHandle = uavAlloc.cpuHandle;
 
 	//   D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 	//   uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT; // Output format
@@ -658,7 +658,10 @@ void Renderer::RenderMotionVectors()
 	);
 	mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
-	// Clear
+	// Clear to zero - for ray tracing with static geometry, NRD computes 
+	// camera motion internally from the view/projection matrices.
+	// Using rasterized motion vectors causes mismatches at screen edges
+	// where ray-traced surfaces differ from rasterized depth.
 	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
 	mCommandList.Get()->ClearRenderTargetView(mMotionVectorRtvHandle, clearColor, 0, nullptr);
 
@@ -671,31 +674,8 @@ void Renderer::RenderMotionVectors()
 		nullptr
 	);
 
-	ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
-	mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
-
-	// Bind Targets
-	// Note: We bind the Depth Buffer too so we can Z-Test!
-	D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
-	mCommandList.Get()->OMSetRenderTargets(1, &mMotionVectorRtvHandle, FALSE, &dsv);
-
-	// Set State
-	mCommandList.Get()->SetPipelineState(mMotionVectorPipelineState.Get());
-	mCommandList.Get()->SetGraphicsRootSignature(mMotionVectorPipelineState.GetRootSignature()); // Reuses generic Mesh Root Sig
-	mCommandList.Get()->RSSetViewports(1, &mViewport);
-	mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
-
-	mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	// Bind Constants (ViewProj + PrevViewProj)
-	mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
-
-	// Draw Opaque Meshes
-	// Note: Motion Vectors for transparent objects are complex. Usually skipped or handled separately.
-	for (const auto& mesh : mOpaqueSingleSidedMeshes) DrawMesh(mesh);
-	for (const auto& mesh : mOpaqueDoubleSidedMeshes) DrawMesh(mesh);
-	for (const auto& mesh : mMaskedSingleSidedMeshes) DrawMesh(mesh);
-	for (const auto& mesh : mMaskedDoubleSidedMeshes) DrawMesh(mesh);
+	// Skip geometry motion vector rendering for ray tracing - NRD will compute
+	// camera-only motion from the matrices provided in CommonSettings
 
 	// 3. Cleanup Transitions
 	D3D12_RESOURCE_BARRIER cleanupBarriers[2];
@@ -893,61 +873,63 @@ void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMA
 	// =========================================================
 	nrd::CommonSettings common = {};
 
-	// TRANSPOSE MATRICES (Row-Major -> Column-Major)
-	DirectX::XMMATRIX viewT = view;
-	DirectX::XMMATRIX projT = proj;
+	// DO NOT TRANSPOSE - DirectXMath uses row-major and NRD expects row-major
+	// The "column-major" comment in NRD refers to HLSL convention, but the C++ side is row-major
+	DirectX::XMMATRIX viewM = view;
+	DirectX::XMMATRIX projM = proj;
 
 	// 1. View Matrix (World-to-View)
-	memcpy(common.worldToViewMatrix, &viewT, sizeof(float) * 16);
+	memcpy(common.worldToViewMatrix, &viewM, sizeof(float) * 16);
 
 	// 2. Projection Matrix (View-to-Clip)
-	memcpy(common.viewToClipMatrix, &projT, sizeof(float) * 16);
+	memcpy(common.viewToClipMatrix, &projM, sizeof(float) * 16);
 
-	// 3. Previous Matrices (Required for Motion Vectors)
-	// For now, we use static variables to hold the previous frame's matrices.
-	// In a real engine, these should be member variables (mPrevView, mPrevProj).
-	static DirectX::XMMATRIX prevViewT = viewT;
-	static DirectX::XMMATRIX prevProjT = projT;
+	// 3. Previous Matrices (Required for temporal reprojection)
+	static DirectX::XMMATRIX prevViewM = viewM;
+	static DirectX::XMMATRIX prevProjM = projM;
 
-	memcpy(common.worldToViewMatrixPrev, &prevViewT, sizeof(float) * 16);
-	memcpy(common.viewToClipMatrixPrev, &prevProjT, sizeof(float) * 16);
+	memcpy(common.worldToViewMatrixPrev, &prevViewM, sizeof(float) * 16);
+	memcpy(common.viewToClipMatrixPrev, &prevProjM, sizeof(float) * 16);
 
 	// Update history for next frame
-	prevViewT = viewT;
-	prevProjT = projT;
+	prevViewM = viewM;
+	prevProjM = projM;
 
-	// 4. Resolution & Jitter
+	// 4. Resolution
 	common.resourceSize[0] = (uint16_t)mWidth;
 	common.resourceSize[1] = (uint16_t)mHeight;
 	common.rectSize[0] = (uint16_t)mWidth;
 	common.rectSize[1] = (uint16_t)mHeight;
+	
+	// CRITICAL: Set rectOrigin to (0, 0)
+	common.rectOrigin[0] = 0;
+	common.rectOrigin[1] = 0;
 
 	common.resourceSizePrev[0] = (uint16_t)mWidth;
 	common.resourceSizePrev[1] = (uint16_t)mHeight;
 	common.rectSizePrev[0] = (uint16_t)mWidth;
 	common.rectSizePrev[1] = (uint16_t)mHeight;
 
-	// If you are NOT using TAA/DLSS, keep jitter at 0.0f
+	// No jitter (no TAA)
 	common.cameraJitter[0] = 0.0f;
 	common.cameraJitter[1] = 0.0f;
+	common.cameraJitterPrev[0] = 0.0f;
+	common.cameraJitterPrev[1] = 0.0f;
 
 	// 5. Motion Vector Configuration
-	// Your shader likely outputs UV motion (Screen Space).
-	// If so, keep 'isMotionVectorInWorldSpace' = false.
-	// If your MV texture contains pixel deltas (e.g. +10 pixels), scale by 1/resolution.
+	// Motion vectors are zero (cleared texture), NRD will compute camera motion from matrices
+	// Set scale to 1.0 with .z = 0 for 2D screen-space motion
 	common.isMotionVectorInWorldSpace = false;
-	common.motionVectorScale[0] = 1.0f; // (float)mWidth;
-	common.motionVectorScale[1] = 1.0f; // (float)mHeight;
+	common.motionVectorScale[0] = 1.0f;
+	common.motionVectorScale[1] = 1.0f;
+	common.motionVectorScale[2] = 0.0f;  // 2D motion vectors
 
 	common.frameIndex = mFrameCount;
 	common.accumulationMode = nrd::AccumulationMode::CONTINUE;
+	
+	common.splitScreen = 0.0f;
 
 	nrd::SetCommonSettings(*mNrdInstance, common);
-
-	//nrd::ReblurSettings reblurSettings = {};
-	//reblurSettings.enableAntiFirefly = true;
-	//reblurSettings.maxAccumulatedFrameNum = 30;
-	//nrd::SetDenoiserSettings(*mNrdInstance, 0, &reblurSettings); // 0 = REBLUR_DIFFUSE_SPECULAR
 
 	// =========================================================
 	// 2. GET DISPATCHES
@@ -1091,27 +1073,92 @@ Renderer::NrdPoolEntry& Renderer::GetNrdPoolEntry(size_t index, nrd::ResourceTyp
 
 	if (pool[index].texture.resource.Get() == nullptr)
 	{
+		// 3. Get texture description from NRD
+		const nrd::InstanceDesc* instanceDesc = nrd::GetInstanceDesc(*mNrdInstance);
+		
+		const nrd::TextureDesc* texDescs = (type == nrd::ResourceType::PERMANENT_POOL)
+			? instanceDesc->permanentPool
+			: instanceDesc->transientPool;
+		
+		uint32_t texCount = (type == nrd::ResourceType::PERMANENT_POOL)
+			? instanceDesc->permanentPoolSize
+			: instanceDesc->transientPoolSize;
 
-		// 3. Create the Texture
-		// NRD internal buffers generally require high precision (Float16/Float32).
-		// R16G16B16A16_FLOAT is the safest default for NRD pools.
+		// Safety check
+		if (index >= texCount)
+			throw std::runtime_error("NRD pool index out of bounds");
+
+		const nrd::TextureDesc& nrdTexDesc = texDescs[index];
+
+		// 4. Map NRD format to DXGI format
+		DXGI_FORMAT dxgiFormat = DXGI_FORMAT_R16G16B16A16_FLOAT; // default
+		switch (nrdTexDesc.format)
+		{
+		case nrd::Format::R8_UNORM:           dxgiFormat = DXGI_FORMAT_R8_UNORM; break;
+		case nrd::Format::R8_SNORM:           dxgiFormat = DXGI_FORMAT_R8_SNORM; break;
+		case nrd::Format::R8_UINT:            dxgiFormat = DXGI_FORMAT_R8_UINT; break;
+		case nrd::Format::R8_SINT:            dxgiFormat = DXGI_FORMAT_R8_SINT; break;
+		case nrd::Format::RG8_UNORM:          dxgiFormat = DXGI_FORMAT_R8G8_UNORM; break;
+		case nrd::Format::RG8_SNORM:          dxgiFormat = DXGI_FORMAT_R8G8_SNORM; break;
+		case nrd::Format::RG8_UINT:           dxgiFormat = DXGI_FORMAT_R8G8_UINT; break;
+		case nrd::Format::RG8_SINT:           dxgiFormat = DXGI_FORMAT_R8G8_SINT; break;
+		case nrd::Format::RGBA8_UNORM:        dxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM; break;
+		case nrd::Format::RGBA8_SNORM:        dxgiFormat = DXGI_FORMAT_R8G8B8A8_SNORM; break;
+		case nrd::Format::RGBA8_UINT:         dxgiFormat = DXGI_FORMAT_R8G8B8A8_UINT; break;
+		case nrd::Format::RGBA8_SINT:         dxgiFormat = DXGI_FORMAT_R8G8B8A8_SINT; break;
+		case nrd::Format::RGBA8_SRGB:         dxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; break;
+		case nrd::Format::R16_UNORM:          dxgiFormat = DXGI_FORMAT_R16_UNORM; break;
+		case nrd::Format::R16_SNORM:          dxgiFormat = DXGI_FORMAT_R16_SNORM; break;
+		case nrd::Format::R16_UINT:           dxgiFormat = DXGI_FORMAT_R16_UINT; break;
+		case nrd::Format::R16_SINT:           dxgiFormat = DXGI_FORMAT_R16_SINT; break;
+		case nrd::Format::R16_SFLOAT:         dxgiFormat = DXGI_FORMAT_R16_FLOAT; break;
+		case nrd::Format::RG16_UNORM:         dxgiFormat = DXGI_FORMAT_R16G16_UNORM; break;
+		case nrd::Format::RG16_SNORM:         dxgiFormat = DXGI_FORMAT_R16G16_SNORM; break;
+		case nrd::Format::RG16_UINT:          dxgiFormat = DXGI_FORMAT_R16G16_UINT; break;
+		case nrd::Format::RG16_SINT:          dxgiFormat = DXGI_FORMAT_R16G16_SINT; break;
+		case nrd::Format::RG16_SFLOAT:        dxgiFormat = DXGI_FORMAT_R16G16_FLOAT; break;
+		case nrd::Format::RGBA16_UNORM:       dxgiFormat = DXGI_FORMAT_R16G16B16A16_UNORM; break;
+		case nrd::Format::RGBA16_SNORM:       dxgiFormat = DXGI_FORMAT_R16G16B16A16_SNORM; break;
+		case nrd::Format::RGBA16_UINT:        dxgiFormat = DXGI_FORMAT_R16G16B16A16_UINT; break;
+		case nrd::Format::RGBA16_SINT:        dxgiFormat = DXGI_FORMAT_R16G16B16A16_SINT; break;
+		case nrd::Format::RGBA16_SFLOAT:      dxgiFormat = DXGI_FORMAT_R16G16B16A16_FLOAT; break;
+		case nrd::Format::R32_UINT:           dxgiFormat = DXGI_FORMAT_R32_UINT; break;
+		case nrd::Format::R32_SINT:           dxgiFormat = DXGI_FORMAT_R32_SINT; break;
+		case nrd::Format::R32_SFLOAT:         dxgiFormat = DXGI_FORMAT_R32_FLOAT; break;
+		case nrd::Format::RG32_UINT:          dxgiFormat = DXGI_FORMAT_R32G32_UINT; break;
+		case nrd::Format::RG32_SINT:          dxgiFormat = DXGI_FORMAT_R32G32_SINT; break;
+		case nrd::Format::RG32_SFLOAT:        dxgiFormat = DXGI_FORMAT_R32G32_FLOAT; break;
+		case nrd::Format::RGB32_UINT:         dxgiFormat = DXGI_FORMAT_R32G32B32_UINT; break;
+		case nrd::Format::RGB32_SINT:         dxgiFormat = DXGI_FORMAT_R32G32B32_SINT; break;
+		case nrd::Format::RGB32_SFLOAT:       dxgiFormat = DXGI_FORMAT_R32G32B32_FLOAT; break;
+		case nrd::Format::RGBA32_UINT:        dxgiFormat = DXGI_FORMAT_R32G32B32A32_UINT; break;
+		case nrd::Format::RGBA32_SINT:        dxgiFormat = DXGI_FORMAT_R32G32B32A32_SINT; break;
+		case nrd::Format::RGBA32_SFLOAT:      dxgiFormat = DXGI_FORMAT_R32G32B32A32_FLOAT; break;
+		case nrd::Format::R10_G10_B10_A2_UNORM: dxgiFormat = DXGI_FORMAT_R10G10B10A2_UNORM; break;
+		case nrd::Format::R10_G10_B10_A2_UINT:  dxgiFormat = DXGI_FORMAT_R10G10B10A2_UINT; break;
+		case nrd::Format::R11_G11_B10_UFLOAT:   dxgiFormat = DXGI_FORMAT_R11G11B10_FLOAT; break;
+		case nrd::Format::R9_G9_B9_E5_UFLOAT:   dxgiFormat = DXGI_FORMAT_R9G9B9E5_SHAREDEXP; break;
+		}
+
+		// 5. Create the Texture
+		// NRD pool textures should use FULL render resolution from CommonSettings
+		// The downsampleFactor field is deprecated/removed in newer NRD versions
+		// Always use mWidth/mHeight - NRD handles internal scaling
 		D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
-			DXGI_FORMAT_R16G16B16A16_FLOAT,
+			dxgiFormat,
 			mWidth,
 			mHeight,
 			1, 1, 1, 0,
-			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS // Must be a UAV
+			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 		);
 
-		// Use your existing texture creation logic or raw D3D12
 		GPUTexture tex;
-		tex.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		tex.format = dxgiFormat;
 		tex.width = mWidth;
 		tex.height = mHeight;
 		tex.resource.Initialize(mDevice.Get(), desc, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT));
 
-		// 4. Create Descriptors (SRV & UAV)
-		// We allocate fresh slots in the heap for this new texture
+		// 6. Create Descriptors (SRV & UAV)
 		auto srvInfo = mCpuHeap.Allocate(1);
 		auto uavInfo = mCpuHeap.Allocate(1);
 
@@ -1119,17 +1166,14 @@ Renderer::NrdPoolEntry& Renderer::GetNrdPoolEntry(size_t index, nrd::ResourceTyp
 		pool[index].srvHandle = srvInfo.cpuHandle;
 		pool[index].uavHandle = uavInfo.cpuHandle;
 
-		// Create SRV (Shader Resource View)
 		CreateTextureView(tex.resource.Get(), tex.format, pool[index].srvHandle, 1);
 
-		// Create UAV (Unordered Access View)
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.Format = tex.format;
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 		mDevice.Get()->CreateUnorderedAccessView(tex.resource.Get(), nullptr, &uavDesc, pool[index].uavHandle);
 	}
 
-	// 5. Return the entry
 	return pool[index];
 }
 
@@ -1710,24 +1754,21 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
 		),
-			// 2. Specular Output (IN_SPEC_RADIANCE_HITDIST): UAV -> SRV
-			CD3DX12_RESOURCE_BARRIER::Transition(
-				mRtSpecularResource.Get(),
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-			),
-			// 2. Normal + Roughness (IN_NORMAL_ROUGHNESS): UAV -> SRV
-			CD3DX12_RESOURCE_BARRIER::Transition(
-				mNormalRoughnessTex.Get(),
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-			),
-			// 3. ViewZ (IN_VIEWZ): UAV -> SRV
-			CD3DX12_RESOURCE_BARRIER::Transition(
-				mViewZTex.Get(),
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-			)
+		CD3DX12_RESOURCE_BARRIER::Transition(
+			mRtSpecularResource.Get(),
+			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+		),
+		CD3DX12_RESOURCE_BARRIER::Transition(
+			mNormalRoughnessTex.Get(),
+			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+		),
+		CD3DX12_RESOURCE_BARRIER::Transition(
+			mViewZTex.Get(),
+			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+		)
 	};
 
 	cmdList->ResourceBarrier(_countof(postRtBarriers), postRtBarriers);
@@ -1912,7 +1953,7 @@ void Renderer::Update(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& pr
 			D3D12_RESOURCE_STATE_RENDER_TARGET,
 			D3D12_RESOURCE_STATE_PRESENT);
 
-		// 2. DepthBuffer: DEPTH_WRITE -> COMMON (NEW!)
+		// 2. DepthBuffer: WRITE -> COMMON (NEW!)
 		// This ensures the Depth Buffer is in COMMON for the start of the next frame
 		// (whether it be another Raster frame or a Ray Tracing frame).
 		cleanupBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
