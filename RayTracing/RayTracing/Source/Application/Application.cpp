@@ -263,10 +263,10 @@ void Application::OnCreate(HWND hwnd)
 	});
 
 	// Toggle performance overlay with F2
-	input.RegisterKeyPressedCallback(VK_F2, [this]() {
-		if (mCurrentState == UIManager::AppState::Scene)
-			mUIManager.TogglePerformanceOverlay();
-	});
+ input.RegisterKeyPressedCallback(VK_F2, [this]() {
+	 if (mCurrentState == UIManager::AppState::Scene)
+ mUIManager.TogglePerformanceOverlay();
+ });
 	
 	// Start with cursor visible in loading menu
 	input.SetCursorLocked(false);
@@ -400,7 +400,21 @@ void Application::PerformAsyncMultiLoad(const std::vector<std::string>& paths)
 				}
 				else
 				{
-					cout << "  -> Warning: Scene contains no meshes, skipping." << endl;
+					cout << "  -> Warning: Scene contains no meshes, creating fallback quad for testing." << endl;
+					
+					// Create fallback quad for testing
+					std::vector<::Vertex> cpuVerts = {
+						{ { -1, -1, 0 }, {0,0,1}, {0,1}, {1,0,0,1} },
+						{ { -1,  1, 0 }, {0,0,1}, {0,0}, {1,0,0,1} },
+						{ {  1,  1, 0 }, {0,0,1}, {1,0}, {1,0,0,1} },
+						{ {  1, -1, 0 }, {0,0,1}, {1,1}, {1,0,0,1} },
+					};
+					std::vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
+					model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
+					
+					models.push_back(std::move(model));
+					successCount++;
+					cout << "  -> Fallback quad created" << endl;
 				}
 			}
 			catch (const std::exception& e)
