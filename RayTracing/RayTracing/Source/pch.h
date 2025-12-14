@@ -1,6 +1,7 @@
 #pragma once
 #define NOMINMAX
-// standard
+
+// standard library
 #include <iostream>
 #include <vector>
 #include <unordered_map>
@@ -9,6 +10,12 @@
 #include <functional>
 #include <future>
 #include <chrono>
+#include <string>
+#include <memory>
+#include <algorithm>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 // directx
 #include <d3d12.h>

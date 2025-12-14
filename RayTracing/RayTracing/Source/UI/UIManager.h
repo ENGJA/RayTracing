@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <functional>
+#include <vector>
 
 // Forward declarations
 class CameraManager;
@@ -16,6 +17,8 @@ public:
 	 * @brief Callback types for UI actions.
 	 */
 	using LoadSceneCallback = std::function<void(const std::string& path)>;
+	using LoadMultipleScenesCallback = std::function<void(const std::vector<std::string>& paths)>;
+	using AddExtensionScenesCallback = std::function<void(const std::vector<std::string>& paths)>;
 	using UnloadSceneCallback = std::function<void()>;
 	using ToggleMenuCallback = std::function<void()>;
 	using ExitCallback = std::function<void()>;
@@ -52,6 +55,11 @@ public:
 	void SetLoadSceneCallback(LoadSceneCallback callback) { mLoadSceneCallback = callback; }
 
 	/**
+	 * @brief Set callback for loading multiple scenes.
+	 */
+	void SetLoadMultipleScenesCallback(LoadMultipleScenesCallback callback) { mLoadMultipleScenesCallback = callback; }
+
+	/**
 	 * @brief Set callback for unloading a scene.
 	 */
 	void SetUnloadSceneCallback(UnloadSceneCallback callback) { mUnloadSceneCallback = callback; }
@@ -70,6 +78,11 @@ public:
 	 * @brief Set callback for exiting to main menu.
 	 */
 	void SetExitToMainMenuCallback(ExitToMainMenuCallback callback) { mExitToMainMenuCallback = callback; }
+
+	/**
+	 * @brief Set callback for adding extension scenes to current scene.
+	 */
+	void SetAddExtensionScenesCallback(AddExtensionScenesCallback callback) { mAddExtensionScenesCallback = callback; }
 
 	/**
 	 * @brief Toggle settings window visibility.
@@ -91,19 +104,33 @@ public:
 	 * @param sceneName Name of the scene file being loaded.
 	 */
 	void SetLoadingSceneName(const std::string& sceneName) { mLoadingSceneName = sceneName; }
+	
+	/**
+	 * @brief Show a warning message in the UI (e.g., for memory limits).
+	 * @param message Warning message to display.
+	 */
+	void ShowWarning(const std::string& message) { mWarningMessage = message; mShowWarning = true; }
+	
+	/**
+	 * @brief Clear the current warning message.
+	 */
+	void ClearWarning() { mShowWarning = false; mWarningMessage.clear(); }
 
 private:
 	// Rendering methods
 	void RenderLoadingMenu();
+	void RenderMultiSceneSelectionWindow();
 	void RenderPauseMenu();
 	void RenderSettingsWindow();
 	void RenderAboutWindow();
 	void RenderControlsWindow();
 	void RenderPerformanceOverlay();
 	void RenderLoadingScene();
+	void RenderWarningWindow();
 
 	// Helper methods
 	bool OpenFileDialog(std::string& outPath);
+	bool OpenMultiFileDialog(std::vector<std::string>& outPaths);
 
 	// Dependencies
 	HWND mHwnd = nullptr;
@@ -115,10 +142,17 @@ private:
 	bool mShowControlsWindow = false;
 	bool mShowSettingsWindow = false;
 	bool mShowPerformanceOverlay = true;
+	bool mShowMultiSceneSelectionWindow = false;
+	bool mIsExtensionMode = false;
+	bool mShowWarning = false;
 	std::string mLoadingSceneName;
+	std::string mWarningMessage;
+	std::vector<std::string> mSelectedScenePaths;
 
 	// Callbacks
 	LoadSceneCallback mLoadSceneCallback;
+	LoadMultipleScenesCallback mLoadMultipleScenesCallback;
+	AddExtensionScenesCallback mAddExtensionScenesCallback;
 	UnloadSceneCallback mUnloadSceneCallback;
 	ToggleMenuCallback mToggleMenuCallback;
 	ExitCallback mExitCallback;

@@ -46,6 +46,10 @@ void UIManager::RenderUI(AppState currentState)
 		RenderAboutWindow();
 	if (mShowControlsWindow)
 		RenderControlsWindow();
+	if (mShowMultiSceneSelectionWindow)
+		RenderMultiSceneSelectionWindow();
+	if (mShowWarning)
+		RenderWarningWindow();
 }
 
 void UIManager::RenderLoadingMenu()
@@ -66,15 +70,14 @@ void UIManager::RenderLoadingMenu()
 	// Fixed absolute positions
 	float x = 15.0f;
 	
-	// Load Scene button at Y = 50
+	// Load Multiple Scenes button at Y = 50
 	ImGui::SetCursorPos(ImVec2(x, 50.0f));
-	if (ImGui::Button("Load Scene from File...", ImVec2(370, 50)))
+	if (ImGui::Button("Load Scene(s)...", ImVec2(370, 50)))
 	{
-		std::string scenePath;
-		if (OpenFileDialog(scenePath) && mLoadSceneCallback)
-		{
-			mLoadSceneCallback(scenePath);
-		}
+		// Open scene selection window with empty list
+		mSelectedScenePaths.clear();
+		mIsExtensionMode = false;
+		mShowMultiSceneSelectionWindow = true;
 	}
 	
 	// About and Controls buttons at Y = 110
@@ -105,7 +108,7 @@ void UIManager::RenderPauseMenu()
 {
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
 	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(400, 460), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(400, 510), ImGuiCond_Always);
 
 	ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
 
@@ -158,22 +161,29 @@ void UIManager::RenderPauseMenu()
 	}
 	y += buttonHeight + gap;
 	
-	// Button 4: Load Scene
+	// Button 4: Add Extension Scene(s)
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
-	if (ImGui::Button("Load Different Scene...", ImVec2(buttonWidth, buttonHeight)))
+	if (ImGui::Button("Add Extension Scene(s)...", ImVec2(buttonWidth, buttonHeight)))
 	{
-		std::string scenePath;
-		if (OpenFileDialog(scenePath))
-		{
-			if (mUnloadSceneCallback)
-				mUnloadSceneCallback();
-			if (mLoadSceneCallback)
-				mLoadSceneCallback(scenePath);
-		}
+		// Open scene selection window with empty list in extension mode
+		mSelectedScenePaths.clear();
+		mIsExtensionMode = true;
+		mShowMultiSceneSelectionWindow = true;
 	}
 	y += buttonHeight + gap;
 	
-	// Button 5: Exit to Menu
+	// Button 5: Load Different Scene(s)
+	ImGui::SetCursorPos(ImVec2(buttonX, y));
+	if (ImGui::Button("Load Different Scene(s)...", ImVec2(buttonWidth, buttonHeight)))
+	{
+		// Open scene selection window with empty list for replacement
+		mSelectedScenePaths.clear();
+		mIsExtensionMode = false;
+		mShowMultiSceneSelectionWindow = true;
+	}
+	y += buttonHeight + gap;
+	
+	// Button 6: Exit to Menu
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
 	if (ImGui::Button("Exit to Main Menu", ImVec2(buttonWidth, buttonHeight)))
 	{
@@ -182,7 +192,7 @@ void UIManager::RenderPauseMenu()
 	}
 	y += buttonHeight + gap;
 	
-	// Button 6: Exit App
+	// Button 7: Exit App
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
 	if (ImGui::Button("Exit Application", ImVec2(buttonWidth, buttonHeight)))
 	{
@@ -374,6 +384,8 @@ void UIManager::RenderPerformanceOverlay()
 		float frameTime = mPerformanceMonitor->GetAvgFrameTimeMS();
 		float cpuUsage = mPerformanceMonitor->GetCPUUsage();
 		float gpuUsage = mPerformanceMonitor->GetGPUUsage();
+		float gpu3DUsage = mPerformanceMonitor->GetGPU3DUsage();
+		float gpuComputeUsage = mPerformanceMonitor->GetGPUComputeUsage();
 		float ramUsage = mPerformanceMonitor->GetRAMUsageMB();
 		float vramUsage = mPerformanceMonitor->GetVRAMUsageMB();
 
@@ -391,9 +403,14 @@ void UIManager::RenderPerformanceOverlay()
 		ImGui::Text("CPU: %.1f%%", cpuUsage);
 		
 		if (gpuUsage > 0.0f)
-			ImGui::Text("GPU: %.1f%%", gpuUsage);
+		{
+			ImGui::Text("GPU 3D/Graphics: %.1f%%", gpu3DUsage);
+			ImGui::Text("GPU Compute/RT: %.1f%%", gpuComputeUsage);
+		}
 		else
+		{
 			ImGui::TextDisabled("GPU: N/A");
+		}
 		
 		ImGui::Separator();
 		ImGui::Text("RAM: %.1f MB", ramUsage);
@@ -410,7 +427,7 @@ void UIManager::RenderLoadingScene()
 {
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
 	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(400, 180), ImGuiCond_Always);
 
 	ImGui::Begin("Loading", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
 
@@ -433,7 +450,7 @@ void UIManager::RenderLoadingScene()
 	}
 	
 	// Loading animation (simple dots)
-	ImGui::SetCursorPos(ImVec2(15.0f, 100.0f));
+	ImGui::SetCursorPos(ImVec2(15.0f, 110.0f));
 	static float loadingTime = 0.0f;
 	loadingTime += ImGui::GetIO().DeltaTime;
 	int dots = (int)(loadingTime * 2.0f) % 4;
@@ -441,6 +458,264 @@ void UIManager::RenderLoadingScene()
 	for (int i = 0; i < dots; i++)
 		loadingText += ".";
 	ImGui::Text("%s", loadingText.c_str());
+	
+	// Additional info
+	ImGui::SetCursorPos(ImVec2(15.0f, 135.0f));
+	ImGui::TextDisabled("This may take a moment for large scenes");
+
+	ImGui::End();
+}
+
+void UIManager::RenderMultiSceneSelectionWindow()
+{
+	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(ImVec2(650, 500), ImGuiCond_Appearing);
+
+	std::string windowTitle = mIsExtensionMode ? "Add Extension Scene(s)" : "Scene Selection";
+	if (!ImGui::Begin(windowTitle.c_str(), &mShowMultiSceneSelectionWindow, ImGuiWindowFlags_NoCollapse))
+	{
+		ImGui::End();
+		return;
+	}
+
+	if (mIsExtensionMode)
+	{
+		ImGui::TextWrapped("Select additional scene files to add to the current scene (e.g., add decorations to an existing building).");
+	}
+	else
+	{
+		ImGui::TextWrapped("Select scene files to load together (e.g., Sponza palace + curtains).");
+	}
+	ImGui::Spacing();
+	
+	if (mSelectedScenePaths.empty())
+	{
+		ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.0f, 1.0f), "Click 'Add Files...' to start adding scene files.");
+	}
+	
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	// Display list of selected files with delete buttons
+	ImGui::Text("Selected Files (%zu):", mSelectedScenePaths.size());
+	ImGui::BeginChild("FileList", ImVec2(0, -110), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+	
+	if (mSelectedScenePaths.empty())
+	{
+		// Show helpful message when list is empty
+		ImVec2 childSize = ImGui::GetWindowSize();
+		ImGui::SetCursorPosY(childSize.y * 0.4f);
+		
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+		ImGui::TextWrapped("No files added yet.\n\nClick 'Add Files...' button below to select scene files.");
+		ImGui::PopStyleColor();
+	}
+	else
+	{
+		std::vector<int> toRemove;
+		for (size_t i = 0; i < mSelectedScenePaths.size(); ++i)
+		{
+			ImGui::PushID(static_cast<int>(i));
+			
+			std::filesystem::path filePath(mSelectedScenePaths[i]);
+			std::string filename = filePath.filename().string();
+			std::string directory = filePath.parent_path().filename().string();
+			
+			// Display index and filename
+			ImGui::Text("%zu.", i + 1);
+			ImGui::SameLine();
+			
+			// Display filename with directory hint
+			if (!directory.empty())
+			{
+				ImGui::BulletText("%s", filename.c_str());
+				ImGui::SameLine();
+				ImGui::TextDisabled("(%s)", directory.c_str());
+			}
+			else
+			{
+				ImGui::BulletText("%s", filename.c_str());
+			}
+			
+			// Tooltip with full path
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::TextUnformatted("Full path:");
+				ImGui::TextWrapped("%s", mSelectedScenePaths[i].c_str());
+				ImGui::EndTooltip();
+			}
+			
+			ImGui::SameLine();
+			float cursorX = ImGui::GetCursorPosX();
+			ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 80);
+			if (ImGui::SmallButton("Remove"))
+			{
+				toRemove.push_back(static_cast<int>(i));
+			}
+			
+			ImGui::PopID();
+		}
+		
+		// Remove marked files (in reverse order to avoid index issues)
+		for (auto it = toRemove.rbegin(); it != toRemove.rend(); ++it)
+		{
+			mSelectedScenePaths.erase(mSelectedScenePaths.begin() + *it);
+		}
+	}
+	
+	ImGui::EndChild();
+
+	ImGui::Spacing();
+	
+	// Info text
+	if (mSelectedScenePaths.empty())
+	{
+		ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "No files selected. Add scene files to continue.");
+	}
+	else
+	{
+		ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "%zu file(s) ready to load", mSelectedScenePaths.size());
+		ImGui::SameLine();
+		ImGui::TextDisabled("(?)");
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			if (mIsExtensionMode)
+			{
+				ImGui::TextUnformatted("Scenes will be added to the existing scene.");
+				ImGui::TextUnformatted("The current scene will remain loaded.");
+			}
+			else
+			{
+				ImGui::TextUnformatted("Scenes will be loaded in order.");
+				ImGui::TextUnformatted("Current scene will be unloaded first.");
+			}
+			ImGui::TextUnformatted("If GPU memory limit is reached, remaining scenes will be skipped.");
+			ImGui::EndTooltip();
+		}
+	}
+	
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	// Buttons at the bottom
+	float buttonWidth = 140.0f;
+	float gap = 8.0f;
+	float totalWidth = buttonWidth * 3 + gap * 2;
+	float startX = (ImGui::GetWindowWidth() - totalWidth) * 0.5f;
+
+	ImGui::SetCursorPosX(startX);
+	if (ImGui::Button("Add Files...", ImVec2(buttonWidth, 40)))
+	{
+		std::vector<std::string> additionalPaths;
+		if (OpenMultiFileDialog(additionalPaths))
+		{
+			// Add new paths, avoiding duplicates
+			for (const auto& newPath : additionalPaths)
+			{
+				if (std::find(mSelectedScenePaths.begin(), mSelectedScenePaths.end(), newPath) == mSelectedScenePaths.end())
+				{
+					mSelectedScenePaths.push_back(newPath);
+				}
+			}
+		}
+	}
+
+	ImGui::SameLine();
+	
+	bool hasFiles = !mSelectedScenePaths.empty();
+	if (!hasFiles)
+	{
+		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+	}
+	
+	if (ImGui::Button("Clear All", ImVec2(buttonWidth, 40)) && hasFiles)
+	{
+		mSelectedScenePaths.clear();
+	}
+	
+	if (!hasFiles)
+	{
+		ImGui::PopStyleVar();
+	}
+	
+	ImGui::SameLine();
+	
+	if (!hasFiles)
+	{
+		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+	}
+	
+	std::string actionButtonLabel = mIsExtensionMode ? "Add Selected" : "Load Selected";
+	if (ImGui::Button(actionButtonLabel.c_str(), ImVec2(buttonWidth, 40)) && hasFiles)
+	{
+		if (mIsExtensionMode)
+		{
+			// Add as extension - don't unload current scene
+			if (mAddExtensionScenesCallback)
+			{
+				mAddExtensionScenesCallback(mSelectedScenePaths);
+			}
+		}
+		else
+		{
+			// Replace - unload current scene first
+			if (mUnloadSceneCallback)
+				mUnloadSceneCallback();
+			
+			if (mLoadMultipleScenesCallback)
+			{
+				mLoadMultipleScenesCallback(mSelectedScenePaths);
+			}
+		}
+		mShowMultiSceneSelectionWindow = false;
+	}
+	
+	if (!hasFiles)
+	{
+		ImGui::PopStyleVar();
+	}
+
+	ImGui::End();
+}
+
+void UIManager::RenderWarningWindow()
+{
+	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(ImVec2(500, 200), ImGuiCond_Appearing);
+
+	if (!ImGui::Begin("Warning", &mShowWarning, ImGuiWindowFlags_NoCollapse))
+	{
+		ImGui::End();
+		return;
+	}
+
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
+	ImGui::Text("Warning");
+	ImGui::PopStyleColor();
+	
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	ImGui::TextWrapped("%s", mWarningMessage.c_str());
+	
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	float buttonWidth = 120.0f;
+	float windowWidth = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
+	ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f + ImGui::GetWindowContentRegionMin().x);
+	
+	if (ImGui::Button("OK", ImVec2(buttonWidth, 40)))
+	{
+		mShowWarning = false;
+		mWarningMessage.clear();
+	}
 
 	ImGui::End();
 }
@@ -469,6 +744,55 @@ bool UIManager::OpenFileDialog(std::string& outPath)
 	if (GetOpenFileNameA(&ofn) == TRUE)
 	{
 		outPath = szFile;
+		return true;
+	}
+	return false;
+}
+
+bool UIManager::OpenMultiFileDialog(std::vector<std::string>& outPaths)
+{
+	OPENFILENAMEA ofn{};
+	const int bufferSize = 65536; // 64KB buffer for multiple files
+	std::vector<char> szFile(bufferSize, 0);
+
+	std::filesystem::path currentPath = std::filesystem::current_path();
+	std::filesystem::path resourcesPath = currentPath / ".." / "Resources" / "Objects";
+
+	std::string initialDir = std::filesystem::absolute(resourcesPath).string();
+
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = mHwnd;
+	ofn.lpstrFile = szFile.data();
+	ofn.nMaxFile = bufferSize;
+	ofn.lpstrFilter = "3D Model Files\0*.gltf;*.glb;*.obj;*.fbx\0GLTF Files\0*.gltf;*.glb\0OBJ Files\0*.obj\0FBX Files\0*.fbx\0All Files\0*.*\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFileTitle = NULL;
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = initialDir.c_str();
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR | OFN_ALLOWMULTISELECT | OFN_EXPLORER;
+
+	if (GetOpenFileNameA(&ofn) == TRUE)
+	{
+		// Parse the multi-select buffer
+		std::string directory = szFile.data();
+		const char* pFile = szFile.data() + directory.length() + 1;
+
+		// If there's only one file, the buffer contains just the full path
+		if (*pFile == '\0')
+		{
+			outPaths.push_back(directory);
+		}
+		else
+		{
+			// Multiple files: first string is directory, rest are filenames
+			while (*pFile != '\0')
+			{
+				std::string filename = pFile;
+				std::filesystem::path fullPath = std::filesystem::path(directory) / filename;
+				outPaths.push_back(fullPath.string());
+				pFile += filename.length() + 1;
+			}
+		}
 		return true;
 	}
 	return false;
