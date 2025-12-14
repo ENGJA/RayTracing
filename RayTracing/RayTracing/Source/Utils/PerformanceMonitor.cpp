@@ -146,6 +146,8 @@ void PerformanceMonitor::UpdateGPUUsage()
 	if (!mGPUCounterAvailable || !mGPUQuery)
 	{
 		mGPUUsage = 0.0f;
+		mGPU3DUsage = 0.0f;
+		mGPUComputeUsage = 0.0f;
 		return;
 	}
 
@@ -153,7 +155,7 @@ void PerformanceMonitor::UpdateGPUUsage()
 	if (status != ERROR_SUCCESS)
 		return;
 
-	// For GPU Engine counters, we need to enumerate all instances and sum them
+	// For GPU Engine counters, we need to enumerate all instances and categorize by engine type
 	DWORD bufferSize = 0;
 	DWORD itemCount = 0;
 	status = PdhGetFormattedCounterArray(mGPUCounter, PDH_FMT_DOUBLE, &bufferSize, &itemCount, nullptr);
@@ -166,14 +168,36 @@ void PerformanceMonitor::UpdateGPUUsage()
 		status = PdhGetFormattedCounterArray(mGPUCounter, PDH_FMT_DOUBLE, &bufferSize, &itemCount, items);
 		if (status == ERROR_SUCCESS)
 		{
-			double totalGPU = 0.0;
+			double maxGPU = 0.0;
+			double max3D = 0.0;
+			double maxCompute = 0.0;
+			
 			for (DWORD i = 0; i < itemCount; i++)
 			{
-				totalGPU += items[i].FmtValue.doubleValue;
+				double value = items[i].FmtValue.doubleValue;
+				maxGPU = std::max(maxGPU, value);
+				
+				// Parse engine type from counter name
+				// Format: \\<ComputerName>\GPU Engine(<pid>_<luid>_<phys>_<eng>_<engtype>)\Utilization Percentage
+				std::wstring counterName = items[i].szName;
+				
+				// Check for 3D/Graphics engines
+				if (counterName.find(L"engtype_3D") != std::wstring::npos ||
+				    counterName.find(L"engtype_Graphics") != std::wstring::npos)
+				{
+					max3D = std::max(max3D, value);
+				}
+				// Check for Compute engines (used by RT and compute shaders)
+				else if (counterName.find(L"engtype_Compute") != std::wstring::npos)
+				{
+					maxCompute = std::max(maxCompute, value);
+				}
 			}
-			// Average across all GPU engines
-			DWORD divisor = (itemCount > 0) ? itemCount : 1;
-			mGPUUsage = static_cast<float>(totalGPU / divisor);
+			
+			// Use the maximum utilization from all GPU engines (typically the 3D engine)
+			mGPUUsage = static_cast<float>(maxGPU);
+			mGPU3DUsage = static_cast<float>(max3D);
+			mGPUComputeUsage = static_cast<float>(maxCompute);
 		}
 	}
 }

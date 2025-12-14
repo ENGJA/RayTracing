@@ -326,6 +326,26 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 }
 
+Renderer::~Renderer()
+{
+	wcout << L"Renderer destructor: cleaning up GPU resources..." << endl;
+	
+	// Wait for all GPU operations to complete before destroying resources
+	mCommandQueue.Flush();
+	
+	// Shutdown ImGui first (it uses our descriptor heaps)
+	ShutdownImGui();
+	
+	// Unload scene resources (meshes, textures, models)
+	UnloadScene();
+	
+	// Clear all remaining GPU resources
+	// Pipeline states, command lists, etc. will be released by their destructors
+	// but we want to ensure everything is done in the right order
+	
+	wcout << L"Renderer cleanup complete" << endl;
+}
+
 void Renderer::OnResize(UINT width, UINT height)
 {
 	if (width == 0 || height == 0)
@@ -379,9 +399,6 @@ bool Renderer::LoadScene(const std::string& path)
 {
     wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
 
-    // Wait for GPU to finish all work before loading new scene
-    mCommandQueue.Flush();
-
     auto model = std::make_unique<Model>();
 
     std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
@@ -392,7 +409,7 @@ bool Renderer::LoadScene(const std::string& path)
     if (model->mMeshes.empty())
     {
         wcout << L"Warning: Scene loaded but contains no meshes." << endl;
-        
+
         // Create fallback quad for testing
         vector<::Vertex> cpuVerts = {
             { { -1, -1, 0 }, {0,0,1}, {0,1} },
@@ -402,13 +419,14 @@ bool Renderer::LoadScene(const std::string& path)
         };
         vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
         model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-    }
-    else
-    {
-        wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+        return false;
     }
 
-    return LoadSceneFromModel(std::move(model));
+    wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+
+    std::vector<std::unique_ptr<Model>> models;
+    models.push_back(std::move(model));
+    return LoadMultipleScenes(std::move(models));
 }
 
 bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
@@ -416,28 +434,152 @@ bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
 	if (!model)
 		return false;
 
-	// Wait for GPU to finish all work before loading new scene
+	std::vector<std::unique_ptr<Model>> models;
+	models.push_back(std::move(model));
+	return LoadMultipleScenes(std::move(models));
+}
+
+bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
+{
+	if (models.empty())
+		return false;
+
+	wcout << L"Loading " << models.size() << L" scene(s)..." << endl;
+
+	// Wait for GPU to finish all work before loading new scenes
 	mCommandQueue.Flush();
 
-	mModels.push_back(std::move(model));
-
-	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
-	BuildMeshGpuData();
-	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
-	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+	// Try to load models one by one, catching any memory allocation failures
+	size_t successfullyLoaded = 0;
+	size_t totalAttempted = models.size();
 	
-	// Initialize ray tracing acceleration structures
-	std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
-	InitializeRayTracing();
-	std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
-	wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
+	for (size_t i = 0; i < models.size(); ++i)
+	{
+		auto& model = models[i];
+		if (!model)
+			continue;
 
-	CollectStaticLights();
+		try
+		{
+			// Check if we have meshes before trying to add
+			if (model->mMeshes.empty())
+			{
+				wcout << L"Warning: Model " << (i + 1) << L" has no meshes, skipping." << endl;
+				continue;
+			}
+			
+			// Try to add the model
+			mModels.push_back(std::move(model));
+			successfullyLoaded++;
+			
+			wcout << L"Successfully added model " << successfullyLoaded << L" / " << totalAttempted << endl;
+		}
+		catch (const std::bad_alloc& e)
+		{
+			wcout << L"Memory allocation failed at model " << (i + 1) << L": " << e.what() << endl;
+			wcout << L"Stopping further model loading due to memory constraints." << endl;
+			break;
+		}
+		catch (const std::exception& e)
+		{
+			wcout << L"Error adding model " << (i + 1) << L": " << e.what() << endl;
+			// Continue trying with next model
+			continue;
+		}
+	}
 
-	wcout << L"Scene uploaded successfully!" << endl;
-	return true;
+	if (successfullyLoaded == 0)
+	{
+		wcout << L"Error: No models could be loaded." << endl;
+		return false;
+	}
+
+	wcout << L"Added " << successfullyLoaded << L" / " << totalAttempted << L" models to scene." << endl;
+
+	// Try to build GPU data for all loaded models
+    try
+    {
+        std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+        BuildMeshGpuData();
+        std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+        wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+    }
+    catch (const std::runtime_error& e)
+    {
+        wcout << L"GPU memory exhausted during mesh data upload: " << e.what() << endl;
+        wcout << L"Some models may not be fully loaded. Try loading fewer or smaller models." << endl;
+        
+        // If BuildMeshGpuData fails due to GPU memory, we still have valid models in CPU memory
+        // but their GPU data may be incomplete. Better to unload them completely.
+        if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
+		    mMaskedSingleMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
+		    mTransparentMeshes.empty())
+		{
+			// No meshes were uploaded at all - complete failure
+			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
+			mModels.clear();
+			mTextureCache.clear();
+			return false;
+		}
+		// else: Some meshes were uploaded, continue with what we have
+    }
+    catch (const std::exception& e)
+    {
+        wcout << L"Error building mesh GPU data: " << e.what() << endl;
+        
+        // Check if we have at least some meshes uploaded
+        if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
+		    mMaskedSingleMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
+		    mTransparentMeshes.empty())
+		{
+			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
+			mModels.clear();
+			mTextureCache.clear();
+			return false;
+		}
+    }
+	
+	// Try to build ray tracing structures
+	try
+	{
+		std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
+		InitializeRayTracing();
+		std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
+		wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to build ray tracing structures: " << e.what() << endl;
+		// Non-critical, continue without RT acceleration
+	}
+
+	// Collect lights (this should be safe)
+	try
+	{
+		CollectStaticLights();
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
+	}
+
+	size_t loadedMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
+	                         mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                         mTransparentMeshes.size();
+	
+	if (loadedMeshCount > 0)
+	{
+		wcout << L"Scene(s) loaded successfully! (" << successfullyLoaded << L" model(s), " 
+		      << loadedMeshCount << L" meshes)" << endl;
+		return true;
+	}
+	else
+	{
+		wcout << L"No meshes could be loaded to GPU." << endl;
+		return false;
+	}
 }
 
 void Renderer::UnloadScene()
@@ -635,7 +777,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 		camLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, cameraLightIntensity);
         camLight.dirType = DirectX::XMFLOAT4(cameraForward.x, cameraForward.y, cameraForward.z, 1.0f); // directional flag
         mConstantBufferData.lights[staticCount] = camLight;
-        mConstantBufferData.numLights = staticCount + 1;
+        mConstantBufferData.numLights = static_cast<int>(staticCount + 1);
     }
     else
     {
@@ -878,4 +1020,150 @@ void Renderer::RenderImGui()
 
     // Render ImGui draw data
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
+}
+
+bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
+{
+	if (models.empty())
+		return false;
+
+	wcout << L"Adding " << models.size() << L" extension scene(s)..." << endl;
+
+	// Wait for GPU to finish all work before adding new scenes
+	mCommandQueue.Flush();
+
+	// Store the count of models before adding extensions
+	size_t previousModelCount = mModels.size();
+	size_t previousMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
+	                           mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                           mTransparentMeshes.size();
+	
+	// Try to load models one by one, catching any memory allocation failures
+	size_t successfullyLoaded = 0;
+	size_t totalAttempted = models.size();
+	
+	for (size_t i = 0; i < models.size(); ++i)
+	{
+		auto& model = models[i];
+		if (!model)
+			continue;
+
+		try
+		{
+			// Check if we have meshes before trying to add
+			if (model->mMeshes.empty())
+			{
+				wcout << L"Warning: Extension model " << (i + 1) << L" has no meshes, skipping." << endl;
+				continue;
+			}
+			
+			// Try to add the model
+			mModels.push_back(std::move(model));
+			successfullyLoaded++;
+			
+			wcout << L"Successfully added extension model " << successfullyLoaded << L" / " << totalAttempted << endl;
+		}
+		catch (const std::bad_alloc& e)
+		{
+			wcout << L"Memory allocation failed at extension model " << (i + 1) << L": " << e.what() << endl;
+			wcout << L"Stopping further model loading due to memory constraints." << endl;
+			break;
+		}
+		catch (const std::exception& e)
+		{
+			wcout << L"Error adding extension model " << (i + 1) << L": " << e.what() << endl;
+			// Continue trying with next model
+			continue;
+		}
+	}
+
+	if (successfullyLoaded == 0)
+	{
+		wcout << L"Error: No extension models could be loaded." << endl;
+		return false;
+	}
+
+	wcout << L"Added " << successfullyLoaded << L" / " << totalAttempted << L" extension models." << endl;
+
+	// Try to build GPU data for all loaded models (including existing ones)
+	try
+	{
+		std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+		BuildMeshGpuData();
+		std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+		wcout << "Mesh GPU data rebuilt in " << elapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::runtime_error& e)
+	{
+		wcout << L"GPU memory exhausted during mesh data upload: " << e.what() << endl;
+		wcout << L"Extension models could not be fully loaded. Reverting to previous state." << endl;
+		
+		// Remove the extension models that we just added
+		mModels.resize(previousModelCount);
+		
+		// Rebuild GPU data with just the original models
+		try
+		{
+			BuildMeshGpuData();
+		}
+		catch (...)
+		{
+			wcout << L"Critical error: Failed to restore previous state!" << endl;
+		}
+		
+		return false;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Error building mesh GPU data: " << e.what() << endl;
+		
+		// Remove the extension models and try to restore previous state
+		mModels.resize(previousModelCount);
+		
+		try
+		{
+			BuildMeshGpuData();
+		}
+		catch (...)
+		{
+			wcout << L"Critical error: Failed to restore previous state!" << endl;
+		}
+		
+		return false;
+	}
+	
+	// Try to build ray tracing structures
+	try
+	{
+		std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
+		InitializeRayTracing();
+		std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
+		wcout << "Ray tracing structures rebuilt in " << rtElapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to rebuild ray tracing structures: " << e.what() << endl;
+		// Non-critical, continue without RT acceleration
+	}
+
+	// Collect lights (this should be safe)
+	try
+	{
+		CollectStaticLights();
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
+	}
+
+	size_t newMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
+	                      mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                      mTransparentMeshes.size();
+	size_t addedMeshCount = newMeshCount - previousMeshCount;
+	
+	wcout << L"Extension scene(s) added successfully! (Total: " << mModels.size() << L" model(s), " 
+	      << newMeshCount << L" meshes, added: " << addedMeshCount << L" meshes)" << endl;
+	return true;
 }
