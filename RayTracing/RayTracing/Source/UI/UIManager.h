@@ -18,6 +18,7 @@ public:
 	 */
 	using LoadSceneCallback = std::function<void(const std::string& path)>;
 	using LoadMultipleScenesCallback = std::function<void(const std::vector<std::string>& paths)>;
+	using AddExtensionScenesCallback = std::function<void(const std::vector<std::string>& paths)>;
 	using UnloadSceneCallback = std::function<void()>;
 	using ToggleMenuCallback = std::function<void()>;
 	using ExitCallback = std::function<void()>;
@@ -79,6 +80,11 @@ public:
 	void SetExitToMainMenuCallback(ExitToMainMenuCallback callback) { mExitToMainMenuCallback = callback; }
 
 	/**
+	 * @brief Set callback for adding extension scenes to current scene.
+	 */
+	void SetAddExtensionScenesCallback(AddExtensionScenesCallback callback) { mAddExtensionScenesCallback = callback; }
+
+	/**
 	 * @brief Toggle settings window visibility.
 	 */
 	void ToggleSettings() { mShowSettingsWindow = !mShowSettingsWindow; }
@@ -137,6 +143,7 @@ private:
 	bool mShowSettingsWindow = false;
 	bool mShowPerformanceOverlay = true;
 	bool mShowMultiSceneSelectionWindow = false;
+	bool mIsExtensionMode = false;
 	bool mShowWarning = false;
 	std::string mLoadingSceneName;
 	std::string mWarningMessage;
@@ -145,6 +152,7 @@ private:
 	// Callbacks
 	LoadSceneCallback mLoadSceneCallback;
 	LoadMultipleScenesCallback mLoadMultipleScenesCallback;
+	AddExtensionScenesCallback mAddExtensionScenesCallback;
 	UnloadSceneCallback mUnloadSceneCallback;
 	ToggleMenuCallback mToggleMenuCallback;
 	ExitCallback mExitCallback;

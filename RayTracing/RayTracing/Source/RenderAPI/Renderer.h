@@ -248,6 +248,14 @@ public:
 	bool LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models);
 	
 	/**
+	 * @brief Adds multiple extension scenes to the currently loaded scene.
+	 * Does not unload existing models, only adds new ones.
+	 * @param models Vector of unique pointers to Models loaded on background thread.
+	 * @return true if at least one scene uploaded successfully, false otherwise.
+	 */
+	bool AddExtensionScenes(std::vector<std::unique_ptr<Model>> models);
+	
+	/**
 	 * @brief Unloads the currently loaded scene and frees GPU resources.
 	 */
 	void UnloadScene();

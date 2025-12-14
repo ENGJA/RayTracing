@@ -76,6 +76,7 @@ void UIManager::RenderLoadingMenu()
 	{
 		// Open scene selection window with empty list
 		mSelectedScenePaths.clear();
+		mIsExtensionMode = false;
 		mShowMultiSceneSelectionWindow = true;
 	}
 	
@@ -107,7 +108,7 @@ void UIManager::RenderPauseMenu()
 {
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
 	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(400, 460), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(400, 510), ImGuiCond_Always);
 
 	ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
 
@@ -160,17 +161,29 @@ void UIManager::RenderPauseMenu()
 	}
 	y += buttonHeight + gap;
 	
-	// Button 4: Load Scene(s)
+	// Button 4: Add Extension Scene(s)
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
-	if (ImGui::Button("Load Different Scene(s)...", ImVec2(buttonWidth, buttonHeight)))
+	if (ImGui::Button("Add Extension Scene(s)...", ImVec2(buttonWidth, buttonHeight)))
 	{
-		// Open scene selection window with empty list
+		// Open scene selection window with empty list in extension mode
 		mSelectedScenePaths.clear();
+		mIsExtensionMode = true;
 		mShowMultiSceneSelectionWindow = true;
 	}
 	y += buttonHeight + gap;
 	
-	// Button 5: Exit to Menu
+	// Button 5: Load Different Scene(s)
+	ImGui::SetCursorPos(ImVec2(buttonX, y));
+	if (ImGui::Button("Load Different Scene(s)...", ImVec2(buttonWidth, buttonHeight)))
+	{
+		// Open scene selection window with empty list for replacement
+		mSelectedScenePaths.clear();
+		mIsExtensionMode = false;
+		mShowMultiSceneSelectionWindow = true;
+	}
+	y += buttonHeight + gap;
+	
+	// Button 6: Exit to Menu
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
 	if (ImGui::Button("Exit to Main Menu", ImVec2(buttonWidth, buttonHeight)))
 	{
@@ -179,7 +192,7 @@ void UIManager::RenderPauseMenu()
 	}
 	y += buttonHeight + gap;
 	
-	// Button 6: Exit App
+	// Button 7: Exit App
 	ImGui::SetCursorPos(ImVec2(buttonX, y));
 	if (ImGui::Button("Exit Application", ImVec2(buttonWidth, buttonHeight)))
 	{
@@ -459,13 +472,21 @@ void UIManager::RenderMultiSceneSelectionWindow()
 	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(650, 500), ImGuiCond_Appearing);
 
-	if (!ImGui::Begin("Scene Selection", &mShowMultiSceneSelectionWindow, ImGuiWindowFlags_NoCollapse))
+	std::string windowTitle = mIsExtensionMode ? "Add Extension Scene(s)" : "Scene Selection";
+	if (!ImGui::Begin(windowTitle.c_str(), &mShowMultiSceneSelectionWindow, ImGuiWindowFlags_NoCollapse))
 	{
 		ImGui::End();
 		return;
 	}
 
-	ImGui::TextWrapped("Select scene files to load together (e.g., Sponza palace + curtains).");
+	if (mIsExtensionMode)
+	{
+		ImGui::TextWrapped("Select additional scene files to add to the current scene (e.g., add decorations to an existing building).");
+	}
+	else
+	{
+		ImGui::TextWrapped("Select scene files to load together (e.g., Sponza palace + curtains).");
+	}
 	ImGui::Spacing();
 	
 	if (mSelectedScenePaths.empty())
@@ -561,7 +582,16 @@ void UIManager::RenderMultiSceneSelectionWindow()
 		if (ImGui::IsItemHovered())
 		{
 			ImGui::BeginTooltip();
-			ImGui::TextUnformatted("Scenes will be loaded in order.");
+			if (mIsExtensionMode)
+			{
+				ImGui::TextUnformatted("Scenes will be added to the existing scene.");
+				ImGui::TextUnformatted("The current scene will remain loaded.");
+			}
+			else
+			{
+				ImGui::TextUnformatted("Scenes will be loaded in order.");
+				ImGui::TextUnformatted("Current scene will be unloaded first.");
+			}
 			ImGui::TextUnformatted("If GPU memory limit is reached, remaining scenes will be skipped.");
 			ImGui::EndTooltip();
 		}
@@ -619,15 +649,27 @@ void UIManager::RenderMultiSceneSelectionWindow()
 		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
 	}
 	
-	if (ImGui::Button("Load Selected", ImVec2(buttonWidth, 40)) && hasFiles)
+	std::string actionButtonLabel = mIsExtensionMode ? "Add Selected" : "Load Selected";
+	if (ImGui::Button(actionButtonLabel.c_str(), ImVec2(buttonWidth, 40)) && hasFiles)
 	{
-		if (mLoadMultipleScenesCallback)
+		if (mIsExtensionMode)
 		{
-			// Unload current scene if in pause menu
+			// Add as extension - don't unload current scene
+			if (mAddExtensionScenesCallback)
+			{
+				mAddExtensionScenesCallback(mSelectedScenePaths);
+			}
+		}
+		else
+		{
+			// Replace - unload current scene first
 			if (mUnloadSceneCallback)
 				mUnloadSceneCallback();
 			
-			mLoadMultipleScenesCallback(mSelectedScenePaths);
+			if (mLoadMultipleScenesCallback)
+			{
+				mLoadMultipleScenesCallback(mSelectedScenePaths);
+			}
 		}
 		mShowMultiSceneSelectionWindow = false;
 	}

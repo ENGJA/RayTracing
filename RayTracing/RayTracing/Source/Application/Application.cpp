@@ -234,6 +234,10 @@ void Application::OnCreate(HWND hwnd)
 		LoadMultipleScenes(paths);
 	});
 	
+	mUIManager.SetAddExtensionScenesCallback([this](const std::vector<std::string>& paths) {
+		AddExtensionScenes(paths);
+	});
+	
 	mUIManager.SetUnloadSceneCallback([this]() {
 		UnloadScene();
 	});
@@ -353,6 +357,53 @@ void Application::LoadMultipleScenes(const std::vector<std::string>& paths)
 	
 	mUIManager.SetLoadingSceneName(loadingText);
 	mPendingScenePaths = paths;
+	mIsLoadingExtension = false;
+	
+	// Switch to loading state
+	mCurrentState = UIManager::AppState::LoadingScene;
+	InputManager::Instance.SetCursorLocked(false);
+	mCameraManager.SetActive(false);
+	
+	// Reset loading flags
+	mLoadingComplete = false;
+	mLoadingSuccess = false;
+	mIsLoadingInProgress = true;
+	mPendingModel.reset();
+	mPendingModels.clear();
+	
+	// Start async loading thread
+	if (mLoadingThread.joinable())
+		mLoadingThread.join();
+	
+	mLoadingThread = std::thread(&Application::PerformAsyncMultiLoad, this, paths);
+}
+
+void Application::AddExtensionScenes(const std::vector<std::string>& paths)
+{
+	// If already loading, ignore
+	if (mIsLoadingInProgress)
+		return;
+
+	if (paths.empty())
+		return;
+
+	// Display loading info
+	std::string loadingText;
+	if (paths.size() == 1)
+	{
+		std::filesystem::path fsPath(paths[0]);
+		loadingText = "Adding extension:\n" + fsPath.filename().string();
+	}
+	else
+	{
+		std::filesystem::path fsPath(paths[0]);
+		loadingText = "Adding extensions:\n" + fsPath.filename().string();
+		loadingText += "\n+ " + std::to_string(paths.size() - 1) + " more";
+	}
+	
+	mUIManager.SetLoadingSceneName(loadingText);
+	mPendingScenePaths = paths;
+	mIsLoadingExtension = true;
 	
 	// Switch to loading state
 	mCurrentState = UIManager::AppState::LoadingScene;
@@ -457,7 +508,14 @@ void Application::PerformAsyncMultiLoad(const std::vector<std::string>& paths)
 void Application::UploadModelsToGPU()
 {
 	// This runs on main thread and can safely use DirectX resources
-	cout << "Uploading models to GPU..." << endl;
+	if (mIsLoadingExtension)
+	{
+		cout << "Uploading extension models to GPU..." << endl;
+	}
+	else
+	{
+		cout << "Uploading models to GPU..." << endl;
+	}
 	
 	std::vector<std::unique_ptr<Model>> models;
 	{
@@ -477,7 +535,15 @@ void Application::UploadModelsToGPU()
 	size_t totalModels = models.size();
 	
 	// Upload all models - Renderer will handle memory limits
-	bool success = mRenderer.LoadMultipleScenes(std::move(models));
+	bool success;
+	if (mIsLoadingExtension)
+	{
+		success = mRenderer.AddExtensionScenes(std::move(models));
+	}
+	else
+	{
+		success = mRenderer.LoadMultipleScenes(std::move(models));
+	}
 	
 	if (success)
 	{
@@ -488,35 +554,64 @@ void Application::UploadModelsToGPU()
 		
 		// Get number of loaded models from renderer
 		size_t loadedCount = mRenderer.GetLoadedModelsCount();
-		if (loadedCount < totalModels)
+		size_t previousCount = mIsLoadingExtension ? (loadedCount - totalModels) : 0;
+		size_t actuallyAdded = loadedCount - previousCount;
+		
+		if (actuallyAdded < totalModels)
 		{
-			cout << "Warning: Only " << loadedCount << " / " << totalModels 
+			cout << "Warning: Only " << actuallyAdded << " / " << totalModels 
 			     << " scenes loaded due to memory constraints." << endl;
 			
 			// Show warning in UI
-			std::string warningMsg = "Only " + std::to_string(loadedCount) + " out of " 
-			                       + std::to_string(totalModels) + " scenes could be loaded.\n\n"
-			                       + "The remaining scenes exceeded available GPU memory.";
+			std::string warningMsg;
+			if (mIsLoadingExtension)
+			{
+				warningMsg = "Only " + std::to_string(actuallyAdded) + " out of " 
+				           + std::to_string(totalModels) + " extension scenes could be added.\n\n"
+				           + "The remaining scenes exceeded available GPU memory.";
+			}
+			else
+			{
+				warningMsg = "Only " + std::to_string(actuallyAdded) + " out of " 
+				           + std::to_string(totalModels) + " scenes could be loaded.\n\n"
+				           + "The remaining scenes exceeded available GPU memory.";
+			}
 			mUIManager.ShowWarning(warningMsg);
 		}
 		else
 		{
-			cout << "All " << totalModels << " scene(s) loaded successfully!" << endl;
+			if (mIsLoadingExtension)
+			{
+				cout << "All " << totalModels << " extension scene(s) added successfully! (Total: " 
+				     << loadedCount << " models)" << endl;
+			}
+			else
+			{
+				cout << "All " << totalModels << " scene(s) loaded successfully!" << endl;
+			}
 		}
 	}
 	else
 	{
 		cerr << "Failed to upload scenes to GPU" << endl;
-		mCurrentState = UIManager::AppState::LoadingMenu;
+		mCurrentState = mIsLoadingExtension ? UIManager::AppState::Menu : UIManager::AppState::LoadingMenu;
 		
 		// Show error in UI
-		mUIManager.ShowWarning("Failed to load scenes.\n\nThe scenes may be too large for available GPU memory.");
+		std::string errorMsg = mIsLoadingExtension 
+		    ? "Failed to add extension scenes.\n\nThe scenes may be too large for available GPU memory."
+		    : "Failed to load scenes.\n\nThe scenes may be too large for available GPU memory.";
+		mUIManager.ShowWarning(errorMsg);
 	}
 	
-	mCurrentScenePath = (totalModels == 1) ? mPendingScenePaths[0] : "Multiple scenes";
+	if (!mIsLoadingExtension)
+	{
+		mCurrentScenePath = (totalModels == 1) ? mPendingScenePaths[0] : "Multiple scenes";
+	}
+	
 	mPendingScenePaths.clear();
 	mIsLoadingInProgress = false;
 	mLoadingComplete = false;
+	mIsLoadingExtension = false;
 }
 
 void Application::ProcessSceneLoading()

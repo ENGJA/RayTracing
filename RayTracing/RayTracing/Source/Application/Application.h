@@ -45,11 +45,13 @@ private:
 	std::unique_ptr<Model> mPendingModel; ///< Model loaded on background thread
 	std::vector<std::unique_ptr<Model>> mPendingModels; ///< Models loaded on background thread (for multi-load)
 	std::vector<std::string> mPendingScenePaths; ///< Paths being loaded (used for both single and multi-load)
+	bool mIsLoadingExtension = false; ///< Whether we're loading extension scenes (don't unload existing)
 	
 	// Application logic
 	void ToggleMenu();
 	void LoadScene(const std::string& path);
 	void LoadMultipleScenes(const std::vector<std::string>& paths);
+	void AddExtensionScenes(const std::vector<std::string>& paths);
 	void ProcessSceneLoading();
 	void PerformAsyncMultiLoad(const std::vector<std::string>& paths);
 	void UploadModelsToGPU();
