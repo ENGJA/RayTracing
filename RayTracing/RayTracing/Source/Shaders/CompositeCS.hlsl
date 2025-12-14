@@ -42,23 +42,26 @@ void main(uint3 id : SV_DispatchThreadID)
     float3 refl = gReflections[id.xy].rgb;
     
     // Read G-Buffer
-    float3 N = gNormal[id.xy];
-    float depth = gDepth[id.xy];
-    float2 mats = gMaterial[id.xy];
+    //float3 N = gNormal[id.xy];
+    //float depth = gDepth[id.xy];
+    //float2 mats = gMaterial[id.xy];
     float3 albedo = gAlbedo[id.xy].rgb;
+    float3 emissive = gEmissive[id.xy].rgb;
     
-    // Reconstruct View Vector
-    float3 worldPos = GetWorldPosition(uv, depth); // Need UV conversion logic here
-    float3 V = normalize(camPos - worldPos);
-    if (dot(N, V) < 0.0)
-        N = -N; // Ensure normal faces view direction)
+    //// Reconstruct View Vector
+    //float3 worldPos = GetWorldPosition(uv, depth); // Need UV conversion logic here
+    //float3 V = normalize(camPos - worldPos);
+    //if (dot(N, V) < 0.0)
+    //    N = -N; // Ensure normal faces view direction)
 
-    // Fresnel Mix
-    float3 F0 = lerp(0.04, albedo, mats.x); // mats.x = metalness
-    float3 F = FresnelSchlick(max(dot(N, V), 0.0), F0);
+    //// Fresnel Mix
+    //float3 F0 = lerp(0.04, albedo, mats.x); // mats.x = metalness
+    //float3 F = FresnelSchlick(max(dot(N, V), 0.0), F0);
     
     
-    float3 finalColor = direct + refl * F;
+    float3 finalColor = direct * albedo + refl; // * F;
+    //finalColor *= albedo; // Modulate by albedo
+    finalColor += emissive; // Add emissive
     finalColor = finalColor / (finalColor + 1.0); // Reinhard tonemapping)
     finalColor = pow(finalColor, 1.0 / 2.2); // Gamma correction
     

@@ -1,14 +1,23 @@
 #include "PBR.hlsli"
 
+
 // --- GLOBAL (Space 0) ---
 RaytracingAccelerationStructure gScene : register(t5);
-RWTexture2D<float4> gReflectionOutput : register(u0);
+RWTexture2D<float4> gOutDiffuse : register(u0);
+RWTexture2D<float4> gOutSpecular : register(u1);
+//RWTexture2D<float4> gOutNormal : register(u2);
+//RWTexture2D<float4> gOutAlbedo : register(u3);
+
 
 // Inputs from G-Buffer
+Texture2D<float4> gGBufferAlbedo : register(t0);
 Texture2D<float4> gGBufferNormal : register(t1);
 Texture2D<float2> gGBufferMaterial : register(t2);
 Texture2D<float> gDepth : register(t3);
 Texture2D<float4> gEmissive : register(t4);
+StructuredBuffer<Light> gLights : register(t6);
+
+
 
 cbuffer FrameCB : register(b0)
 {
@@ -26,6 +35,10 @@ cbuffer FrameCB : register(b0)
 ByteAddressBuffer gIndices : register(t0, space1);
 ByteAddressBuffer gVertices : register(t1, space1);
 Texture2D gAlbedoMap : register(t2, space1);
+Texture2D gMetalnessMap : register(t3, space1);
+Texture2D gRoughnessMap : register(t4, space1);
+Texture2D gNormalMap : register(t5, space1);
+Texture2D gEmissiveMap : register(t6, space1); 
 
 SamplerState gSampler : register(s0);
 
@@ -34,10 +47,96 @@ struct RayPayload
     float4 color;
 };
 
+struct ShadowPayload
+{
+    bool isVisible;
+};
+
+struct VertexAttributes
+{
+    float3 normal;
+    float4 tangent;
+    float2 uv;
+};
+
+VertexAttributes GetVertexAttributes(uint triangleIndex, float2 bary)
+{
+    uint indexOffset = triangleIndex * 3 * 4;
+    uint3 idx = gIndices.Load3(indexOffset);
+
+    // Stride from C++ (Pos=12 + Norm=12 + UV=8 + Tan=16 + UV2=8 = 56)
+    const uint stride = 56;
+    float3 w = float3(1.0 - bary.x - bary.y, bary.x, bary.y);
+
+    VertexAttributes attr;
+
+    // Normal (Offset 12)
+    float3 n0 = asfloat(gVertices.Load3(idx.x * stride + 12));
+    float3 n1 = asfloat(gVertices.Load3(idx.y * stride + 12));
+    float3 n2 = asfloat(gVertices.Load3(idx.z * stride + 12));
+    attr.normal = normalize(n0 * w.x + n1 * w.y + n2 * w.z);
+
+    // UV (Offset 24)
+    float2 uv0 = asfloat(gVertices.Load2(idx.x * stride + 24));
+    float2 uv1 = asfloat(gVertices.Load2(idx.y * stride + 24));
+    float2 uv2 = asfloat(gVertices.Load2(idx.z * stride + 24));
+    attr.uv = uv0 * w.x + uv1 * w.y + uv2 * w.z;
+
+    // Tangent (Offset 32)
+    float4 t0 = asfloat(gVertices.Load4(idx.x * stride + 32));
+    float4 t1 = asfloat(gVertices.Load4(idx.y * stride + 32));
+    float4 t2 = asfloat(gVertices.Load4(idx.z * stride + 32));
+    attr.tangent = t0 * w.x + t1 * w.y + t2 * w.z;
+
+    return attr;
+}
+
+uint initRand(uint val0, uint val1, uint backoff = 16)
+{
+    uint v0 = val0, v1 = val1, s0 = 0;
+
+    for (uint n = 0; n < backoff; n++)
+    {
+        s0 += 0x9e3779b9;
+        v0 += ((v1 << 4) + 0xa341316c) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4);
+        v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
+    }
+    return v0;
+}
+
+// Returns float between 0.0 and 1.0
+float nextRand(inout uint s)
+{
+    s = (1664525u * s + 1013904223u);
+    return float(s & 0x00FFFFFF) / float(0x01000000);
+}
+
+float3 GetConeSample(inout uint seed, float3 L, float spreadAngle)
+{
+    float r1 = nextRand(seed);
+    float r2 = nextRand(seed);
+
+    float z = 1.0f - r2 * (1.0f - cos(spreadAngle));
+    float phi = 6.2831853f * r1;
+    float x = cos(phi) * sqrt(1.0f - z * z);
+    float y = sin(phi) * sqrt(1.0f - z * z);
+
+    float3 d = float3(x, y, z);
+
+    // Create an orthonormal basis around L
+    float3 up = abs(L.z) < 0.999f ? float3(0, 0, 1) : float3(1, 0, 0);
+    float3 tangent = normalize(cross(up, L));
+    float3 bitangent = cross(L, tangent);
+
+    // Transform d to the basis
+    return d.x * tangent + d.y * bitangent + d.z * L;
+}
+
+
 float3 GetWorldPosition(uint2 pixel)
 {
     float width, height;
-    gReflectionOutput.GetDimensions(width, height);
+    gOutSpecular.GetDimensions(width, height);
     float2 uv = (pixel + 0.5) / float2(width, height);
     float z = gDepth.Load(uint3(pixel, 0));
 
@@ -81,64 +180,213 @@ float2 GetHitUV(uint triangleIndex, float2 bary)
 [shader("raygeneration")]
 void RayGen()
 {
-    uint2 launchIndex = DispatchRaysIndex().xy;
+    uint2 pixel = DispatchRaysIndex().xy;
     
     // 1. Check if pixel needs reflection
-    float depth = gDepth.Load(uint3(launchIndex, 0));
+    float depth = gDepth.Load(uint3(pixel, 0));
     if (depth >= 1.0)
     {
-        gReflectionOutput[launchIndex] = float4(0, 0, 0, 0);
-        return; // Sky
+        // Skybox is usually treated as Diffuse or Emissive
+        float3 rayDir = normalize(GetWorldPosition(pixel) - viewPos);
+        float t = 0.5 * (rayDir.y + 1.0);
+        float3 sky = lerp(float3(0.3, 0.3, 0.3), float3(0.5, 0.7, 1.0), t);
+        
+        gOutDiffuse[pixel] = float4(sky, 1.0);
+        gOutSpecular[pixel] = float4(0, 0, 0, 0);
+        //gOutAlbedo[pixel] = float4(0, 0, 0, 0); // Sky has no albedo
+        //gOutNormal[pixel] = float4(0, 0, 0, 0);
+        return;
     }
 
-    float2 mats = gGBufferMaterial.Load(uint3(launchIndex, 0));
+    float3 worldPos = GetWorldPosition(pixel);   
+    float3 normal = gGBufferNormal.Load(uint3(pixel, 0)).xyz;
+    float3 albedo = gGBufferAlbedo.Load(uint3(pixel, 0)).xyz;
+    float2 mats = gGBufferMaterial.Load(uint3(pixel, 0));
     float metalness = mats.x;
     float roughness = mats.y;
 
-    // Optimization: Don't trace for dull non-metals
-    if (metalness < 0.1 && roughness > 0.5)
-    {
-        gReflectionOutput[launchIndex] = float4(0, 0, 0, 0);
-        return;
-    }
-
-    // 2. Setup Ray
-    float3 normal = gGBufferNormal.Load(uint3(launchIndex, 0)).xyz;
-    float3 worldPos = GetWorldPosition(launchIndex);   
     float3 V = normalize(viewPos - worldPos);
-    float3 R = reflect(-V, normal);
-
-    RayDesc ray;
-    ray.Origin = worldPos + normal * 0.01;
-    ray.Direction = R;
-    ray.TMin = 0.0;
-    ray.TMax = 1000.0;
-
-    RayPayload payload = { float4(0, 0, 0, 0) };
+    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);    
     
-    if (any(isnan(ray.Origin)) || any(isnan(ray.Direction)))
-        return;
-    if (length(ray.Direction) < 0.001)
-        return;
+    float3 diffuseTotal = float3(0, 0, 0);
+    float3 specularTotal = float3(0, 0, 0);
     
-    // 3. Trace
-    TraceRay(gScene, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 1, 0, ray, payload);
-
-    gReflectionOutput[launchIndex] = payload.color;
+    diffuseTotal += float3(0.05, 0.05, 0.05); // ambient
+    
+    uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
+    // Direct Lighting
+    for (int i = 0; i < numLights; ++i)
+    {
+        Light light = gLights[i];
+        float3 L_central;
+        float3 L_shadow;
+        float attenuation = 1.0f;
+        float dist = 10000.0f;
+        
+        if (light.dirType.w > 0.5f)
+        {
+            // Directional Light
+            L_central = normalize(-light.dirType.xyz);
+            L_shadow = L_central;
+        }
+        else
+        {
+            // Point Light
+            float3 lightPos = light.position.xyz;
+            float3 toLight = lightPos - worldPos;
+            dist = length(toLight);
+            L_central = normalize(toLight);
+            L_shadow = GetConeSample(seed, L_central, radians(5.0f)); // Soft shadows with 5 degree cone
+            attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+        }
+        
+        float NdotL = max(dot(normal, L_central), 0.0f);
+        if (NdotL > 0.0f && attenuation > 0.001f)
+        {
+            ShadowPayload shadowPayload;
+            shadowPayload.isVisible = false;
+            
+            RayDesc ray;
+            ray.Origin = worldPos + normal * 0.01;
+            ray.Direction = L_shadow;
+            ray.TMin = 0.01;
+            ray.TMax = dist - 0.05f;
+            
+            TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
+                     0xFF, 0, 1, 1, ray, shadowPayload);
+            
+            if (shadowPayload.isVisible)
+            {
+                float3 H = normalize(V + L_central);
+                float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
+                float NDF = DistributionGGX(normal, H, roughness);
+                float G = GeometrySmith(normal, V, L_central, roughness);
+                
+                // Specular part (kS)
+                float3 numerator = NDF * G * F;
+                float denominator = 4.0 * max(dot(normal, V), 0.0f) * NdotL + 0.0001;
+                float3 specular = numerator / denominator;                
+                
+                // Diffuse part (kD)
+                float3 kS = F;
+                float3 kD = (1.0 - kS) * (1.0 - metalness);
+                float3 diffuse = kD / PI;
+                
+                float3 diffuseLightRadiance = light.diffuseColor.rgb* attenuation * NdotL;
+                float3 specularLightRadiance = light.specularColor.rgb * attenuation * NdotL;
+                
+                diffuseTotal += diffuse * diffuseLightRadiance;
+                specularTotal += specular * specularLightRadiance;
+            }
+        }                    
+    }
+    
+    // Reflection Trace
+    if (metalness > 0.1f && roughness < 0.6f)
+    {
+        float2 Xi = float2(nextRand(seed), nextRand(seed));
+        float3 H = ImportanceSampleGGX(Xi, normal, roughness);
+        float3 R = reflect(-V, H);
+        
+        if (dot(normal, R) > 0.0f)
+        {            
+            float distToCamera = length(viewPos - worldPos);
+            float bias = 0.01f + (distToCamera * 0.001f);
+            RayDesc ray;
+            ray.Origin = worldPos + normal * bias;
+            ray.Direction = R;
+            ray.TMin = 0.0f;
+            ray.TMax = 1000.0f;
+            RayPayload payload = { float4(0, 0, 0, 0) };
+        
+            TraceRay(gScene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
+        
+            float3 F = FresnelSchlick(max(dot(normal, V), 0.0f), F0);
+            specularTotal += payload.color.rgb * F;
+        }       
+    }
+    
+    gOutDiffuse[pixel] = float4(diffuseTotal, 1.0);
+    gOutSpecular[pixel] = float4(specularTotal, 1.0);
+    //gOutAlbedo[pixel] = float4(albedo, 1.0);
+    //gOutNormal[pixel] = float4(normalize(normal) * 0.5 + 0.5, 1.0);    
 }
 
 // --- CLOSEST HIT ---
 [shader("closesthit")]
 void ClosestHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
-    // Hardware gives us the Primitive Index (Triangle ID)
+    // 1. Fetch Geometry & UVs
     uint triangleIndex = PrimitiveIndex();
-    
-    // Calculate UVs manually
-    float2 uv = GetHitUV(triangleIndex, attr.barycentrics);
+    VertexAttributes vert = GetVertexAttributes(triangleIndex, attr.barycentrics);
 
-    float3 color = gAlbedoMap.SampleLevel(gSampler, uv, 0).rgb;
-    payload.color = float4(color, 1.0);
+    // 2. Sample LOCAL Textures (Space 1)
+    float4 albedoSample = gAlbedoMap.SampleLevel(gSampler, vert.uv, 0);
+    float3 albedo = albedoSample.rgb;
+    
+    // Check packed textures (Standard glTF: Metal=Blue, Rough=Green)
+    float metalness = gMetalnessMap.SampleLevel(gSampler, vert.uv, 0).b;
+    float roughness = gRoughnessMap.SampleLevel(gSampler, vert.uv, 0).g;
+
+    // 3. Calculate Normal (TBN Basis)
+    float3 N = normalize(vert.normal);
+    float3 T = normalize(vert.tangent.xyz);
+    T = normalize(T - dot(T, N) * N); // Gram-Schmidt re-orthogonalization
+    float3 B = cross(N, T) * vert.tangent.w;
+    float3x3 TBN = float3x3(T, B, N);
+
+    float3 normalMap = gNormalMap.SampleLevel(gSampler, vert.uv, 0).rgb;
+    float3 tangentNormal = normalMap * 2.0 - 1.0;
+    float3 worldNormal = normalize(mul(tangentNormal, TBN));
+
+    // 4. Lighting Setup
+    float3 hitPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    float3 V = -WorldRayDirection();
+    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
+    float3 Lo = float3(0, 0, 0);
+
+    // 5. Light Loop (Using Global gLights from Space 0)
+    for (int i = 0; i < numLights; ++i)
+    {
+        Light light = gLights[i];
+        float3 L;
+        float attenuation = 1.0;
+
+        if (light.dirType.w > 0.5f)
+        { // Directional
+            L = normalize(-light.dirType.xyz);
+        }
+        else
+        { // Point
+            float3 toLight = light.position.xyz - hitPos;
+            float dist = length(toLight);
+            L = normalize(toLight);
+            attenuation = 1.0 / (1.0 + 0.1 * dist + 0.01 * dist * dist);
+        }
+
+        float NdotL = max(dot(worldNormal, L), 0.0);
+        
+        if (NdotL > 0.0)
+        {
+            float3 H = normalize(V + L);
+            float NDF = DistributionGGX(worldNormal, H, roughness);
+            float G = GeometrySmith(worldNormal, V, L, roughness);
+            float3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+            float3 kS = F;
+            float3 kD = (1.0 - kS) * (1.0 - metalness);
+
+            float3 diffuse = (kD * albedo) / PI;
+            float3 specular = (NDF * G * F) / (4.0 * max(dot(worldNormal, V), 0.0) * NdotL + 0.001);
+
+            Lo += (diffuse + specular) * light.diffuseColor.rgb * attenuation * NdotL;
+        }
+    }
+
+    // 6. Add Emissive (Using LOCAL texture, not G-Buffer)
+    float3 emissive = gEmissiveMap.SampleLevel(gSampler, vert.uv, 0).rgb;
+    
+    payload.color = float4(Lo + emissive, 1.0);
 }
 
 // --- ANY HIT (Alpha Test) ---
@@ -165,4 +413,10 @@ void Miss(inout RayPayload payload)
     float3 sky = lerp(float3(0.3, 0.3, 0.3), float3(0.5, 0.7, 1.0), t);
     
     payload.color = float4(sky, 1.0);
+}
+
+[shader("miss")]
+void ShadowMiss(inout ShadowPayload payload)
+{
+    payload.isVisible = true;
 }

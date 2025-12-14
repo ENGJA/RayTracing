@@ -63,7 +63,7 @@ void D3D12RootSignature::InitializeComputeRS(ID3D12Device* pDevice)
 
 	// Range 2: Output Texture (UAV) -> u0
 	CD3DX12_DESCRIPTOR_RANGE1 outputUavRange;
-	outputUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	outputUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
 	// --- 2. Define Parameters ---
 	CD3DX12_ROOT_PARAMETER1 computeParams[5]{};
@@ -100,7 +100,7 @@ void D3D12RootSignature::InitializeComputeRS(ID3D12Device* pDevice)
 void D3D12RootSignature::InitializeCompositeRS(ID3D12Device* pDevice)
 {
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[4]{};
-	// Range 0: Direct Lighting Texture (t0) - 1 Descriptor
+	// Range 0: Diffuse Lighting Texture (t0) - 1 Descriptor
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 	// Range 1: Reflection Texture (t1) - 1 Descriptor
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
