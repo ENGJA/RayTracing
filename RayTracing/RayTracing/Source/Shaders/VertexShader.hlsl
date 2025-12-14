@@ -49,6 +49,7 @@ cbuffer MaterialData : register(b1)
     float4 gEmissiveFactor      : packoffset(c2);
 };
 
+
 VSOutput main(VSInput input)
 {
     VSOutput output;

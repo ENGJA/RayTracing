@@ -39,6 +39,14 @@ public:
 	 * @brief Presents the current back buffer.
 	 */
 	void Present();
+	
+	/**
+	 * @brief Resizes the swap chain buffers and recreates RTVs.
+	 * @param width New width.
+	 * @param height New height.
+	 */
+	void Resize(UINT width, UINT height);
+	
 	/**
 	 * @brief Index of the current back buffer.
 	 */

@@ -3,92 +3,105 @@
 #include <Windows.h>
 #include <DirectXMath.h>
 
-class InputManager;
+/**
+ * @brief Camera type enumeration.
+ */
+enum class CameraType
+{
+    Fixed,  ///< Static camera with predefined view matrix
+    Free    ///< Controllable camera with position and orientation
+};
+
+/**
+ * @brief Camera parameters for initialization.
+ */
+struct CameraParams
+{
+    // Common parameters
+    float fovY = 1.2217304764f;      ///< Vertical field of view in radians
+    float aspect = 16.0f / 9.0f;     ///< Aspect ratio (width / height)
+    float nearZ = 0.1f;              ///< Near clipping plane
+    float farZ = 50.0f;              ///< Far clipping plane
+
+    // Free camera parameters
+    DirectX::XMFLOAT3 position{ 0.0f, 1.0f, -3.0f }; ///< Initial position
+    float yaw = 0.0f;                ///< Initial yaw angle in radians
+    float pitch = 0.0f;              ///< Initial pitch angle in radians
+
+    // Fixed camera parameters
+    DirectX::XMFLOAT3 lookFrom{ 0.0f, 0.0f, 0.0f };  ///< Camera position (for fixed)
+    DirectX::XMFLOAT3 lookAt{ 0.0f, 0.0f, 1.0f };    ///< Look-at point (for fixed)
+    DirectX::XMFLOAT3 up{ 0.0f, 1.0f, 0.0f };        ///< Up vector (for fixed)
+};
 
 /**
  * @brief Simple camera class for computing view and projection matrices.
  *
- * Supports two persistent modes:
- *  - fixed: uses a provided view matrix; no movement applied
- *  - free:  controllable camera (position, yaw/pitch, FOV) driven by input
- *
- * The camera exposes methods to initialize either mode, update free-mode state
- * from input each frame, and retrieve the combined view-projection matrix.
+ * Supports two modes:
+ *  - Fixed: Static camera with predefined view point
+ *  - Free:  Controllable camera driven by input
  */
-
 class Camera
 {
 private:
-    // free-mode parameters
-    DirectX::XMFLOAT3 mPosition{ 8, 5, 0 }; ///< World-space camera position.
-    float mYaw = 0.0f;   ///< Yaw angle (radians) — horizontal rotation around world up.
-    float mPitch = 0.0f; ///< Pitch angle (radians) — vertical tilt (clamped to avoid flip).
-    DirectX::XMFLOAT3 mWorldUp{ 0.0f, 1.0f, 0.0f }; ///< Up vector in world space.
+    CameraType mType = CameraType::Fixed;
+    
+    // Free-mode parameters
+    DirectX::XMFLOAT3 mPosition{ 0.0f, 1.0f, -3.0f };
+    float mYaw = 0.0f;
+    float mPitch = 0.0f;
+    DirectX::XMFLOAT3 mWorldUp{ 0.0f, 1.0f, 0.0f };
 
-    float mFovY = 1.2217304764f; ///< Vertical field of view in radians.
-    float mAspect = 16.0f / 9.0f; ///< Aspect ratio (width / height).
-    float mNearZ = 1.0f; ///< Near clipping plane.
-    float mFarZ = 50.0f; ///< Far clipping plane.
+    // Common parameters
+    float mFovY = 1.2217304764f;
+    float mAspect = 16.0f / 9.0f;
+    float mNearZ = 0.1f;
+    float mFarZ = 50.0f;
 
-    DirectX::XMMATRIX mFixedView{ DirectX::XMMatrixIdentity() }; ///< View matrix used in fixed mode.
-    DirectX::XMMATRIX mProj{ DirectX::XMMatrixIdentity() }; ///< Projection matrix (kept in sync with FOV/aspect).
-
-    bool mUseFixed = true;
+    // Cached matrices
+    DirectX::XMMATRIX mFixedView{ DirectX::XMMatrixIdentity() };
+    DirectX::XMMATRIX mProj{ DirectX::XMMatrixIdentity() };
 
 public:
     Camera() = default;
 
     /**
-    * @brief Initialize camera as fixed using precomputed view and projection matrices.
-    * @param view  Precomputed view matrix (world -> view).
-    * @param proj  Projection matrix (view -> clip).
-    *
-    * Sets the camera to persistent fixed mode. In this mode Update() is a no-op.
-    */
-    void InitializeFixed(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj);
-
-    /**
-     * @brief Initialize camera as free (controllable).
-     * @param pos    Initial world-space position.
-     * @param yaw    Initial yaw angle in radians.
-     * @param pitch  Initial pitch angle in radians.
-     * @param fovY   Vertical field of view in radians.
-     * @param aspect Aspect ratio (width / height).
-     * @param nearZ  Near clipping plane.
-     * @param farZ   Far clipping plane.
-     *
-     * Sets the camera to persistent free mode and initializes projection.
+     * @brief Initialize camera with specified type and parameters.
+     * @param type Camera type (Fixed or Free)
+     * @param params Camera parameters
      */
-    void InitializeFree(DirectX::XMFLOAT3 pos, float yaw, float pitch, float fovY, float aspect, float nearZ, float farZ);
+    void Initialize(CameraType type, const CameraParams& params);
 
     /**
-     * @brief Returns combined view-projection matrix depending on current mode.
-     * @return XMMATRIX = view * proj
-     *
-     * If in fixed mode returns mFixedView * mProj. In free mode computes view
-     * from position and yaw/pitch (using XMMatrixLookToLH) and multiplies by mProj.
+     * @brief Returns combined view-projection matrix.
      */
     DirectX::XMMATRIX GetViewProjection() const;
 
     /**
-    * @brief Returns current camera position.
-	* @return XMFLOAT3 world-space position.
-    */
-	DirectX::XMFLOAT3 GetPosition() const { return mPosition; }
+     * @brief Returns current camera position in world space.
+     */
+    DirectX::XMFLOAT3 GetPosition() const;
 
     /**
      * @brief Returns forward/look direction in world space (normalized).
-     * @return XMFLOAT3 forward vector.
-     *
-     * Uses camera yaw/pitch to compute forward; returns (0,0,1) for fixed-mode fallback.
      */
     DirectX::XMFLOAT3 GetForward() const;
 
-    //
-    // Granular mutation API used by callbacks
-    //
-    void AddYaw(float delta);                 // add yaw (radians)
-    void AddPitch(float delta);               // add pitch (radians) - clamped
-    void MoveLocal(float forward, float right, float up); // move relative to camera orientation
-    void ChangeFov(float delta);              // change fov (radians), clamped
+    /**
+     * @brief Check if camera is in fixed mode.
+     */
+    bool IsFixed() const { return mType == CameraType::Fixed; }
+
+    // Camera manipulation (only for Free camera)
+    void AddYaw(float delta);
+    void AddPitch(float delta);
+    void MoveLocal(float forward, float right, float up);
+    void ChangeFov(float delta);
+
+    /**
+     * @brief Update aspect ratio and rebuild projection matrix.
+     * @param width New render target width.
+     * @param height New render target height.
+     */
+    void OnResize(UINT width, UINT height);
 };
