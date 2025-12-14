@@ -13,8 +13,25 @@
 #include "Renderer.h"
 #include "paths.h"
 
-using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
+#include "nri/NRI.h"
+#include "nri/Extensions/NRIHelper.h"
+#include "nri/Extensions/NRIWrapperD3D12.h"
 
+#include "nrd/NRDIntegration.hpp"
+nrd::Integration NRD = {};
+
+nrd::Resource GetNrdResource(GPUTexture& texture)
+{
+	nrd::Resource resource = {};
+	resource.d3d12.resource = texture.resource.Get();
+	resource.d3d12.format = texture.format;
+	resource.userArg = &texture;
+	//resource.state = state;
+	return resource;
+}
+
+
+using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
 
 /**
 * @brief Maps TextureType enum to descriptor slot index.
@@ -581,7 +598,7 @@ void Renderer::InitializeMotionVectors()
 		DXGI_FORMAT_R16G16_FLOAT, // 2 Channels (X, Y Velocity)
 		mWidth, mHeight,
 		1, 1, 1, 0,
-		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 	);
 
 	// Optimized Clear Value (0 velocity)
@@ -590,7 +607,8 @@ void Renderer::InitializeMotionVectors()
 	clearVal.Color[0] = 0.0f;
 	clearVal.Color[1] = 0.0f;
 
-	mMotionVectorTexture.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &clearVal);
+	mMotionVectorTexture.format = DXGI_FORMAT_R16G16_FLOAT;
+	mMotionVectorTexture.resource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, &clearVal);
 
 	// 2. Create RTV Descriptor Heap (Capacity 1 for MV)
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
@@ -600,7 +618,7 @@ void Renderer::InitializeMotionVectors()
 	mRtvHeap.Initialize(mDevice.Get(), rtvHeapDesc);
 
 	mMotionVectorRtvHandle = mRtvHeap.Get()->GetCPUDescriptorHandleForHeapStart();
-	mDevice.Get()->CreateRenderTargetView(mMotionVectorTexture.Get(), nullptr, mMotionVectorRtvHandle);
+	mDevice.Get()->CreateRenderTargetView(mMotionVectorTexture.resource.Get(), nullptr, mMotionVectorRtvHandle);
 
 	// 3. Create PSO
 	// Compile your new shaders
@@ -638,7 +656,7 @@ void Renderer::InitializeMotionVectors()
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MipLevels = 1;
 
-	mDevice.Get()->CreateShaderResourceView(mMotionVectorTexture.Get(), &srvDesc, mMotionVectorSrvCpuHandle);
+	mDevice.Get()->CreateShaderResourceView(mMotionVectorTexture.resource.Get(), &srvDesc, mMotionVectorSrvCpuHandle);
 }
 
 void Renderer::RenderMotionVectors()
@@ -646,7 +664,7 @@ void Renderer::RenderMotionVectors()
 	// 1. Transition Motion Vector Texture
 	D3D12_RESOURCE_BARRIER barriers[2]{};
 	barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mMotionVectorTexture.Get(),
+		mMotionVectorTexture.resource.Get(),
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, // Or SRV if coming from prev frame
 		D3D12_RESOURCE_STATE_RENDER_TARGET
 	);
@@ -682,7 +700,7 @@ void Renderer::RenderMotionVectors()
 
 	// MV Texture: RT -> SRV (Ready for Denoising Shader to read)
 	cleanupBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mMotionVectorTexture.Get(),
+		mMotionVectorTexture.resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
 	);
@@ -815,59 +833,41 @@ void Renderer::CreateNrdRootSignature(const nrd::PipelineDesc& pipeDesc, uint32_
 
 void Renderer::InitializeNRD()
 {
-	// 1. Setup Denoiser Descriptor
-	// In NRD 4, you define a list of denoisers (methods) to include in the instance.
-	nrd::DenoiserDesc denoiserDesc = {};
-	denoiserDesc.identifier = 0; // Unique ID for this denoiser (you use this in GetComputeDispatches)
-	denoiserDesc.denoiser = nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR; // Choose denoiser type
+	static auto queue = mCommandQueue.Get();
+	nri::QueueFamilyD3D12Desc queueFamilyDesc = {};
+	queueFamilyDesc.d3d12Queues = static_cast<ID3D12CommandQueue* const*>(&queue);
+	queueFamilyDesc.queueType = nri::QueueType::GRAPHICS;
 
-	// Note: In NRD v4.4+, renderWidth/Height were removed from creation. 
-	// Resolution is now handled strictly via CommonSettings per-frame.
-	// If you are on NRD v4.0-v4.3, uncomment these:
-	// denoiserDesc.renderWidth = mWidth;
-	// denoiserDesc.renderHeight = mHeight;
+	nri::DeviceCreationD3D12Desc deviceDesc = {};
+	deviceDesc.d3d12Device = mDevice.Get();
+	deviceDesc.queueFamilyNum = 1;
+	deviceDesc.queueFamilies = &queueFamilyDesc;
 
+	const nrd::DenoiserDesc denoserDesc =
+	{
+		0, // Unique identifier
+		nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR,
+	};
 
-	// 2. Setup Instance Descriptor
 	nrd::InstanceCreationDesc instanceDesc = {};
-	instanceDesc.denoisers = &denoiserDesc;
+	instanceDesc.denoisers = &denoserDesc;
 	instanceDesc.denoisersNum = 1;
 
-	// 3. Create Instance
-	if (nrd::CreateInstance(instanceDesc, mNrdInstance) != nrd::Result::SUCCESS)
-	{
-		throw std::runtime_error("Failed to create NRD Instance");
-	}
+	nrd::IntegrationCreationDesc integrationDesc = {};
+	integrationDesc.queuedFrameNum = Config::cBufferCount;
+	integrationDesc.autoWaitForIdle = true;
+	integrationDesc.enableWholeLifetimeDescriptorCaching = false; // Disable for simplicity
+	integrationDesc.resourceHeight = mHeight;
+	integrationDesc.resourceWidth = mWidth;
 
-	// 4. Create PSOs (The logic remains similar, but using the Instance)
-	// GetInstanceDesc returns the description of all pipelines needed for the instance.
-	const nrd::InstanceDesc* desc = nrd::GetInstanceDesc(*mNrdInstance);
+	nrd::Result result = NRD.RecreateD3D12(integrationDesc, instanceDesc, deviceDesc);
 
-	// Resize vectors to hold PSOs and Signatures
-	mNrdPipelines.resize(desc->pipelinesNum);
-	mNrdRootSignatures.resize(desc->pipelinesNum);
 
-	for (uint32_t i = 0; i < desc->pipelinesNum; ++i)
-	{
-		const nrd::PipelineDesc& pipeDesc = desc->pipelines[i];
-
-		// A. Create Root Signature (Use the helper from previous step)
-		CreateNrdRootSignature(pipeDesc, i);
-
-		// B. Create Compute PSO
-		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-		psoDesc.pRootSignature = mNrdRootSignatures[i].Get();
-		psoDesc.CS = { pipeDesc.computeShaderDXIL.bytecode, pipeDesc.computeShaderDXIL.size };
-
-		if (FAILED(mDevice.Get()->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&mNrdPipelines[i]))))
-		{
-			throw std::runtime_error("Failed to create NRD PSO");
-		}
-	}
 }
 
 void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMFLOAT3& camPos)
 {
+	NRD.NewFrame();
 	// =========================================================
 	// 1. FILL COMMON SETTINGS
 	// =========================================================
@@ -924,109 +924,57 @@ void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMA
 	common.motionVectorScale[1] = 1.0f;
 	common.motionVectorScale[2] = 0.0f;  // 2D motion vectors
 
-	common.frameIndex = mFrameCount;
+	common.frameIndex = mNrdFrameIndex++;
 	common.accumulationMode = nrd::AccumulationMode::CONTINUE;
+	
+
 	
 	common.splitScreen = 0.0f;
 
-	nrd::SetCommonSettings(*mNrdInstance, common);
+	NRD.SetCommonSettings(common);
 
-	// =========================================================
-	// 2. GET DISPATCHES
-	// =========================================================
-	const nrd::DispatchDesc* dispatches = nullptr;
-	uint32_t dispatchCount = 0;
-	const nrd::Identifier denoisers[] = { 0 }; // The ID we set in InitializeNRD (0)
-
-	nrd::GetComputeDispatches(*mNrdInstance, denoisers, 1, dispatches, dispatchCount);
-
-	// =========================================================
-	// 3. EXECUTE DISPATCHES
-	// =========================================================
-	const nrd::InstanceDesc* instanceDesc = nrd::GetInstanceDesc(*mNrdInstance);
-	ID3D12DescriptorHeap* heaps[] = { mFrameHeap.Get() };
-	mCommandList.Get()->SetDescriptorHeaps(1, heaps);
-
-	for (uint32_t i = 0; i < dispatchCount; ++i)
+	nrd::ResourceSnapshot resourceSnapshot = {};
 	{
-		const nrd::DispatchDesc& d = dispatches[i];
-		const nrd::PipelineDesc& pipeDesc = instanceDesc->pipelines[d.pipelineIndex];
+		resourceSnapshot.restoreInitialState = true; // for simplicity
 
-		mCommandList.Get()->SetPipelineState(mNrdPipelines[d.pipelineIndex].Get());
-		mCommandList.Get()->SetComputeRootSignature(mNrdRootSignatures[d.pipelineIndex].Get());
+		resourceSnapshot.SetResource(
+			nrd::ResourceType::IN_MV,
+			GetNrdResource(mMotionVectorTexture)
+		);
+		resourceSnapshot.SetResource(
+			nrd::ResourceType::IN_NORMAL_ROUGHNESS,
+			GetNrdResource(mNormalRoughnessTex)
+		);
 
-		// A. Bind Constants (Descriptor Table at Space 1)
-		// We set up the Root Signature to expect a CBV Range at Space 1.
-		if (d.constantBufferDataSize > 0)
-		{
-			// 1. Upload Data
-			auto cbAlloc = mUploadHeap.Allocate(d.constantBufferDataSize);
-			memcpy(cbAlloc.cpuPtr, d.constantBufferData, d.constantBufferDataSize);
+		resourceSnapshot.SetResource(
+			nrd::ResourceType::IN_VIEWZ,
+			GetNrdResource(mViewZTex)
+		);
 
-			// 2. Allocate Descriptor
-			auto cbvSlot = mFrameHeap.Allocate(1);
+		resourceSnapshot.SetResource(
+			nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST,
+			GetNrdResource(mRtDiffuseTex)
+		);
+		resourceSnapshot.SetResource(
+			nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST,
+			GetNrdResource(mRtSpecularTex)
+		);
 
-			// 3. Create CBV
-			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-			cbvDesc.BufferLocation = mUploadHeap.GetResource()->GetGPUVirtualAddress() + cbAlloc.offset;
-			cbvDesc.SizeInBytes = (d.constantBufferDataSize + 255) & ~255;
-			mDevice.Get()->CreateConstantBufferView(&cbvDesc, cbvSlot.cpuHandle);
-
-			// 4. Bind Table (Last Parameter)
-			mCommandList.Get()->SetComputeRootDescriptorTable(pipeDesc.resourceRangesNum, cbvSlot.gpuHandle);
-		}
-
-		uint32_t resourceCursor = 0;
-
-		// B. Bind Resources (SRV/UAV Tables)
-		for (uint32_t r = 0; r < pipeDesc.resourceRangesNum; ++r)
-		{
-			const nrd::ResourceRangeDesc& range = pipeDesc.resourceRanges[r];
-			auto tableAlloc = mFrameHeap.Allocate(range.descriptorsNum);
-
-			UINT handleSize = mFrameHeap.GetIncrementSize();
-
-			for (uint32_t dIndex = 0; dIndex < range.descriptorsNum; ++dIndex)
-			{
-				const nrd::ResourceDesc& resDesc = d.resources[resourceCursor++];
-				nrd::ResourceType type = resDesc.type;
-				D3D12_CPU_DESCRIPTOR_HANDLE src = { 0 };
-
-				// --- MAP INPUTS ---
-				if (type == nrd::ResourceType::IN_MV) src = mMotionVectorSrvCpuHandle;
-				else if (type == nrd::ResourceType::IN_NORMAL_ROUGHNESS) src = mNormalRoughnessSrvCpuHandle;
-				else if (type == nrd::ResourceType::IN_VIEWZ) src = mViewZSrvCpuHandle;
-
-				// Split Radiance Inputs
-				else if (type == nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST) src = mRtDiffuseSrvCpuHandle;
-				else if (type == nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST) src = mRtSpecularSrvCpuHandle;
-
-				// --- MAP OUTPUTS ---
-				else if (type == nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST) src = mDenoisedDiffuseUavCpuHandle;
-				else if (type == nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST) src = mDenoisedSpecularUavCpuHandle;
-
-				// --- MAP POOLS (Scratch Memory) ---
-				else if (type == nrd::ResourceType::TRANSIENT_POOL || type == nrd::ResourceType::PERMANENT_POOL)
-				{
-					// Check if the range expects a UAV (Storage) or SRV (Texture)
-					bool isUAV = (range.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE);
-
-					// Use indexInPool from the ResourceDesc!
-					NrdPoolEntry& entry = GetNrdPoolEntry(resDesc.indexInPool, type);
-					src = isUAV ? entry.uavHandle : entry.srvHandle;
-				}
-
-				if (src.ptr != 0)
-				{
-					D3D12_CPU_DESCRIPTOR_HANDLE dst = tableAlloc.GetCpuHandle(dIndex, handleSize);
-					mDevice.Get()->CopyDescriptorsSimple(1, dst, src, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-				}
-			}
-			mCommandList.Get()->SetComputeRootDescriptorTable(r, tableAlloc.gpuHandle);
-		}
-
-		mCommandList.Get()->Dispatch(d.gridWidth, d.gridHeight, 1);
+		resourceSnapshot.SetResource(
+			nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST,
+			GetNrdResource(mDenoisedDiffuseTex)
+		);
+		resourceSnapshot.SetResource(
+			nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST,
+			GetNrdResource(mDenoisedSpecularTex)
+		);
 	}
+
+	nri::CommandBufferD3D12Desc cmdBufferDesc = {};
+	cmdBufferDesc.d3d12CommandList = mCommandList.Get();
+	const nrd::Identifier denoiserId = 0; // The ID we set in InitializeNRD (0)
+	NRD.DenoiseD3D12(&denoiserId, 1, cmdBufferDesc, resourceSnapshot);
+
 
 	// =========================================================
 	// 4. RESTORE STATES
@@ -1036,22 +984,22 @@ void Renderer::DenoiseWithNRD(const DirectX::XMMATRIX& view, const DirectX::XMMA
 	D3D12_RESOURCE_BARRIER cleanupBarriers[] =
 	{
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mRtDiffuseResource.Get(),
+			mRtDiffuseTex.resource.Get(),
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS
 			),
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mRtSpecularResource.Get(),
+			mRtSpecularTex.resource.Get(),
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS
 			),
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mNormalRoughnessTex.Get(),
+			mNormalRoughnessTex.resource.Get(),
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS
 			),
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mViewZTex.Get(),
+			mViewZTex.resource.Get(),
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS
 			)
@@ -1190,8 +1138,8 @@ void Renderer::DispatchComposite()
 	// BackBuffer: PRESENT -> UAV (for Composite Write)
 	D3D12_RESOURCE_BARRIER barriers[] =
 	{
-		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedDiffuse.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedSpecular.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedDiffuseTex.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedSpecularTex.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
 		//CD3DX12_RESOURCE_BARRIER::Transition(mFinalColorOutput.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 
 	};
@@ -1239,8 +1187,8 @@ void Renderer::DispatchComposite()
 		// BackBuffer: Copy Dest -> Present
 		CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT),
 		// Inputs: SRV -> UAV (for next frame)
-		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedDiffuse.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedSpecular.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedDiffuseTex.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+		CD3DX12_RESOURCE_BARRIER::Transition(mDenoisedSpecularTex.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 		// Intermediate: Copy Source -> Common (Ready for next frame)
 		CD3DX12_RESOURCE_BARRIER::Transition(mFinalColorOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 	};
@@ -1258,14 +1206,16 @@ void Renderer::CreateUAV(ID3D12Resource* pResource, DXGI_FORMAT format, D3D12_CP
 void Renderer::CreateRayTracingOutput()
 {
 	constexpr DXGI_FORMAT rtOutputFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	constexpr DXGI_FORMAT normalRoughnessFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
 	// 1. Diffuse Radiance (Was mRtOutputResource)
 	// Needs R16G16B16A16_FLOAT for Radiance + HitDist
 	{
 		D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
 			DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0,
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-		mRtDiffuseResource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		mRtDiffuseResource.Get()->SetName(L"RT Diffuse Output");
+		mRtDiffuseTex.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		mRtDiffuseTex.resource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		mRtDiffuseTex.resource.Get()->SetName(L"RT Diffuse Output");
 	}
 
 	// 2. Specular Radiance (NEW)
@@ -1273,15 +1223,16 @@ void Renderer::CreateRayTracingOutput()
 		D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
 			DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0,
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-		mRtSpecularResource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		mRtSpecularResource.Get()->SetName(L"RT Specular Output");
+		mRtSpecularTex.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		mRtSpecularTex.resource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		mRtSpecularTex.resource.Get()->SetName(L"RT Specular Output");
 	}
 
 	// 3. Normal + Roughness (u1)
 	// NRD recommends high precision for Normals. R10G10B10A2 or R16G16B16A16_FLOAT.
 	{
 		D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
-			DXGI_FORMAT_R16G16B16A16_FLOAT,
+			normalRoughnessFormat,
 			mWidth,
 			mHeight,
 			1, // array size
@@ -1291,8 +1242,9 @@ void Renderer::CreateRayTracingOutput()
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 		);
 
-		mNormalRoughnessTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		mNormalRoughnessTex.Get()->SetName(L"Normal + Roughness Texture");
+		mNormalRoughnessTex.format = normalRoughnessFormat;
+		mNormalRoughnessTex.resource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		mNormalRoughnessTex.resource.Get()->SetName(L"Normal + Roughness Texture");
 	}
 
 	// 4. ViewZ (u2) - MUST be FLOAT format (R32_FLOAT)
@@ -1307,8 +1259,9 @@ void Renderer::CreateRayTracingOutput()
 			0, // sample quality
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 		);
-		mViewZTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		mViewZTex.Get()->SetName(L"ViewZ Texture");
+		mViewZTex.format = DXGI_FORMAT_R32_FLOAT;
+		mViewZTex.resource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		mViewZTex.resource.Get()->SetName(L"ViewZ Texture");
 	}
 
 	// 5. Albedo Texture (u3) 
@@ -1339,8 +1292,9 @@ void Renderer::CreateRayTracingOutput()
 			0, // sample quality
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 		);
-		mDenoisedDiffuse.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		mDenoisedDiffuse.Get()->SetName(L"Denoised Diffuse Texture");
+		mDenoisedDiffuseTex.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		mDenoisedDiffuseTex.resource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		mDenoisedDiffuseTex.resource.Get()->SetName(L"Denoised Diffuse Texture");
 	}
 
 	// 7. Denoised Specular Output (NRD)
@@ -1355,8 +1309,9 @@ void Renderer::CreateRayTracingOutput()
 			0, // sample quality
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 		);
-		mDenoisedSpecular.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		mDenoisedSpecular.Get()->SetName(L"Denoised Specular Texture");
+		mDenoisedSpecularTex.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		mDenoisedSpecularTex.resource.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		mDenoisedSpecularTex.resource.Get()->SetName(L"Denoised Specular Texture");
 	}
 
 	// 8. Final Composite Output
@@ -1382,13 +1337,13 @@ void Renderer::CreateRayTracingOutput()
 
 	//  Create UAVs
 	// Slot 0: Diffuse
-	CreateUAV(mRtDiffuseResource.Get(), rtOutputFormat, uavTable.GetCpuHandle(0, inc));
+	CreateUAV(mRtDiffuseTex.resource.Get(), rtOutputFormat, uavTable.GetCpuHandle(0, inc));
 	// Slot 1: Specular
-	CreateUAV(mRtSpecularResource.Get(), rtOutputFormat, uavTable.GetCpuHandle(1, inc));
+	CreateUAV(mRtSpecularTex.resource.Get(), rtOutputFormat, uavTable.GetCpuHandle(1, inc));
 	// Slot 2: Normal/Roughness
-	CreateUAV(mNormalRoughnessTex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, uavTable.GetCpuHandle(2, inc));
+	CreateUAV(mNormalRoughnessTex.resource.Get(), normalRoughnessFormat, uavTable.GetCpuHandle(2, inc));
 	// Slot 3: ViewZ
-	CreateUAV(mViewZTex.Get(), DXGI_FORMAT_R32_FLOAT, uavTable.GetCpuHandle(3, inc));
+	CreateUAV(mViewZTex.resource.Get(), DXGI_FORMAT_R32_FLOAT, uavTable.GetCpuHandle(3, inc));
 	// Slot 4: Albedo
 	CreateUAV(mAlbedoTex.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, uavTable.GetCpuHandle(4, inc));
 
@@ -1399,29 +1354,29 @@ void Renderer::CreateRayTracingOutput()
 	// NRD Input SRVs
 	// 1. Diffuse Radiance + HitDist
 	mRtDiffuseSrvCpuHandle = srvTable.GetCpuHandle(0, inc);
-	CreateTextureView(mRtDiffuseResource.Get(), rtOutputFormat, mRtDiffuseSrvCpuHandle, 1);
+	CreateTextureView(mRtDiffuseTex.resource.Get(), rtOutputFormat, mRtDiffuseSrvCpuHandle, 1);
 
 	// 2. Specular Radiance + HitDist
 	mRtSpecularSrvCpuHandle = srvTable.GetCpuHandle(1, inc);
-	CreateTextureView(mRtSpecularResource.Get(), rtOutputFormat, mRtSpecularSrvCpuHandle, 1);
+	CreateTextureView(mRtSpecularTex.resource.Get(), rtOutputFormat, mRtSpecularSrvCpuHandle, 1);
 
 	// 2. Normal + Roughness
 	mNormalRoughnessSrvCpuHandle = srvTable.GetCpuHandle(2, inc);
-	CreateTextureView(mNormalRoughnessTex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mNormalRoughnessSrvCpuHandle, 1);
+	CreateTextureView(mNormalRoughnessTex.resource.Get(), normalRoughnessFormat, mNormalRoughnessSrvCpuHandle, 1);
 
 	// 3. ViewZ
 	mViewZSrvCpuHandle = srvTable.GetCpuHandle(3, inc);
-	CreateTextureView(mViewZTex.Get(), DXGI_FORMAT_R32_FLOAT, mViewZSrvCpuHandle, 1);
+	CreateTextureView(mViewZTex.resource.Get(), DXGI_FORMAT_R32_FLOAT, mViewZSrvCpuHandle, 1);
 
 
 	// Composite Inputs (Denoised SRVs)
 	// 4. Denoised Diffuse
 	mDenoisedDiffuseSrvCpuHandle = srvTable.GetCpuHandle(4, inc);
-	CreateTextureView(mDenoisedDiffuse.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedDiffuseSrvCpuHandle, 1);
+	CreateTextureView(mDenoisedDiffuseTex.resource.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedDiffuseSrvCpuHandle, 1);
 
 	// 5. Denoised Specular
 	mDenoisedSpecularSrvCpuHandle = srvTable.GetCpuHandle(5, inc);
-	CreateTextureView(mDenoisedSpecular.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedSpecularSrvCpuHandle, 1);
+	CreateTextureView(mDenoisedSpecularTex.resource.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedSpecularSrvCpuHandle, 1);
 
 	// 6. Albedo
 	mAlbedoSrvCpuHandle = srvTable.GetCpuHandle(6, inc);
@@ -1431,11 +1386,11 @@ void Renderer::CreateRayTracingOutput()
 	auto nrdOutAlloc = mCpuHeap.Allocate(2);
 	// 1. Denoised Diffuse
 	mDenoisedDiffuseUavCpuHandle = nrdOutAlloc.GetCpuHandle(0, inc);
-	CreateUAV(mDenoisedDiffuse.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedDiffuseUavCpuHandle);
+	CreateUAV(mDenoisedDiffuseTex.resource.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedDiffuseUavCpuHandle);
 
 	// 2. Denoised Specular
 	mDenoisedSpecularUavCpuHandle = nrdOutAlloc.GetCpuHandle(1, inc);
-	CreateUAV(mDenoisedSpecular.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedSpecularUavCpuHandle);
+	CreateUAV(mDenoisedSpecularTex.resource.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mDenoisedSpecularUavCpuHandle);
 }
 
 void Renderer::CreateRayTracingPipeline()
@@ -1750,22 +1705,22 @@ void Renderer::RenderRayTracing(const DirectX::XMMATRIX& viewProj, const DirectX
 	D3D12_RESOURCE_BARRIER postRtBarriers[] =
 	{
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mRtDiffuseResource.Get(),
+			mRtDiffuseTex.resource.Get(),
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
 		),
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mRtSpecularResource.Get(),
+			mRtSpecularTex.resource.Get(),
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
 		),
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mNormalRoughnessTex.Get(),
+			mNormalRoughnessTex.resource.Get(),
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
 		),
 		CD3DX12_RESOURCE_BARRIER::Transition(
-			mViewZTex.Get(),
+			mViewZTex.resource.Get(),
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
 		)

@@ -154,7 +154,7 @@ private:
 	// END DENOISING
 
 	// MOTION VECTORS
-	D3D12Resource mMotionVectorTexture; ///< Motion vector texture.
+	GPUTexture mMotionVectorTexture; ///< Motion vector texture.
 	D3D12PipelineState mMotionVectorPipelineState; ///< Motion vector pipeline state.
 
 	D3D12DescriptorHeap mRtvHeap; ///< RTV heap for motion vector texture.
@@ -168,8 +168,8 @@ private:
 	// END MOTION VECTORS
 
 	// NRD
-	D3D12Resource mNormalRoughnessTex;
-	D3D12Resource mViewZTex;
+	GPUTexture mNormalRoughnessTex;
+	GPUTexture mViewZTex;
 
 	nrd::Instance* mNrdInstance = nullptr;
 	nrd::Denoiser* mNrdDenoiser = nullptr;
@@ -184,6 +184,8 @@ private:
 
 	DescriptorHeap mCpuHeap;
 	DescriptorHeap mFrameHeap;
+
+	uint32_t mNrdFrameIndex = 0;
 
 	// Transient Texture Pool (Required by NRD)
 	struct NrdPoolEntry
@@ -207,10 +209,10 @@ private:
 	D3D12Resource mAlbedoTex;
 
 	// Resources for Outputs
-	D3D12Resource mRtDiffuseResource; 
-	D3D12Resource mRtSpecularResource; 
-	D3D12Resource mDenoisedDiffuse;    // (UAV output from NRD)
-	D3D12Resource mDenoisedSpecular;   // (UAV output from NRD)
+	GPUTexture mRtDiffuseTex; 
+	GPUTexture mRtSpecularTex; 
+	GPUTexture mDenoisedDiffuseTex;    // (UAV output from NRD)
+	GPUTexture mDenoisedSpecularTex;   // (UAV output from NRD)
 
 	D3D12Resource mFinalColorOutput;   // Final composited output
 
