@@ -24,7 +24,7 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
      lib->SetDXILLibrary(&shaderBytecode);
     lib->DefineExport(L"RayGen");
     lib->DefineExport(L"Miss");
-    //lib->DefineExport(L"ShadowMiss");
+    lib->DefineExport(L"ShadowMiss");
     lib->DefineExport(L"ClosestHit");
     lib->DefineExport(L"AnyHit"); // For Alpha Test
 
@@ -72,7 +72,7 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::vector<Mesh
     recordSize = (recordSize + 31) & ~31; // Align to 32 bytes
 
     mRayGenSectionSize = recordSize;    // 1 RayGen shader
-    mMissSectionSize = recordSize * 1;  // 2 Miss shaders (Color + Shadow)
+    mMissSectionSize = recordSize * 2;  // 2 Miss shaders (Color + Shadow)
     mHitGroupSectionSize = recordSize * static_cast<UINT>(meshes.size()); // 1 HitGroup per mesh
 
     // Total Size: 1 RayGen + 2 Miss (Color/Shadow) + N HitGroups (one per mesh)
@@ -97,11 +97,11 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::vector<Mesh
 
     // 2. Write Miss
     memcpy(pData, props->GetShaderIdentifier(L"Miss"), shaderIDSize);
-    pData += mMissSectionSize;
+    pData += mMissSectionSize / 2;
 
     // 3. Write Shadow Miss
-    //memcpy(pData, props->GetShaderIdentifier(L"ShadowMiss"), shaderIDSize);
-    //pData += mMissSectionSize;
+    memcpy(pData, props->GetShaderIdentifier(L"ShadowMiss"), shaderIDSize);
+    pData += mMissSectionSize / 2;
 
     // 4. Write Hit Groups (Per Mesh)
     void* hitGroupId = props->GetShaderIdentifier(L"HitGroup");
@@ -156,7 +156,7 @@ void RayTracingPipeline::Dispatch(ID3D12GraphicsCommandList4* pCmd, UINT width, 
     // Starts after RayGen. 
     dispatchDesc.MissShaderTable.StartAddress = sbtAddress + mRayGenSectionSize;
     dispatchDesc.MissShaderTable.SizeInBytes = mMissSectionSize;
-    dispatchDesc.MissShaderTable.StrideInBytes = mMissSectionSize;// / 2; // Assuming 2 Miss Shaders (Regular + Shadow), uniform stride
+    dispatchDesc.MissShaderTable.StrideInBytes = mMissSectionSize / 2;// / 2; // Assuming 2 Miss Shaders (Regular + Shadow), uniform stride
 
     // C. Hit Group Table
     // Starts after Miss Table.

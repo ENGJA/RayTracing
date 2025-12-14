@@ -133,10 +133,13 @@ private:
 
 	D3D12Resource mComputeOutputTexture; ///< Output texture for compute shader passes.
 
-	D3D12Resource mDirectLightingTexture; ///< Intermediate texture for direct lighting results.
+	//D3D12Resource mDirectLightingTexture; ///< Intermediate texture for direct lighting results.
 
 	D3D12Resource mGlobalLightBuffer; ///< Structured buffer for global lights.
 
+	D3D12Resource mOutDiffuseTex;
+	D3D12Resource mOutSpecularTex;
+	
 
 	// --- Descriptor Indices (Saved during initialization) ---
 	int mSrvSlot_GBufferAlbedo = -1;
@@ -147,8 +150,8 @@ private:
 
 	int mUavSlot_Output = -1;       // For the Compute Shader Output
 
-	int mUavSlot_DirectLighting = -1;
-	int mSrvSlot_DirectLighting = -1;
+	//int mUavSlot_DirectLighting = -1;
+	//int mSrvSlot_DirectLighting = -1;
 
 	int mSrvSlot_LightBuffer = -1;  // For the StructuredBuffer<Light>
 	int mRtvIndex_ComputeOutput = -1; // For the Compute Shader Output RTV
@@ -165,9 +168,13 @@ private:
 	// Ray tracing pipeline for reflections
 
 	RayTracingPipeline mReflectionsPipeline;
-	D3D12Resource mReflectionTexture;
-	int mUavSlot_Reflection = -1;
-	int mSrvSlot_Reflection = -1;
+	//D3D12Resource mReflectionTexture;
+	int mUavSlot_Diffuse = -1;
+	int mUavSlot_Specular = -1;
+	int mSrvSlot_Diffuse = -1;
+	int mSrvSlot_Specular = -1;
+//	int mUavSlot_Reflection = -1;
+//	int mSrvSlot_Reflection = -1;
 
 	D3D12RootSignature mCompositeRootSignature;
 	D3D12PipelineState mPipelineStateComposite;	

@@ -31,3 +31,43 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
 }
 
+// --- HELPER: PBR Sampling ---
+//float3 GetTangentBasis(float3 N)
+//{
+//    float3 up = abs(N.z) < 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
+//    float3 T = normalize(cross(up, N));
+//    float3 B = cross(N, T);
+//    return float3(T, B, N); // T, B, N basis
+//}
+
+float3 ImportanceSampleGGX(float2 Xi, float3 N, float roughness)
+{
+    float a = roughness * roughness;
+    
+    float phi = 2.0 * PI * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    
+    // Spherical to Cartesian
+    float3 H;
+    H.x = cos(phi) * sinTheta;
+    H.y = sin(phi) * sinTheta;
+    H.z = cosTheta;
+    
+    // Tangent to World Space
+    float3 up = abs(N.z) < 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
+    float3 tangent = normalize(cross(up, N));
+    float3 bitangent = cross(N, tangent);
+    
+    float3 sampleDir = tangent * H.x + bitangent * H.y + N * H.z;
+    return normalize(sampleDir);
+}
+
+struct Light
+{
+    float4 position;
+    float4 dirType; // .xyz = direction (direction of rays), .w = type flag (1 = directional)
+    //float4 color;    // .xyz = color, .w = intensity
+    float4 diffuseColor;
+    float4 specularColor;
+};
