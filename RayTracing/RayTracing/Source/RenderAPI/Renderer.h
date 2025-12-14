@@ -211,6 +211,11 @@ public:
 	void Initialize(HWND hwnd, UINT width, UINT height);
 	
 	/**
+	 * @brief Destructor ensures proper cleanup of GPU resources.
+	 */
+	~Renderer();
+	
+	/**
 	 * @brief Handles window resize by recreating swap chain buffers and depth buffer.
 	 * @param width New client width.
 	 * @param height New client height.
