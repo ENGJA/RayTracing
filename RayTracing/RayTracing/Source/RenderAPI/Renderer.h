@@ -24,6 +24,9 @@ struct AlignedConstantBufferData
 	UINT8 padding[D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - (sizeof(ConstantBufferData) % D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)]{}; // Padding to 256-byte alignment
 };
 
+// Forward declaration
+struct ImGuiContext;
+
 /**
  * @brief State of a GPU texture load operation, including async decode future.
  */
@@ -68,6 +71,7 @@ class Renderer
 {
 private:
 	D3D12Device mDevice; ///< Logical D3D12 device wrapper.
+	Microsoft::WRL::ComPtr<IDXGIAdapter3> mAdapter; ///< DXGI adapter for VRAM queries.
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
 
@@ -188,7 +192,6 @@ private:
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
-	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
 
 	unsigned int mFrameCount = 0;
 
@@ -198,6 +201,12 @@ private:
 
 
 	void InitializeRootSignatures();
+	// ImGui resources
+	ImGuiContext* mImGuiContext = nullptr;
+	DescriptorHeap mImGuiSrvHeap;
+	HWND mHwnd = nullptr;
+
+	D3D12CommandQueue mCommandQueue; ///< Command queue and fence synchronization (destroyed last).
 
 	/**
 	 * @brief Initializes or re-initializes the graphics pipeline state and root signature.
@@ -286,12 +295,98 @@ public:
 	 * @param height Client height.
 	 */
 	void Initialize(HWND hwnd, UINT width, UINT height);
+	
+	/**
+	 * @brief Destructor ensures proper cleanup of GPU resources.
+	 */
+	~Renderer();
+	
+	/**
+	 * @brief Handles window resize by recreating swap chain buffers and depth buffer.
+	 * @param width New client width.
+	 * @param height New client height.
+	 */
+	void OnResize(UINT width, UINT height);
+	
 	/**
 	 * @brief Records and submits commands for one frame and presents.
-	 * @param viewProj View-projection matrix dostarczony z zewn¹trz (CameraManager).
+	 * @param viewProj View-projection matrix provided from external source (CameraManager).
 	 * @param cameraPos Camera world position.
-	 * @param cameraForward Camera forward vector.
+	 * @param cameraForward Camera forward direction.
 	 */
 	void Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
+
+	/**
+	 * @brief Loads a scene from a file path.
+	 * @param path Path to the scene file (e.g., .gltf, .obj).
+	 * @return true if scene loaded successfully, false otherwise.
+	 */
+	bool LoadScene(const std::string& path);
+	
+	/**
+	 * @brief Loads a scene from an already-loaded Model (for async loading).
+	 * @param model Unique pointer to a Model loaded on background thread.
+	 * @return true if scene uploaded successfully, false otherwise.
+	 */
+	bool LoadSceneFromModel(std::unique_ptr<Model> model);
+	
+	/**
+	 * @brief Loads multiple scenes from already-loaded Models.
+	 * Handles memory limits by loading as many models as fit.
+	 * @param models Vector of unique pointers to Models loaded on background thread.
+	 * @return true if at least one scene uploaded successfully, false otherwise.
+	 */
+	bool LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models);
+	
+	/**
+	 * @brief Adds multiple extension scenes to the currently loaded scene.
+	 * Does not unload existing models, only adds new ones.
+	 * @param models Vector of unique pointers to Models loaded on background thread.
+	 * @return true if at least one scene uploaded successfully, false otherwise.
+	 */
+	bool AddExtensionScenes(std::vector<std::unique_ptr<Model>> models);
+	
+	/**
+	 * @brief Unloads the currently loaded scene and frees GPU resources.
+	 */
+	void UnloadScene();
+	
+	/**
+	 * @brief Checks if a scene is currently loaded.
+	 * @return true if scene is loaded, false otherwise.
+	 */
+	bool HasScene() const { return !mModels.empty(); }
+	
+	/**
+	 * @brief Gets the number of loaded models.
+	 * @return Number of models currently loaded.
+	 */
+	size_t GetLoadedModelsCount() const { return mModels.size(); }
+
+	/**
+	 * @brief Initializes ImGui for DirectX 12 rendering.
+	 */
+	void InitializeImGui(HWND hwnd);
+
+	/**
+	 * @brief Cleans up ImGui resources.
+	 */
+	void ShutdownImGui();
+
+	/**
+	 * @brief Begins a new ImGui frame.
+	 */
+	void BeginImGuiFrame();
+
+	/**
+	 * @brief Renders ImGui draw data.
+	 */
+	void RenderImGui();
+
+	/**
+	 * @brief Get the DXGI adapter used by the renderer.
+	 * @return Pointer to IDXGIAdapter3, or nullptr if not available.
+	 */
+	IDXGIAdapter3* GetAdapter() const { return mAdapter.Get(); }
 };
 

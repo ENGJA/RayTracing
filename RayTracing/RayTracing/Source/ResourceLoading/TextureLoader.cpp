@@ -3,6 +3,7 @@
 #include "helpers.h"
 
 using Microsoft::WRL::ComPtr;
+using std::wcout, std::endl;
 
 void TextureLoader::Initialize(ID3D12Device* pDevice, DescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader)
 {
@@ -33,12 +34,34 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
 	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(img.width, img.height, mipLevels);
+	
+	// Calculate required memory
+	UINT64 textureSize = 0;
+	mDevice->GetCopyableFootprints(&desc, 0, 1, 0, nullptr, nullptr, nullptr, &textureSize);
+	
+	// Check if texture is small enough to use small resource placement
+	if (textureSize < 65536)
+	{
+		desc.Alignment = D3D12_SMALL_RESOURCE_PLACEMENT_ALIGNMENT;
+	}
+	
 	GPUTexture gpuTex{};
 	gpuTex.width = img.width;
 	gpuTex.height = img.height;
 	gpuTex.format = desc.Format;
 	gpuTex.mipLevels = mipLevels;
-	gpuTex.resource.Initialize(mDevice, desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
+	
+	try
+	{
+		gpuTex.resource.Initialize(mDevice, desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
+	}
+	catch (const std::exception& e)
+	{
+		// Texture creation failed - likely out of GPU memory
+		wcout << L"Failed to create texture resource (" << img.width << L"x" << img.height 
+		      << L", " << mipLevels << L" mips): " << e.what() << endl;
+		throw std::runtime_error("GPU memory exhausted during texture creation");
+	}
 
 	// Define the layout of the subresource data
 	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};

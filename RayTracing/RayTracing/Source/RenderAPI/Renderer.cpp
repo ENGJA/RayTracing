@@ -13,6 +13,11 @@
 #include "Renderer.h"
 #include "paths.h"
 
+// ImGui includes
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx12.h"
+
 using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
 
 
@@ -173,8 +178,8 @@ void Renderer::UploadMeshes(const function<void()>& executeBatch)
 
 void Renderer::BuildMeshGpuData()
 {
-	mUploadHeap.Reset();
-	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+    mUploadHeap.Reset();
+    mCommandList.ResetCommandList(0); // Use allocator 0 for one-time upload, not swap chain index
 
 	auto executeBatch = [this]()
 		{
@@ -183,10 +188,10 @@ void Renderer::BuildMeshGpuData()
 			mCommandQueue.ExecuteCommandLists(1, lists);
 			mCommandQueue.Flush();
 
-			mUploadHeap.Reset();
-			mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
-			mTextureLoader.Reset();
-		};
+        mUploadHeap.Reset();
+        mCommandList.ResetCommandList(0); // Always use allocator 0 for uploads
+        mTextureLoader.Reset();
+    };
 
 	DispatchTextureDecoding();
 	UploadMeshes(executeBatch);
@@ -270,10 +275,14 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	wcout << "Selected device: " << desc.Description << endl;
 
-	mDevice.Initialize(adapter.Get());
-	mCommandQueue.Initialize(mDevice.Get());
-	mCommandList.Initialize(mDevice.Get());
-	mSwapChain.Initialize(factory.Get(), hwnd, mCommandQueue.Get(), mDevice.Get(), width, height);
+    // Store adapter for VRAM queries
+    mAdapter = adapter;
+
+    mHwnd = hwnd;
+    mDevice.Initialize(adapter.Get());
+    mCommandQueue.Initialize(mDevice.Get());
+    mCommandList.Initialize(mDevice.Get());
+    mSwapChain.Initialize(factory.Get(), hwnd, mCommandQueue.Get(), mDevice.Get(), width, height);
 
 	mDepthBuffer.Initialize(mDevice.Get(), width, height);
 	//D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
@@ -332,7 +341,6 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	mScissorRect.right = static_cast<LONG>(mWidth);
 	mScissorRect.bottom = static_cast<LONG>(mHeight);
 
-
 	// view-projection matrix (will be updated each frame)
 	mConstantBufferData.vpMatrix = DirectX::XMMatrixIdentity();
 
@@ -345,86 +353,318 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 		D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-	//const std::string modelPath = GetResourcePath("Objects\\sponza\\NewSponza_Main_glTF_003.gltf").string();
-	const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\ABeautifulGame\glTF\ABeautifulGame.gltf)";
-	//const std::string modelPath = R"(C:\Users\adria\Source\glTF-Sample-Assets\Models\AlphaBlendModeTest\glTF\AlphaBlendModeTest.gltf)";
-	auto modelA = std::make_unique<Model>();
-
-	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
-	modelA->loadModel(modelPath);
-	std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
-	if (modelA->mMeshes.empty())
-	{
-		vector<::Vertex> cpuVerts = {
-			{ { -1, -1, 0 }, {0,0,1}, {0,1} },
-			{ { -1,  1, 0 }, {0,0,1}, {0,0} },
-			{ {  1,  1, 0 }, {0,0,1}, {1,0} },
-			{ {  1, -1, 0 }, {0,0,1}, {1,1} },
-		};
-		vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
-		modelA->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-	}
-	else
-		wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-
-	mModels.push_back(std::move(modelA));
-
-	//loadStartTime = std::chrono::steady_clock::now();
-	//const std::string modelPathB = GetResourcePath("Objects\\pkg_a_curtains\\NewSponza_Curtains_glTF.gltf").string();
-	//auto modelB = std::make_unique<Model>();
-	//modelB->loadModel(modelPathB);
-	//loadEndTime = std::chrono::steady_clock::now();
-	//loadElapsedSeconds = loadEndTime - loadStartTime;
-	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	//mModels.push_back(std::move(modelB));
-
-	//loadStartTime = std::chrono::steady_clock::now();
-	//const std::string modelPathC = GetResourcePath("Objects\\pkg_b_ivy\\NewSponza_IvyGrowth_glTF.gltf").string();
-	//auto modelC = std::make_unique<Model>();
-	//modelC->loadModel(modelPathC);
-	//loadEndTime = std::chrono::steady_clock::now();
-	//loadElapsedSeconds = loadEndTime - loadStartTime;
-	//wcout << "Model loaded in " << loadElapsedSeconds.count() << " seconds." << endl;
-	//mModels.push_back(std::move(modelC));
-
-
-
-	std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
-	// Build GPU buffers and material descriptor tables
-	BuildMeshGpuData();
-	std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
-	wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
-	// Initialize ray tracing acceleration structures
-	std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
-	InitializeRayTracing();
-	std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
-	std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
-	wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
-
-	// Collect static lights once after models are loaded
-	CollectStaticLights();
+    // Initialize ImGui at the end of initialization
+    InitializeImGui(hwnd);
 
 	// For debugging: recompile shaders on 'G' key press
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 }
 
+Renderer::~Renderer()
+{
+	wcout << L"Renderer destructor: cleaning up GPU resources..." << endl;
+	
+	// Wait for all GPU operations to complete before destroying resources
+	mCommandQueue.Flush();
+	
+	// Shutdown ImGui first (it uses our descriptor heaps)
+	ShutdownImGui();
+	
+	// Unload scene resources (meshes, textures, models)
+	UnloadScene();
+	
+	// Clear all remaining GPU resources
+	// Pipeline states, command lists, etc. will be released by their destructors
+	// but we want to ensure everything is done in the right order
+	
+	wcout << L"Renderer cleanup complete" << endl;
+}
+
+void Renderer::OnResize(UINT width, UINT height)
+{
+	if (width == 0 || height == 0)
+		return; // Ignore invalid sizes (minimized window)
+
+	if (width == mWidth && height == mHeight)
+		return; // No actual resize
+
+	wcout << "Resizing renderer to " << width << "x" << height << endl;
+
+	// Wait for GPU to complete all work
+	mCommandQueue.Flush();
+
+	// Update dimensions
+	mWidth = width;
+	mHeight = height;
+
+	// Resize swap chain buffers
+	mSwapChain.Resize(width, height);
+
+	// Recreate depth buffer with new dimensions
+	mDepthBuffer.Initialize(mDevice.Get(), width, height);
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
+	dsvDesc.Format = Config::cDepthBufferFormat;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+
+	mDevice.Get()->CreateDepthStencilView(
+		mDepthBuffer.GetResource(),
+		&dsvDesc,
+		mDepthBuffer.GetDSVHandle()
+	);
+
+	// Update viewport
+	mViewport.TopLeftX = 0.0f;
+	mViewport.TopLeftY = 0.0f;
+	mViewport.Width = static_cast<FLOAT>(width);
+	mViewport.Height = static_cast<FLOAT>(height);
+	mViewport.MinDepth = 0.0f;
+	mViewport.MaxDepth = 1.0f;
+
+	// Update scissor rect
+	mScissorRect.left = 0;
+	mScissorRect.top = 0;
+	mScissorRect.right = static_cast<LONG>(width);
+	mScissorRect.bottom = static_cast<LONG>(height);
+
+	wcout << "Resize complete!" << endl;
+}
+
+bool Renderer::LoadScene(const std::string& path)
+{
+    wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
+
+    auto model = std::make_unique<Model>();
+
+    std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
+    model->loadModel(path);
+    std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
+    
+    if (model->mMeshes.empty())
+    {
+        wcout << L"Warning: Scene loaded but contains no meshes." << endl;
+
+        // Create fallback quad for testing
+        vector<::Vertex> cpuVerts = {
+            { { -1, -1, 0 }, {0,0,1}, {0,1} },
+            { { -1,  1, 0 }, {0,0,1}, {0,0} },
+            { {  1,  1, 0 }, {0,0,1}, {1,0} },
+            { {  1, -1, 0 }, {0,0,1}, {1,1} },
+        };
+        vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
+        model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
+        return false;
+    }
+
+    wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+
+    std::vector<std::unique_ptr<Model>> models;
+    models.push_back(std::move(model));
+    return LoadMultipleScenes(std::move(models));
+}
+
+bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
+{
+	if (!model)
+		return false;
+
+	std::vector<std::unique_ptr<Model>> models;
+	models.push_back(std::move(model));
+	return LoadMultipleScenes(std::move(models));
+}
+
+bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
+{
+	if (models.empty())
+		return false;
+
+	wcout << L"Loading " << models.size() << L" scene(s)..." << endl;
+
+	// Wait for GPU to finish all work before loading new scenes
+	mCommandQueue.Flush();
+
+	// Try to load models one by one, catching any memory allocation failures
+	size_t successfullyLoaded = 0;
+	size_t totalAttempted = models.size();
+	
+	for (size_t i = 0; i < models.size(); ++i)
+	{
+		auto& model = models[i];
+		if (!model)
+			continue;
+
+		try
+		{
+			// Check if we have meshes before trying to add
+			if (model->mMeshes.empty())
+			{
+				wcout << L"Warning: Model " << (i + 1) << L" has no meshes, skipping." << endl;
+				continue;
+			}
+			
+			// Try to add the model
+			mModels.push_back(std::move(model));
+			successfullyLoaded++;
+			
+			wcout << L"Successfully added model " << successfullyLoaded << L" / " << totalAttempted << endl;
+		}
+		catch (const std::bad_alloc& e)
+		{
+			wcout << L"Memory allocation failed at model " << (i + 1) << L": " << e.what() << endl;
+			wcout << L"Stopping further model loading due to memory constraints." << endl;
+			break;
+		}
+		catch (const std::exception& e)
+		{
+			wcout << L"Error adding model " << (i + 1) << L": " << e.what() << endl;
+			// Continue trying with next model
+			continue;
+		}
+	}
+
+	if (successfullyLoaded == 0)
+	{
+		wcout << L"Error: No models could be loaded." << endl;
+		return false;
+	}
+
+	wcout << L"Added " << successfullyLoaded << L" / " << totalAttempted << L" models to scene." << endl;
+
+	// Try to build GPU data for all loaded models
+    try
+    {
+        std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+        BuildMeshGpuData();
+        std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+        wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+    }
+    catch (const std::runtime_error& e)
+    {
+        wcout << L"GPU memory exhausted during mesh data upload: " << e.what() << endl;
+        wcout << L"Some models may not be fully loaded. Try loading fewer or smaller models." << endl;
+        
+        // If BuildMeshGpuData fails due to GPU memory, we still have valid models in CPU memory
+        // but their GPU data may be incomplete. Better to unload them completely.
+        if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
+		    mMaskedSingleMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
+		    mTransparentMeshes.empty())
+		{
+			// No meshes were uploaded at all - complete failure
+			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
+			mModels.clear();
+			mTextureCache.clear();
+			return false;
+		}
+		// else: Some meshes were uploaded, continue with what we have
+    }
+    catch (const std::exception& e)
+    {
+        wcout << L"Error building mesh GPU data: " << e.what() << endl;
+        
+        // Check if we have at least some meshes uploaded
+        if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
+		    mMaskedSingleMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
+		    mTransparentMeshes.empty())
+		{
+			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
+			mModels.clear();
+			mTextureCache.clear();
+			return false;
+		}
+    }
+	
+	// Try to build ray tracing structures
+	try
+	{
+		std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
+		InitializeRayTracing();
+		std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
+		wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to build ray tracing structures: " << e.what() << endl;
+		// Non-critical, continue without RT acceleration
+	}
+
+	// Collect lights (this should be safe)
+	try
+	{
+		CollectStaticLights();
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
+	}
+
+	size_t loadedMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
+	                         mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                         mTransparentMeshes.size();
+	
+	if (loadedMeshCount > 0)
+	{
+		wcout << L"Scene(s) loaded successfully! (" << successfullyLoaded << L" model(s), " 
+		      << loadedMeshCount << L" meshes)" << endl;
+		return true;
+	}
+	else
+	{
+		wcout << L"No meshes could be loaded to GPU." << endl;
+		return false;
+	}
+}
+
+void Renderer::UnloadScene()
+{
+    wcout << L"Unloading scene..." << endl;
+
+    // Wait for GPU to finish all work
+    mCommandQueue.Flush();
+
+    // Clear all GPU resources - now we have separate mesh lists
+    mOpaqueSingleSidedMeshes.clear();
+    mOpaqueDoubleSidedMeshes.clear();
+    mMaskedSingleMeshes.clear();
+    mMaskedDoubleSidedMeshes.clear();
+    mTransparentMeshes.clear();
+    
+    mModels.clear();
+    mTextureCache.clear();
+    mStaticLights.clear();
+
+    // Reset heaps
+    mUploadHeap.Reset();
+    mTextureLoader.Reset();
+
+    // Reset constant buffer data
+    mConstantBufferData.numLights = 0;
+    for (int i = 0; i < cMaxLights; ++i)
+    {
+        mConstantBufferData.lights[i] = LightData{};
+    }
+
+    wcout << L"Scene unloaded." << endl;
+}
+
 void Renderer::InitializeDummyTextures()
 {
-	mUploadHeap.Reset();
-	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
-	mDefaultTextures =
-	{
-		.white = mTextureLoader.CreateSolidDummyTexture(0xFFFFFFFF),    // (255,255,255) in BGRA
-		//.black = mTextureLoader.CreateSolidDummyTexture(0xFF000000),    // (0,0,0) in BGRA
-		.normal = mTextureLoader.CreateSolidDummyTexture(0xFFFF8080),   // (255,128,128) in BGRA
-	};
-	mCommandList.Get()->Close();
-	ID3D12CommandList* lists[] = { mCommandList.Get() };
-	mCommandQueue.ExecuteCommandLists(1, lists);
-	mCommandQueue.Flush();
+    mUploadHeap.Reset();
+    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+    mDefaultTextures =
+    {
+        .white = mTextureLoader.CreateSolidDummyTexture(0xFFFFFFFF),    // (255,255,255) in BGRA
+        //.black = mTextureLoader.CreateSolidDummyTexture(0xFF000000),    // (0,0,0) in BGRA
+        .normal = mTextureLoader.CreateSolidDummyTexture(0xFFFF8080),   // (255,128,128) in BGRA
+    };
+    mCommandList.Get()->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    mCommandQueue.ExecuteCommandLists(1, lists);
+    mCommandQueue.Flush();
 }
+
+
 
 void Renderer::InitializeRayTracing()
 {
@@ -1282,26 +1522,290 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
 void Renderer::DrawMesh(const MeshGpuData& mesh)
 {
-	mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
-	mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
-	mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
+    mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
+    mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
+    mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
 	mCommandList.Get()->SetGraphicsRoot32BitConstants(2, sizeof(MeshMaterialData) / 4, &mesh.materialData, 0);
-	mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
+    mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
 }
 
 void Renderer::SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos)
 {
-	for (auto& mesh : mTransparentMeshes)
+    for (auto& mesh : mTransparentMeshes)
+    {
+        DirectX::XMVECTOR center = DirectX::XMLoadFloat3(&mesh.center);
+        DirectX::XMVECTOR camPos = DirectX::XMLoadFloat3(&cameraPos);
+        DirectX::XMVECTOR toCamera = DirectX::XMVectorSubtract(camPos, center);
+        mesh.distanceToCamera = DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(toCamera));
+    }
+
+    std::sort(mTransparentMeshes.begin(), mTransparentMeshes.end(),
+        [](const MeshGpuData& a, const MeshGpuData& b)
+        {
+            return a.distanceToCamera > b.distanceToCamera;
+        });
+}
+
+void Renderer::InitializeImGui(HWND hwnd)
+{
+    // Create ImGui context
+    IMGUI_CHECKVERSION();
+    mImGuiContext = ImGui::CreateContext();
+    ImGui::SetCurrentContext(mImGuiContext);
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    // Configure font rendering for better quality
+    ImFontConfig fontConfig;
+    fontConfig.OversampleH = 3;  // Horizontal oversampling for sharper text
+    fontConfig.OversampleV = 3;  // Vertical oversampling for sharper text
+    fontConfig.PixelSnapH = false;  // Better subpixel rendering
+    
+    // Try to load Segoe UI font (Windows system font) for better quality
+    ImFont* font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 17.0f, &fontConfig);
+    
+    // If Segoe UI fails to load, fall back to default font with high quality settings
+    if (!font)
+    {
+        wcout << "Warning: Could not load Segoe UI font, using default ImGui font" << endl;
+        io.Fonts->AddFontDefault(&fontConfig);
+    }
+
+    // Build font atlas with higher quality
+    io.Fonts->Build();
+
+    // Setup ImGui style
+    ImGui::StyleColorsDark();
+    
+    // Adjust style for better text rendering
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.AntiAliasedLines = true;
+    style.AntiAliasedFill = true;
+    style.AntiAliasedLinesUseTex = true;
+    
+    // Slightly adjust rounding for modern look
+    style.WindowRounding = 6.0f;
+    style.FrameRounding = 4.0f;
+    style.GrabRounding = 4.0f;
+
+    // Create descriptor heap for ImGui (1 descriptor for font texture)
+	mImGuiSrvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, true);
+
+    // Initialize Win32 backend first
+    ImGui_ImplWin32_Init(hwnd);
+    
+    // Initialize DX12 backend
+    ImGui_ImplDX12_Init(
+        mDevice.Get(),
+        Config::cFrameCount,
+        Config::cBackBufferFormat,
+        mImGuiSrvHeap.Get(),
+        mImGuiSrvHeap.GetCpuHandle(0),
+        mImGuiSrvHeap.GetGpuHandle(0)
+    );
+
+    // CRITICAL: Manually build and upload font atlas
+    // Get font texture data
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    
+    // Open command list for upload
+    mCommandList.ResetCommandList(0);
+    
+    // Bind ImGui descriptor heap
+    ID3D12DescriptorHeap* heaps[] = { mImGuiSrvHeap.Get() };
+    mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+    
+    // Create device objects (this uploads the font texture)
+    ImGui_ImplDX12_CreateDeviceObjects();
+    
+    // Close and execute command list
+    mCommandList.Get()->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    mCommandQueue.ExecuteCommandLists(1, lists);
+    mCommandQueue.Flush();
+    
+    wcout << "ImGui initialized: Font atlas " << width << "x" << height << " uploaded to GPU" << endl;
+}
+
+void Renderer::ShutdownImGui()
+{
+    if (mImGuiContext)
+    {
+        ImGui_ImplDX12_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext(mImGuiContext);
+        mImGuiContext = nullptr;
+    }
+}
+
+void Renderer::BeginImGuiFrame()
+{
+    ImGui::SetCurrentContext(mImGuiContext);
+    
+    // Correct order: DX12 backend first (builds font atlas), then Win32, then ImGui
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+}
+
+void Renderer::RenderImGui()
+{
+    ImGui::SetCurrentContext(mImGuiContext);
+    ImGui::Render();
+
+    // Bind ImGui descriptor heap
+    ID3D12DescriptorHeap* imguiHeaps[] = { mImGuiSrvHeap.Get() };
+    mCommandList.Get()->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+
+    // Render ImGui draw data
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
+}
+
+bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
+{
+	if (models.empty())
+		return false;
+
+	wcout << L"Adding " << models.size() << L" extension scene(s)..." << endl;
+
+	// Wait for GPU to finish all work before adding new scenes
+	mCommandQueue.Flush();
+
+	// Store the count of models before adding extensions
+	size_t previousModelCount = mModels.size();
+	size_t previousMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
+	                           mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                           mTransparentMeshes.size();
+	
+	// Try to load models one by one, catching any memory allocation failures
+	size_t successfullyLoaded = 0;
+	size_t totalAttempted = models.size();
+	
+	for (size_t i = 0; i < models.size(); ++i)
 	{
-		DirectX::XMVECTOR center = DirectX::XMLoadFloat3(&mesh.center);
-		DirectX::XMVECTOR camPos = DirectX::XMLoadFloat3(&cameraPos);
-		DirectX::XMVECTOR toCamera = DirectX::XMVectorSubtract(camPos, center);
-		mesh.distanceToCamera = DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(toCamera));
+		auto& model = models[i];
+		if (!model)
+			continue;
+
+		try
+		{
+			// Check if we have meshes before trying to add
+			if (model->mMeshes.empty())
+			{
+				wcout << L"Warning: Extension model " << (i + 1) << L" has no meshes, skipping." << endl;
+				continue;
+			}
+			
+			// Try to add the model
+			mModels.push_back(std::move(model));
+			successfullyLoaded++;
+			
+			wcout << L"Successfully added extension model " << successfullyLoaded << L" / " << totalAttempted << endl;
+		}
+		catch (const std::bad_alloc& e)
+		{
+			wcout << L"Memory allocation failed at extension model " << (i + 1) << L": " << e.what() << endl;
+			wcout << L"Stopping further model loading due to memory constraints." << endl;
+			break;
+		}
+		catch (const std::exception& e)
+		{
+			wcout << L"Error adding extension model " << (i + 1) << L": " << e.what() << endl;
+			// Continue trying with next model
+			continue;
+		}
 	}
 
-	std::sort(mTransparentMeshes.begin(), mTransparentMeshes.end(),
-		[](const MeshGpuData& a, const MeshGpuData& b)
+	if (successfullyLoaded == 0)
+	{
+		wcout << L"Error: No extension models could be loaded." << endl;
+		return false;
+	}
+
+	wcout << L"Added " << successfullyLoaded << L" / " << totalAttempted << L" extension models." << endl;
+
+	// Try to build GPU data for all loaded models (including existing ones)
+	try
+	{
+		std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+		BuildMeshGpuData();
+		std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+		wcout << "Mesh GPU data rebuilt in " << elapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::runtime_error& e)
+	{
+		wcout << L"GPU memory exhausted during mesh data upload: " << e.what() << endl;
+		wcout << L"Extension models could not be fully loaded. Reverting to previous state." << endl;
+		
+		// Remove the extension models that we just added
+		mModels.resize(previousModelCount);
+		
+		// Rebuild GPU data with just the original models
+		try
 		{
-			return a.distanceToCamera > b.distanceToCamera;
-		});
+			BuildMeshGpuData();
+		}
+		catch (...)
+		{
+			wcout << L"Critical error: Failed to restore previous state!" << endl;
+		}
+		
+		return false;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Error building mesh GPU data: " << e.what() << endl;
+		
+		// Remove the extension models and try to restore previous state
+		mModels.resize(previousModelCount);
+		
+		try
+		{
+			BuildMeshGpuData();
+		}
+		catch (...)
+		{
+			wcout << L"Critical error: Failed to restore previous state!" << endl;
+		}
+		
+		return false;
+	}
+	
+	// Try to build ray tracing structures
+	try
+	{
+		std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
+		InitializeRayTracing();
+		std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
+		wcout << "Ray tracing structures rebuilt in " << rtElapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to rebuild ray tracing structures: " << e.what() << endl;
+		// Non-critical, continue without RT acceleration
+	}
+
+	// Collect lights (this should be safe)
+	try
+	{
+		CollectStaticLights();
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
+	}
+
+	size_t newMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
+	                      mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                      mTransparentMeshes.size();
+	size_t addedMeshCount = newMeshCount - previousMeshCount;
+	
+	wcout << L"Extension scene(s) added successfully! (Total: " << mModels.size() << L" model(s), " 
+	      << newMeshCount << L" meshes, added: " << addedMeshCount << L" meshes)" << endl;
+	return true;
 }
