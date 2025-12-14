@@ -213,6 +213,10 @@ void RayGen()
     
     diffuseTotal += float3(0.05, 0.05, 0.05); // ambient
     
+    
+    float distToCamera = length(viewPos - worldPos);
+    float bias = 0.01f + (distToCamera * 0.005f);
+    
     uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
     // Direct Lighting
     for (int i = 0; i < numLights; ++i)
@@ -236,7 +240,8 @@ void RayGen()
             float3 toLight = lightPos - worldPos;
             dist = length(toLight);
             L_central = normalize(toLight);
-            L_shadow = GetConeSample(seed, L_central, radians(5.0f)); // Soft shadows with 5 degree cone
+            L_shadow = L_central;
+            GetConeSample(seed, L_central, radians(5.0f)); // Soft shadows with 5 degree cone
             attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
         }
         
@@ -247,7 +252,7 @@ void RayGen()
             shadowPayload.isVisible = false;
             
             RayDesc ray;
-            ray.Origin = worldPos + normal * 0.01;
+            ray.Origin = worldPos + normal * bias;
             ray.Direction = L_shadow;
             ray.TMin = 0.01;
             ray.TMax = dist - 0.05f;
@@ -282,20 +287,17 @@ void RayGen()
     }
     
     // Reflection Trace
-    if (metalness > 0.1f && roughness < 0.6f)
     {
         float2 Xi = float2(nextRand(seed), nextRand(seed));
         float3 H = ImportanceSampleGGX(Xi, normal, roughness);
-        float3 R = reflect(-V, H);
+        float3 R = normalize(reflect(-V, H));
         
         if (dot(normal, R) > 0.0f)
         {            
-            float distToCamera = length(viewPos - worldPos);
-            float bias = 0.01f + (distToCamera * 0.001f);
             RayDesc ray;
             ray.Origin = worldPos + normal * bias;
             ray.Direction = R;
-            ray.TMin = 0.0f;
+            ray.TMin = 0.01f;
             ray.TMax = 1000.0f;
             RayPayload payload = { float4(0, 0, 0, 0) };
         
