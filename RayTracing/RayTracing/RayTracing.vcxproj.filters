@@ -380,7 +380,4 @@
     <None Include="packages.config" />
     <None Include="Source\Shaders\PBR.hlsli" />
   </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll" />
-  </ItemGroup>
 </Project>

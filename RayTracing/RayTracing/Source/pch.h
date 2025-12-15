@@ -25,6 +25,11 @@
 #include <dxgidebug.h>
 #include <d3dx12.h>
 
+// nvidia
+#include <streamline/sl.h>
+#include <streamline/sl_consts.h>
+#include <streamline/sl_dlss.h> // Includes Ray Reconstruction
+
 // windows
 #include <windows.h>
 #include <wrl.h>

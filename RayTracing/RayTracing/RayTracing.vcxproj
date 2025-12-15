@@ -122,6 +122,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;assimp-vc143-mt.lib;windowscodecs.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy "$(SolutionDir)Dlls\Debug\*" "$(OutDir)" /E /D /Y /I</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -141,6 +144,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;assimp-vc143-mt.lib;windowscodecs.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy "$(SolutionDir)Dlls\Release\*" "$(OutDir)" /E /D /Y /I</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Source\RenderAPI\RT\RayTracingPipeline.cpp" />
@@ -348,9 +354,6 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll">
-      <FileType>Document</FileType>
-    </CopyFileToFolders>
     <None Include="packages.config" />
     <None Include="Source\Shaders\PBR.hlsli" />
   </ItemGroup>
