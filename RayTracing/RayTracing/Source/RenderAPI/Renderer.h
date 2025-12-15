@@ -81,10 +81,11 @@ private:
 
 	D3D12PipelineState mPipelineStateOpaqueSingle; ///< Pipeline state and root signature for opaque single-sided objects.
 	D3D12PipelineState mPipelineStateMaskedSingle; ///< Pipeline state and root signature for masked single-sided objects.
-	D3D12PipelineState mPipelineStateTransparent; ///< Pipeline state and root signature for transparent objects.
+	D3D12PipelineState mPipelineStateTransparentSingle; ///< Pipeline state and root signature for transparent objects.
 
 	D3D12PipelineState mPipelineStateOpaqueDouble; ///< Pipeline state and root signature for opaque double-sided objects.
 	D3D12PipelineState mPipelineStateMaskedDouble; ///< Pipeline state and root signature for masked double-sided objects.
+	D3D12PipelineState mPipelineStateTransparentDouble;
 
 	D3D12PipelineState mPipelineStateCompute; ///< Pipeline state for compute shader passes.
 
@@ -108,11 +109,12 @@ private:
 	DefaultTextures mDefaultTextures; ///< Default white/black/normal textures.
 	std::vector<std::unique_ptr<Model>> mModels; ///< Loaded models.
 	std::vector<MeshGpuData> mOpaqueSingleSidedMeshes; ///< Flattened array of opaque single-sided mesh GPU data for rendering.
-	std::vector<MeshGpuData> mMaskedSingleMeshes; ///< Flattened array of masked single-sided mesh GPU data for rendering.
-	std::vector<MeshGpuData> mTransparentMeshes; ///< Flattened array of transparent mesh GPU data for rendering.
+	std::vector<MeshGpuData> mMaskedSingleSidedMeshes; ///< Flattened array of masked single-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mTransparentSingleSidedMeshes; ///< Flattened array of transparent mesh GPU data for rendering.
 
 	std::vector<MeshGpuData> mOpaqueDoubleSidedMeshes; ///< Flattened array of opaque double-sided mesh GPU data for rendering.
 	std::vector<MeshGpuData> mMaskedDoubleSidedMeshes; ///< Flattened array of masked double-sided mesh GPU data for rendering.
+	std::vector<MeshGpuData> mTransparentDoubleSidedMeshes;
 
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
 

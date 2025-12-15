@@ -21,10 +21,10 @@ void D3D12PipelineState::InitializeOpaque(ID3D12Device* pDevice, ID3D12RootSigna
 	ASSERT_HR(hr, "Failed to create pipeline state object.");
 }
 
-void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc)
+void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided)
 {
 	InitializeCommon(pDevice, rootSig, std::move(vertexShader), std::move(pixelShader));
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc,  true);
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc, doubleSided);
 
 	// Specific changes for transparent
 	gpsDesc.NumRenderTargets = 1;

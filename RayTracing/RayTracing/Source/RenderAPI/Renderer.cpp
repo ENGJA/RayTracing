@@ -157,10 +157,13 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 		if (mesh.mDoubleSided)
 			mMaskedDoubleSidedMeshes.push_back(std::move(gpu));
 		else
-			mMaskedSingleMeshes.push_back(std::move(gpu));
+			mMaskedSingleSidedMeshes.push_back(std::move(gpu));
 		break;
 	case RenderLayer::Blend:
-		mTransparentMeshes.push_back(std::move(gpu));
+		if (mesh.mDoubleSided)
+			mTransparentDoubleSidedMeshes.push_back(std::move(gpu));
+		else
+			mTransparentSingleSidedMeshes.push_back(std::move(gpu));
 		break;
 	default:
 		break;
@@ -650,8 +653,8 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
         // If BuildMeshGpuData fails due to GPU memory, we still have valid models in CPU memory
         // but their GPU data may be incomplete. Better to unload them completely.
         if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
-		    mMaskedSingleMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
-		    mTransparentMeshes.empty())
+		    mMaskedSingleSidedMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
+		    mTransparentSingleSidedMeshes.empty())
 		{
 			// No meshes were uploaded at all - complete failure
 			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
@@ -667,8 +670,8 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
         
         // Check if we have at least some meshes uploaded
         if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
-		    mMaskedSingleMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
-		    mTransparentMeshes.empty())
+		    mMaskedSingleSidedMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
+		    mTransparentSingleSidedMeshes.empty())
 		{
 			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
 			mModels.clear();
@@ -703,8 +706,8 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 	}
 
 	size_t loadedMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
-	                         mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
-	                         mTransparentMeshes.size();
+	                         mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                         mTransparentSingleSidedMeshes.size();
 	
 	if (loadedMeshCount > 0)
 	{
@@ -730,9 +733,9 @@ void Renderer::UnloadScene()
     // Clear all GPU resources - now we have separate mesh lists
     mOpaqueSingleSidedMeshes.clear();
     mOpaqueDoubleSidedMeshes.clear();
-    mMaskedSingleMeshes.clear();
+    mMaskedSingleSidedMeshes.clear();
     mMaskedDoubleSidedMeshes.clear();
-    mTransparentMeshes.clear();
+    mTransparentSingleSidedMeshes.clear();
     
     mModels.clear();
     mTextureCache.clear();
@@ -778,17 +781,19 @@ void Renderer::InitializeRayTracing()
 	mRayTracingBuilder.BuildAllBLAS(
 		mOpaqueSingleSidedMeshes,
 		mOpaqueDoubleSidedMeshes,
-		mMaskedSingleMeshes,
+		mMaskedSingleSidedMeshes,
 		mMaskedDoubleSidedMeshes,
-		mTransparentMeshes);
+		mTransparentSingleSidedMeshes,
+		mTransparentDoubleSidedMeshes);
 
 	// 2. Allocate TLAS instance desc buffer
 	UINT totalMeshes = static_cast<UINT>(
 		mOpaqueSingleSidedMeshes.size() +
 		mOpaqueDoubleSidedMeshes.size() +
-		mMaskedSingleMeshes.size() +
+		mMaskedSingleSidedMeshes.size() +
 		mMaskedDoubleSidedMeshes.size() +
-		mTransparentMeshes.size());
+		mTransparentSingleSidedMeshes.size() +
+		mTransparentDoubleSidedMeshes.size());
 
 	UINT64 instanceDescSize = sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * totalMeshes;
 	mInstanceDescBuffer.Initialize(
@@ -801,9 +806,10 @@ void Renderer::InitializeRayTracing()
 	mRayTracingBuilder.BuildTLAS(
 		mOpaqueSingleSidedMeshes,
 		mOpaqueDoubleSidedMeshes,
-		mMaskedSingleMeshes,
+		mMaskedSingleSidedMeshes,
 		mMaskedDoubleSidedMeshes,
-		mTransparentMeshes,
+		mTransparentSingleSidedMeshes,
+		mTransparentDoubleSidedMeshes,
 		mTLAS,
 		mTLAS_Scratch,
 		mInstanceDescBuffer);
@@ -853,9 +859,9 @@ void Renderer::InitializeRayTracing()
 	std::vector<MeshGpuData> allMeshes;
 	allMeshes.insert(allMeshes.end(), mOpaqueSingleSidedMeshes.begin(), mOpaqueSingleSidedMeshes.end());
 	allMeshes.insert(allMeshes.end(), mOpaqueDoubleSidedMeshes.begin(), mOpaqueDoubleSidedMeshes.end());
-	allMeshes.insert(allMeshes.end(), mMaskedSingleMeshes.begin(), mMaskedSingleMeshes.end());
+	allMeshes.insert(allMeshes.end(), mMaskedSingleSidedMeshes.begin(), mMaskedSingleSidedMeshes.end());
 	allMeshes.insert(allMeshes.end(), mMaskedDoubleSidedMeshes.begin(), mMaskedDoubleSidedMeshes.end());
-	allMeshes.insert(allMeshes.end(), mTransparentMeshes.begin(), mTransparentMeshes.end());
+	allMeshes.insert(allMeshes.end(), mTransparentSingleSidedMeshes.begin(), mTransparentSingleSidedMeshes.end());
 
 	mReflectionsPipeline.BuildSBT(mDevice.Get(), allMeshes);
 }
@@ -1224,11 +1230,11 @@ void Renderer::InitializePipelineState()
 		inputLayoutDesc);
 
 	// 3. Transparent pipeline state
-	mPipelineStateTransparent.InitializeTransparent(
+	mPipelineStateTransparentSingle.InitializeTransparent(
 		mDevice.Get(),
 		mMeshRootSignature.Get(),
 		vertexShader,
-		std::move(transparentPixelShader),
+		transparentPixelShader,
 		inputLayoutDesc);
 
 	// 4. Opaque double-sided pipeline state
@@ -1244,18 +1250,28 @@ void Renderer::InitializePipelineState()
 	mPipelineStateMaskedDouble.InitializeOpaque(
 		mDevice.Get(),
 		mMeshRootSignature.Get(),
-		std::move(vertexShader),
+		vertexShader,
 		std::move(maskedPixelShader),
 		inputLayoutDesc,
 		true);
 
-	// 6. Compute pipeline state for deferred
+	// 6. Transparent double-sided pipeline state
+	mPipelineStateTransparentDouble.InitializeTransparent(
+		mDevice.Get(),
+		mMeshRootSignature.Get(),
+		std::move(vertexShader),
+		std::move(transparentPixelShader),
+		inputLayoutDesc,
+		true);
+
+
+	// 7. Compute pipeline state for deferred
 	mPipelineStateCompute.InitializeCompute(
 		mDevice.Get(),
 		mComputeRootSignature.Get(),
 		std::move(computeShader));
 
-	// 7. Composite pipeline state for merging deferred render with reflections
+	// 8. Composite pipeline state for merging deferred render with reflections
 	mPipelineStateComposite.InitializeCompute(
 		mDevice.Get(),
 		mCompositeRootSignature.Get(),
@@ -1360,7 +1376,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 			for (const auto& mesh : mOpaqueDoubleSidedMeshes)
 				DrawMesh(mesh);
 			mCommandList.Get()->SetPipelineState(mPipelineStateMaskedSingle.Get());
-			for (const auto& mesh : mMaskedSingleMeshes)
+			for (const auto& mesh : mMaskedSingleSidedMeshes)
 				DrawMesh(mesh);
 			mCommandList.Get()->SetPipelineState(mPipelineStateMaskedDouble.Get());
 			for (const auto& mesh : mMaskedDoubleSidedMeshes)
@@ -1504,21 +1520,24 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
 			// Bind Targets
 			// We write Color to ComputeOutput, and Read Depth from DepthBuffer
-			//D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
-			//D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
+			D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
+			D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
 
-			//mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-			//mCommandList.Get()->RSSetViewports(1, &mViewport);
-			//mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+			mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+			mCommandList.Get()->RSSetViewports(1, &mViewport);
+			mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
-			//// Draw Transparent Meshes
-			//mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
-			//mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
-			//mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			//mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
+			// Draw Transparent Meshes
+			mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
+			mCommandList.Get()->SetPipelineState(mPipelineStateTransparentSingle.Get());
+			mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
 
-			//for (const auto& mesh : mTransparentMeshes)
-			//    DrawMesh(mesh);
+			for (const auto& mesh : mTransparentSingleSidedMeshes)
+			    DrawMesh(mesh);
+
+			for (const auto& mesh : mTransparentDoubleSidedMeshes)
+				DrawMesh(mesh);
 		}
 
 
@@ -1616,7 +1635,7 @@ void Renderer::DrawMesh(const MeshGpuData& mesh)
 
 void Renderer::SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos)
 {
-    for (auto& mesh : mTransparentMeshes)
+    for (auto& mesh : mTransparentSingleSidedMeshes)
     {
         DirectX::XMVECTOR center = DirectX::XMLoadFloat3(&mesh.center);
         DirectX::XMVECTOR camPos = DirectX::XMLoadFloat3(&cameraPos);
@@ -1624,7 +1643,7 @@ void Renderer::SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos)
         mesh.distanceToCamera = DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(toCamera));
     }
 
-    std::sort(mTransparentMeshes.begin(), mTransparentMeshes.end(),
+    std::sort(mTransparentSingleSidedMeshes.begin(), mTransparentSingleSidedMeshes.end(),
         [](const MeshGpuData& a, const MeshGpuData& b)
         {
             return a.distanceToCamera > b.distanceToCamera;
@@ -1762,8 +1781,8 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 	// Store the count of models before adding extensions
 	size_t previousModelCount = mModels.size();
 	size_t previousMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
-	                           mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
-	                           mTransparentMeshes.size();
+	                           mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                           mTransparentSingleSidedMeshes.size();
 	
 	// Try to load models one by one, catching any memory allocation failures
 	size_t successfullyLoaded = 0;
@@ -1886,8 +1905,8 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 	}
 
 	size_t newMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
-	                      mMaskedSingleMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
-	                      mTransparentMeshes.size();
+	                      mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
+	                      mTransparentSingleSidedMeshes.size();
 	size_t addedMeshCount = newMeshCount - previousMeshCount;
 	
 	wcout << L"Extension scene(s) added successfully! (Total: " << mModels.size() << L" model(s), " 

@@ -48,7 +48,7 @@ public:
 	 * @param pixelShader Compiled pixel shader.
 	 * @param inputLayoutDesc Input layout description for vertex buffers.
 	 */
-	void InitializeTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
+	void InitializeTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided= false);
 
 	void InitializeCompute(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader computeShader);
 	/**
