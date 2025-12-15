@@ -390,39 +390,141 @@ void Renderer::OnResize(UINT width, UINT height)
 
 	wcout << "Resizing renderer to " << width << "x" << height << endl;
 
-	// Wait for GPU to complete all work
+	// 1. Wait for GPU to complete all work
 	mCommandQueue.Flush();
 
-	// Update dimensions
+	// 2. Update dimensions
 	mWidth = width;
 	mHeight = height;
 
-	// Resize swap chain buffers
+	// 2. Resize SwapChain
 	mSwapChain.Resize(width, height);
 
-	// Recreate depth buffer with new dimensions
-	mDepthBuffer.Initialize(mDevice.Get(), width, height);
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
-	dsvDesc.Format = Config::cDepthBufferFormat;
-	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	// =========================================================================
+	// 4. Resize Depth Buffer & Update Descriptors
+	// =========================================================================
+	{
+		mDepthBuffer.Initialize(mDevice.Get(), width, height);
+		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
+		dsvDesc.Format = Config::cDepthBufferFormat;
+		dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 
-	mDevice.Get()->CreateDepthStencilView(
-		mDepthBuffer.GetResource(),
-		&dsvDesc,
-		mDepthBuffer.GetDSVHandle()
-	);
+		mDevice.Get()->CreateDepthStencilView(
+			mDepthBuffer.GetResource(),
+			&dsvDesc,
+			mDepthBuffer.GetDSVHandle()
+		);
 
-	// Update viewport
-	mViewport.TopLeftX = 0.0f;
-	mViewport.TopLeftY = 0.0f;
+		D3D12_SHADER_RESOURCE_VIEW_DESC depthSrv = {};
+		depthSrv.Format = DXGI_FORMAT_R32_FLOAT; // Must use R32_FLOAT to read R32_TYPELESS
+		depthSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		depthSrv.Texture2D.MipLevels = 1;
+		depthSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+
+		// This writes the NEW resource pointer into the OLD slot index
+		mDevice.Get()->CreateShaderResourceView(
+			mDepthBuffer.GetResource(),
+			&depthSrv,
+			mSrvHeap.GetCpuHandle(mSrvSlot_Depth)
+		);
+	}
+
+	// =========================================================================
+	// 5. Resize G-Buffers
+	// =========================================================================
+	{
+		// Albedo
+		auto albedoDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		D3D12_CLEAR_VALUE clearBlack = { DXGI_FORMAT_R8G8B8A8_UNORM, { 0.0f, 0.0f, 0.0f, 1.0f } };
+		mGBufferAlbedo.Initialize(mDevice.Get(), albedoDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearBlack);
+
+		// Normal
+		auto normalDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		D3D12_CLEAR_VALUE clearNormal = { DXGI_FORMAT_R16G16B16A16_FLOAT, { 0.5f, 0.5f, 1.0f, 1.0f } };
+		mGBufferNormal.Initialize(mDevice.Get(), normalDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearNormal);
+
+		// Material
+		auto materialDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		D3D12_CLEAR_VALUE clearMaterial = { DXGI_FORMAT_R32G32_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
+		mGBufferMaterial.Initialize(mDevice.Get(), materialDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearMaterial);
+
+		// Emissive
+		auto emissiveDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		D3D12_CLEAR_VALUE clearEmissive = { DXGI_FORMAT_R16G16B16A16_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
+		mGBufferEmission.Initialize(mDevice.Get(), emissiveDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearEmissive);
+
+		// Update SRVs (Use existing slots)
+		CreateTextureView(mGBufferAlbedo.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferAlbedo), 1);
+		CreateTextureView(mGBufferNormal.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferNormal), 1);
+		CreateTextureView(mGBufferMaterial.Get(), DXGI_FORMAT_R32G32_FLOAT, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferMaterial), 1);
+		CreateTextureView(mGBufferEmission.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferEmissive), 1);
+
+		// Update RTVs (Render Target Views)
+		// Assumption: RTV Heap was allocated linearly: 0=Albedo, 1=Normal, 2=Material, 3=Emissive
+		mDevice.Get()->CreateRenderTargetView(mGBufferAlbedo.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(0));
+		mDevice.Get()->CreateRenderTargetView(mGBufferNormal.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(1));
+		mDevice.Get()->CreateRenderTargetView(mGBufferMaterial.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(2));
+		mDevice.Get()->CreateRenderTargetView(mGBufferEmission.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(3));
+	}
+
+	// =========================================================================
+	// 6. Resize Compute Output (Fixes CopyResource Error)
+	// =========================================================================
+	{
+		auto uavDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+			DXGI_FORMAT_R8G8B8A8_UNORM, mWidth, mHeight, 1, 1, 1, 0,
+			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+		);
+		mComputeOutputTexture.Initialize(mDevice.Get(), uavDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+
+		// Update UAV
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavViewDesc = {};
+		uavViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		uavViewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		mDevice.Get()->CreateUnorderedAccessView(mComputeOutputTexture.Get(), nullptr, &uavViewDesc, mSrvHeap.GetCpuHandle(mUavSlot_Output));
+
+		// Update RTV
+		mDevice.Get()->CreateRenderTargetView(mComputeOutputTexture.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput));
+	}
+
+	// =========================================================================
+	// 7. Resize Reflection Targets
+	// =========================================================================
+	{
+		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(
+			DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+		);
+		mOutDiffuseTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+		mOutSpecularTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+
+		// Update UAVs
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		mDevice.Get()->CreateUnorderedAccessView(mOutDiffuseTex.Get(), nullptr, &uavDesc, mSrvHeap.GetCpuHandle(mUavSlot_Diffuse));
+		mDevice.Get()->CreateUnorderedAccessView(mOutSpecularTex.Get(), nullptr, &uavDesc, mSrvHeap.GetCpuHandle(mUavSlot_Specular));
+
+		// Update SRVs
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		mDevice.Get()->CreateShaderResourceView(mOutDiffuseTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_Diffuse));
+		mDevice.Get()->CreateShaderResourceView(mOutSpecularTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_Specular));
+	}
+
+	// 8. Update Viewport and Scissor Rect
+	//mViewport.TopLeftX = 0.0f;
+	//mViewport.TopLeftY = 0.0f;
 	mViewport.Width = static_cast<FLOAT>(width);
 	mViewport.Height = static_cast<FLOAT>(height);
-	mViewport.MinDepth = 0.0f;
-	mViewport.MaxDepth = 1.0f;
+	//mViewport.MinDepth = 0.0f;
+	//mViewport.MaxDepth = 1.0f;
 
 	// Update scissor rect
-	mScissorRect.left = 0;
-	mScissorRect.top = 0;
+	//mScissorRect.left = 0;
+	//mScissorRect.top = 0;
 	mScissorRect.right = static_cast<LONG>(width);
 	mScissorRect.bottom = static_cast<LONG>(height);
 
@@ -475,6 +577,7 @@ bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
 
 bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 {
+	mSceneLoaded = false;
 	if (models.empty())
 		return false;
 
@@ -607,6 +710,7 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 	{
 		wcout << L"Scene(s) loaded successfully! (" << successfullyLoaded << L" model(s), " 
 		      << loadedMeshCount << L" meshes)" << endl;
+		mSceneLoaded = true;
 		return true;
 	}
 	else
@@ -1172,341 +1276,322 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 	double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
 	mPrevCounter = now;
 
+	size_t cbOffset;
+	if (mSceneLoaded)
+	{
+		mConstantBufferData.vpMatrix = viewProj;
+		mConstantBufferData.InvVpMatrix = DirectX::XMMatrixInverse(nullptr, viewProj);
+		mConstantBufferData.viewPos = cameraPos;
+		mConstantBufferData.frameCount = mFrameCount++;
 
-	mConstantBufferData.vpMatrix = viewProj;
-	mConstantBufferData.InvVpMatrix = DirectX::XMMatrixInverse(nullptr, viewProj);
-	mConstantBufferData.viewPos = cameraPos;
-	mConstantBufferData.frameCount = mFrameCount++;
+		UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
+		size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes
+		cbOffset = alignedSize * currentBackBufferIndex;
 
-	UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
-	size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes
-	size_t cbOffset = alignedSize * currentBackBufferIndex;
+		void* pData;
+		mConstantBuffer.Get()->Map(0, nullptr, &pData);
+		uint8_t* pByteData = reinterpret_cast<uint8_t*>(pData);
+		memcpy(pByteData + cbOffset, &mConstantBufferData, sizeof(ConstantBufferData));
+		mConstantBuffer.Get()->Unmap(0, nullptr);
 
-	void* pData;
-	mConstantBuffer.Get()->Map(0, nullptr, &pData);
-	uint8_t* pByteData = reinterpret_cast<uint8_t*>(pData);
-	memcpy(pByteData + cbOffset, &mConstantBufferData, sizeof(ConstantBufferData));
-	mConstantBuffer.Get()->Unmap(0, nullptr);
-
-	// Sort transparent meshes back-to-front each frame (temporary solution)
-	SortTransparentMeshes(cameraPos);
+		// Sort transparent meshes back-to-front each frame (temporary solution)
+		SortTransparentMeshes(cameraPos);
+	}
 
 	// Wait for GPU to finish with the current back buffer
 	mCommandQueue.WaitForFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
-
 	// Open command list
 	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
 
-	// Bind descriptor heap
-	ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
-	mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
-
-	// =========================================================================================
-	// STAGE 1: G-BUFFER PASS (Rasterization)
-	// =========================================================================================
+	if (mSceneLoaded)
 	{
-		// A. Transition G-Buffer Resources to RENDER_TARGET
-		D3D12_RESOURCE_BARRIER barriers[5]{};
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferAlbedo.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferNormal.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-		barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferMaterial.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-		barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mDepthBuffer.GetResource(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		barriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferEmission.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		// Bind descriptor heap
+		ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
+		mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
 
-		mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
-
-		// B. Clear Targets
-		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[4] = {
-			mGBufferRtvHeap.GetCpuHandle(0),
-			mGBufferRtvHeap.GetCpuHandle(1),
-			mGBufferRtvHeap.GetCpuHandle(2),
-			mGBufferRtvHeap.GetCpuHandle(3)
-		};
-
-		float clearColorBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-		float clearColorNormal[4] = { 0.5f, 0.5f, 1.0f, 1.0f };
-		float clearColorMaterial[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-		float clearDepth = 1.0f;
-		mCommandList.Get()->ClearRenderTargetView(rtvHandles[0], clearColorBlack, 0, nullptr);
-		mCommandList.Get()->ClearRenderTargetView(rtvHandles[1], clearColorNormal, 0, nullptr);
-		mCommandList.Get()->ClearRenderTargetView(rtvHandles[2], clearColorMaterial, 0, nullptr);
-		mCommandList.Get()->ClearRenderTargetView(rtvHandles[3], clearColorBlack, 0, nullptr);
-		mCommandList.Get()->ClearDepthStencilView(mDepthBuffer.GetDSVHandle(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-		// C. Set Render Targets
-		auto dsvHandle = mDepthBuffer.GetDSVHandle();
-		mCommandList.Get()->OMSetRenderTargets(4, rtvHandles, FALSE, &dsvHandle);
-		mCommandList.Get()->RSSetViewports(1, &mViewport);
-		mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
-
-		// D. Draw Opaque & Masked Geometry
-		mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
-		mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
-
-		mCommandList.Get()->SetPipelineState(mPipelineStateOpaqueSingle.Get());
-		for (const auto& mesh : mOpaqueSingleSidedMeshes)
-			DrawMesh(mesh);
-		mCommandList.Get()->SetPipelineState(mPipelineStateOpaqueDouble.Get());
-		for (const auto& mesh : mOpaqueDoubleSidedMeshes)
-			DrawMesh(mesh);
-		mCommandList.Get()->SetPipelineState(mPipelineStateMaskedSingle.Get());
-		for (const auto& mesh : mMaskedSingleMeshes)
-			DrawMesh(mesh);
-		mCommandList.Get()->SetPipelineState(mPipelineStateMaskedDouble.Get());
-		for (const auto& mesh : mMaskedDoubleSidedMeshes)
-			DrawMesh(mesh);
-		//mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
-		//for (const auto& mesh : mTransparentMeshes)
-		//	DrawMesh(mesh);
-	}
-
-	// =========================================================================================
-	// STAGE 2: LIGHTING PASS (Compute Shader + Inline Ray Tracing)
-	// =========================================================================================
-	{
-		// A. Transition Resources
-		// G-Buffer -> Shader Resource (Read)
-		// Depth -> Shader Resource (Read)
-		// Output Texture -> Unordered Access (Write)
-		D3D12_RESOURCE_BARRIER barriers[5]{};
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferAlbedo.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferNormal.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferMaterial.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mDepthBuffer.GetResource(),
-			D3D12_RESOURCE_STATE_DEPTH_WRITE,
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		//barriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(
-		//	mDirectLightingTexture.Get(),
-		//	D3D12_RESOURCE_STATE_COMMON,
-		//	D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		barriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferEmission.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-		mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
-
-		// B. Bind Compute Pipeline
-		mCommandList.Get()->SetComputeRootSignature(mComputeRootSignature.Get());
-		mCommandList.Get()->SetPipelineState(mPipelineStateCompute.Get());
-
-		// C. Bind Resources (Slots based on computeSigDesc)
-		// Slot 0: CBV (Frame Data)
-		mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
-
-		// Slot 1: G-Buffer SRV Table (t0 - t4)
-		// We use the wrapper to get the GPU handle of the *start* of the G-Buffer allocation
-		mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
-
-		// Slot 2: TLAS SRV (t5) - Raw Address
-		mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
-
-		// Slot 3: Light Buffer SRV (t6) - Raw Address
-		// Ensure mLightBuffer is created!
-		mCommandList.Get()->SetComputeRootShaderResourceView(3, mGlobalLightBuffer.Get()->GetGPUVirtualAddress());
-
-		// Slot 4: Output UAV Table (u0)
-		//mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_DirectLighting));
-
-		// D. Dispatch
-		// Threads (8, 8, 1). Dispatch (Width/8, Height/8, 1)
-		//mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
-	}
-
-	// =========================================================================
-	// STAGE 3: REFLECTIONS (DXR Pipeline)
-	// =========================================================================
-	{
-		// 1. Barrier: Output needs to be UAV
-		D3D12_RESOURCE_BARRIER barriers[]
+		// =========================================================================================
+		// STAGE 1: G-BUFFER PASS (Rasterization)
+		// =========================================================================================
 		{
-			CD3DX12_RESOURCE_BARRIER::Transition(
-				mOutDiffuseTex.Get(),
-				D3D12_RESOURCE_STATE_COMMON,
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			CD3DX12_RESOURCE_BARRIER::Transition(
-				mOutSpecularTex.Get(),
-				D3D12_RESOURCE_STATE_COMMON,
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-		};
-		mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+			// A. Transition G-Buffer Resources to RENDER_TARGET
+			D3D12_RESOURCE_BARRIER barriers[]
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
+				CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
+			};
+			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
-		// 2. Dispatch Rays
-		// Note: The Global Root Sig needs binding just like a Compute Shader
-		mCommandList.Get()->SetComputeRootSignature(mComputeRootSignature.Get());
-		mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
-		mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo)); // G-Buffer
-		mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
-		mCommandList.Get()->SetComputeRootShaderResourceView(3, mGlobalLightBuffer.Get()->GetGPUVirtualAddress());
+			// B. Clear Targets
+			D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[4] = {
+				mGBufferRtvHeap.GetCpuHandle(0),
+				mGBufferRtvHeap.GetCpuHandle(1),
+				mGBufferRtvHeap.GetCpuHandle(2),
+				mGBufferRtvHeap.GetCpuHandle(3)
+			};
 
-		// Bind Reflection Output UAV (Slot u0 in Reflections.hlsl)
-		mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Diffuse));
+			float clearColorBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			float clearColorNormal[4] = { 0.5f, 0.5f, 1.0f, 1.0f };
+			float clearColorMaterial[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			float clearDepth = 1.0f;
+			mCommandList.Get()->ClearRenderTargetView(rtvHandles[0], clearColorBlack, 0, nullptr);
+			mCommandList.Get()->ClearRenderTargetView(rtvHandles[1], clearColorNormal, 0, nullptr);
+			mCommandList.Get()->ClearRenderTargetView(rtvHandles[2], clearColorMaterial, 0, nullptr);
+			mCommandList.Get()->ClearRenderTargetView(rtvHandles[3], clearColorBlack, 0, nullptr);
+			mCommandList.Get()->ClearDepthStencilView(mDepthBuffer.GetDSVHandle(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-		mReflectionsPipeline.Dispatch(mCommandList.Get(), mWidth, mHeight);
-	}
+			// C. Set Render Targets
+			auto dsvHandle = mDepthBuffer.GetDSVHandle();
+			mCommandList.Get()->OMSetRenderTargets(4, rtvHandles, FALSE, &dsvHandle);
+			mCommandList.Get()->RSSetViewports(1, &mViewport);
+			mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
-	// =========================================================================
-	// STAGE 4: COMPOSITE (Merge Direct + Reflection)
-	// =========================================================================
-	{
-		// Barriers: Reflection -> Read, DirectLight -> Read, Output -> Write
-		// (For simplicity, let's say we write back into mComputeOutputTexture)
-		D3D12_RESOURCE_BARRIER barriers[]
+			// D. Draw Opaque & Masked Geometry
+			mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
+			mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
+
+			mCommandList.Get()->SetPipelineState(mPipelineStateOpaqueSingle.Get());
+			for (const auto& mesh : mOpaqueSingleSidedMeshes)
+				DrawMesh(mesh);
+			mCommandList.Get()->SetPipelineState(mPipelineStateOpaqueDouble.Get());
+			for (const auto& mesh : mOpaqueDoubleSidedMeshes)
+				DrawMesh(mesh);
+			mCommandList.Get()->SetPipelineState(mPipelineStateMaskedSingle.Get());
+			for (const auto& mesh : mMaskedSingleMeshes)
+				DrawMesh(mesh);
+			mCommandList.Get()->SetPipelineState(mPipelineStateMaskedDouble.Get());
+			for (const auto& mesh : mMaskedDoubleSidedMeshes)
+				DrawMesh(mesh);
+			//mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
+			//for (const auto& mesh : mTransparentMeshes)
+			//	DrawMesh(mesh);
+		}
+
+		// =========================================================================================
+		// STAGE 2: LIGHTING PASS (Compute Shader + Inline Ray Tracing)
+		// =========================================================================================
 		{
-			CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-			CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-			CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-		};
-		mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+			// A. Transition Resources
+			// G-Buffer -> Shader Resource (Read)
+			// Depth -> Shader Resource (Read)
+			// Output Texture -> Unordered Access (Write)
+			D3D12_RESOURCE_BARRIER barriers[]
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				//CD3DX12_RESOURCE_BARRIER::Transition(mDirectLightingTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+			};
+			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
-		// Bind Composite Pipeline
-		mCommandList.Get()->SetComputeRootSignature(mCompositeRootSignature.Get());
-		mCommandList.Get()->SetPipelineState(mPipelineStateComposite.Get());
+			// B. Bind Compute Pipeline
+			mCommandList.Get()->SetComputeRootSignature(mComputeRootSignature.Get());
+			mCommandList.Get()->SetPipelineState(mPipelineStateCompute.Get());
 
-		// Bind Descriptors
-		// Slot 0: CBV
-		mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
+			// C. Bind Resources (Slots based on computeSigDesc)
+			// Slot 0: CBV (Frame Data)
+			mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
 
-		// Slot 1: Direct Lighting Table (t0)
-		mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_Diffuse));
+			// Slot 1: G-Buffer SRV Table (t0 - t4)
+			// We use the wrapper to get the GPU handle of the *start* of the G-Buffer allocation
+			mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
 
-		// Slot 1: Reflection SRV (t1)
-		mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHeap.GetGpuHandle(mSrvSlot_Specular));
+			// Slot 2: TLAS SRV (t5) - Raw Address
+			mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
 
-		// Slot 2: G-Buffer Table (t2 - t5)
-		mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
+			// Slot 3: Light Buffer SRV (t6) - Raw Address
+			// Ensure mLightBuffer is created!
+			mCommandList.Get()->SetComputeRootShaderResourceView(3, mGlobalLightBuffer.Get()->GetGPUVirtualAddress());
 
-		// Slot 3: Output UAV (u0)
-		mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
+			// Slot 4: Output UAV Table (u0)
+			//mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_DirectLighting));
 
-		// Dispatch
-		mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+			// D. Dispatch
+			// Threads (8, 8, 1). Dispatch (Width/8, Height/8, 1)
+			//mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+		}
 
-		D3D12_RESOURCE_BARRIER cleanup[2]{};
+		// =========================================================================
+		// STAGE 3: REFLECTIONS (DXR Pipeline)
+		// =========================================================================
+		{
+			// 1. Barrier: Output needs to be UAV
+			D3D12_RESOURCE_BARRIER barriers[]
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+			};
+			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
-		cleanup[0] = CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-		cleanup[1] = CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-		//cleanup[2] = CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			// 2. Dispatch Rays
+			// Note: The Global Root Sig needs binding just like a Compute Shader
+			mCommandList.Get()->SetComputeRootSignature(mComputeRootSignature.Get());
+			mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
+			mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo)); // G-Buffer
+			mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
+			mCommandList.Get()->SetComputeRootShaderResourceView(3, mGlobalLightBuffer.Get()->GetGPUVirtualAddress());
 
-		mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+			// Bind Reflection Output UAV (Slot u0 in Reflections.hlsl)
+			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Diffuse));
+
+			mReflectionsPipeline.Dispatch(mCommandList.Get(), mWidth, mHeight);
+		}
+
+		// =========================================================================
+		// STAGE 4: COMPOSITE (Merge Direct + Reflection)
+		// =========================================================================
+		{
+			// Barriers: Reflection -> Read, DirectLight -> Read, Output -> Write
+			// (For simplicity, let's say we write back into mComputeOutputTexture)
+			D3D12_RESOURCE_BARRIER barriers[]
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+			};
+			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+
+			// Bind Composite Pipeline
+			mCommandList.Get()->SetComputeRootSignature(mCompositeRootSignature.Get());
+			mCommandList.Get()->SetPipelineState(mPipelineStateComposite.Get());
+
+			// Bind Descriptors
+			// Slot 0: CBV
+			mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
+
+			// Slot 1: Direct Lighting Table (t0)
+			mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_Diffuse));
+
+			// Slot 1: Reflection SRV (t1)
+			mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHeap.GetGpuHandle(mSrvSlot_Specular));
+
+			// Slot 2: G-Buffer Table (t2 - t5)
+			mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
+
+			// Slot 3: Output UAV (u0)
+			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
+
+			// Dispatch
+			mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+
+			D3D12_RESOURCE_BARRIER cleanup[]
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+			};
+
+			mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+		}
+
+		// =========================================================================================
+		// STAGE 5: TRANSPARENT FORWARD PASS
+		// =========================================================================================
+		{
+			D3D12_RESOURCE_BARRIER barriers[]
+			{
+				// 1. Transition Output Texture: UAV (from Compute) -> RENDER_TARGET
+				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET),
+				// 2. Transition Depth: SHADER_RESOURCE (from Compute) -> DEPTH_READ
+				// We need to READ depth to occlude glass behind walls, but we don't need to WRITE (usually).
+				CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_READ),
+			};
+			mCommandList.Get()->ResourceBarrier(2, barriers);
+
+			// Bind Targets
+			// We write Color to ComputeOutput, and Read Depth from DepthBuffer
+			//D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
+			//D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
+
+			//mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+			//mCommandList.Get()->RSSetViewports(1, &mViewport);
+			//mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+
+			//// Draw Transparent Meshes
+			//mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
+			//mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
+			//mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			//mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
+
+			//for (const auto& mesh : mTransparentMeshes)
+			//    DrawMesh(mesh);
+		}
+
+
+
+		// =========================================================================================
+		// STAGE 6: COPY TO BACKBUFFER
+		// =========================================================================================
+		{
+			D3D12_RESOURCE_BARRIER barriers[]
+			{
+				// Transition Output Texture -> Copy Source
+				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE),
+				// Transition Back Buffer -> Copy Dest
+				CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
+				// Transition Depth Buffer back to Common
+				CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_READ, D3D12_RESOURCE_STATE_COMMON),
+				// Transition Emissive G-Buffer back to Common
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+			};
+
+			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+
+			// Copy
+			mCommandList.Get()->CopyResource(
+				mSwapChain.GetCurrentBackBuffer(),
+				mComputeOutputTexture.Get());
+
+			// Transition Back Buffer -> Present
+			D3D12_RESOURCE_BARRIER renderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+				mSwapChain.GetCurrentBackBuffer(),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				D3D12_RESOURCE_STATE_RENDER_TARGET);
+			mCommandList.Get()->ResourceBarrier(1, &renderTargetBarrier);
+
+			// Cleanup G-Buffer Transitions (Back to Common)
+			D3D12_RESOURCE_BARRIER cleanup[]
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+			};
+			mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+		}
 	}
-
-	// =========================================================================================
-	// STAGE 5: TRANSPARENT FORWARD PASS
-	// =========================================================================================
+	else
 	{
-		D3D12_RESOURCE_BARRIER barriers[2]{};
-
-		// 1. Transition Output Texture: UAV (from Compute) -> RENDER_TARGET
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mComputeOutputTexture.Get(),
-			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-		// 2. Transition Depth: SHADER_RESOURCE (from Compute) -> DEPTH_READ
-		// We need to READ depth to occlude glass behind walls, but we don't need to WRITE (usually).
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mDepthBuffer.GetResource(),
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-			D3D12_RESOURCE_STATE_DEPTH_READ);
-
-		mCommandList.Get()->ResourceBarrier(2, barriers);
-
-		// Bind Targets
-		// We write Color to ComputeOutput, and Read Depth from DepthBuffer
-		//D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
-		//D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
-
-		//mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-		//mCommandList.Get()->RSSetViewports(1, &mViewport);
-		//mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
-
-		//// Draw Transparent Meshes
-		//mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
-		//mCommandList.Get()->SetPipelineState(mPipelineStateTransparent.Get());
-		//mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		//mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
-
-		//for (const auto& mesh : mTransparentMeshes)
-		//    DrawMesh(mesh);
-	}
-
-
-
-	// =========================================================================================
-	// STAGE 6: COPY TO BACKBUFFER
-	// =========================================================================================
-	{
-		D3D12_RESOURCE_BARRIER barriers[4]{};
-		// Transition Output Texture -> Copy Source
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mComputeOutputTexture.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
-		// Transition Back Buffer -> Copy Dest
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+		D3D12_RESOURCE_BARRIER renderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
 			mSwapChain.GetCurrentBackBuffer(),
 			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_COPY_DEST);
-		// Transition Depth Buffer back to Common
-		barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mDepthBuffer.GetResource(),
-			D3D12_RESOURCE_STATE_DEPTH_READ,
-			D3D12_RESOURCE_STATE_COMMON);
-		// Transition Emissive G-Buffer back to Common
-		barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBufferEmission.Get(),
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-			D3D12_RESOURCE_STATE_COMMON);
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		mCommandList.Get()->ResourceBarrier(1, &renderTargetBarrier);
 
-		mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
-		// Copy
-		mCommandList.Get()->CopyResource(
-			mSwapChain.GetCurrentBackBuffer(),
-			mComputeOutputTexture.Get());
+		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mSwapChain.GetCurrentBackBufferView();
 
-		// Transition Back Buffer -> Present
-		D3D12_RESOURCE_BARRIER presentBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-			mSwapChain.GetCurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_PRESENT);
-		mCommandList.Get()->ResourceBarrier(1, &presentBarrier);
-
-		// Cleanup G-Buffer Transitions (Back to Common)
-		D3D12_RESOURCE_BARRIER cleanup[4]{};
-		cleanup[0] = CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-		cleanup[1] = CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-		cleanup[2] = CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-		cleanup[3] = CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON);
-		mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+		// 3. [FIX] Clear and Bind
+		float clearColor[4] = { 0.1f, 0.1f, 0.1f, 1.0f }; // Dark gray background
+		mCommandList.Get()->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	}
+
+	if (ImGui::GetIO().BackendRendererUserData != nullptr)
+	{
+		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mSwapChain.GetCurrentBackBufferView();
+		mCommandList.Get()->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+		RenderImGui();
+	}
+	D3D12_RESOURCE_BARRIER presentBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		mSwapChain.GetCurrentBackBuffer(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT);
+	mCommandList.Get()->ResourceBarrier(1, &presentBarrier);
+
 
 	// Execute command list
 	mCommandList.Get()->Close();
