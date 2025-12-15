@@ -214,8 +214,7 @@ void RayGen()
     diffuseTotal += float3(0.05, 0.05, 0.05); // ambient
     
     
-    float distToCamera = length(viewPos - worldPos);
-    float bias = 0.01f + (distToCamera * 0.005f);
+    float bias = 0.001f;
     
     uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
     // Direct Lighting
@@ -240,8 +239,7 @@ void RayGen()
             float3 toLight = lightPos - worldPos;
             dist = length(toLight);
             L_central = normalize(toLight);
-            L_shadow = L_central;
-            GetConeSample(seed, L_central, radians(5.0f)); // Soft shadows with 5 degree cone
+            L_shadow = GetConeSample(seed, L_central, radians(5.0f)); // Soft shadows with 5 degree cone
             attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
         }
         
@@ -257,8 +255,9 @@ void RayGen()
             ray.TMin = 0.01;
             ray.TMax = dist - 0.05f;
             
+            static const uint instanceMask = 0x01;
             TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
-                     0xFF, 0, 1, 1, ray, shadowPayload);
+                     instanceMask, 0, 1, 1, ray, shadowPayload);
             
             if (shadowPayload.isVisible)
             {
@@ -293,7 +292,7 @@ void RayGen()
         float3 R = normalize(reflect(-V, H));
         
         if (dot(normal, R) > 0.0f)
-        {            
+        {
             RayDesc ray;
             ray.Origin = worldPos + normal * bias;
             ray.Direction = R;
@@ -305,7 +304,7 @@ void RayGen()
         
             float3 F = FresnelSchlick(max(dot(normal, V), 0.0f), F0);
             specularTotal += payload.color.rgb * F;
-        }       
+        }
     }
     
     gOutDiffuse[pixel] = float4(diffuseTotal, 1.0);

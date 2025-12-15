@@ -106,6 +106,10 @@ float4 main(PSInput input) : SV_TARGET
         }
     }
 
+    // At the very end of main()
+    finalColor = finalColor / (finalColor + 1.0f); // Reinhart operator to fit in UNORM
+    finalColor = pow(finalColor, 1.0f / 2.2f); // Gamma correction
+    //return float4(finalColor, 1);
     //finalColor = finalColor / (finalColor + float3(1.0f, 1.0f, 1.0f)); // Simple tonemapping
     return float4(finalColor, alpha);
 }
