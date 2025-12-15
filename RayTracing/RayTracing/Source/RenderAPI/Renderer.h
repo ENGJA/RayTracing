@@ -192,7 +192,7 @@ private:
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
-
+	bool mSceneLoaded = false; ///< Whether a scene is currently loaded.
 	unsigned int mFrameCount = 0;
 
 	// timing
