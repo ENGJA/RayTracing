@@ -18,6 +18,11 @@
 #include "RenderAPI/RT/RayTracingPipeline.h"
 #include <unordered_map>
 
+
+#include <streamline/sl.h>
+#include <streamline/sl_dlss.h>
+#include <streamline/sl_dlss_d.h>
+
 struct AlignedConstantBufferData
 {
 	ConstantBufferData data;
@@ -191,6 +196,42 @@ private:
 
 	// ===========================================
 
+	// ===========================================
+	// DLSS Integration
+	D3D12Resource mDLSSOutputTexture;
+	int mUavSlot_DlssOutput = -1;
+	int mSrvSlot_DlssOutput = -1;
+
+	DirectX::XMMATRIX mPrevViewMatrix;
+	DirectX::XMMATRIX mPrevProjMatrix;
+	sl::DLSSMode mDLSSMode = sl::DLSSMode::eMaxQuality;
+	
+	sl::Feature* mDLSS_FeatureHandle = nullptr;
+	sl::DLSSOptions mDLSS_Options{};
+	sl::DLSSDOptions mDLSSD_Options{};
+	sl::Constants mDLSS_Constants{};
+
+	D3D12Resource mGBufferVelocity;    ///< G-buffer render target for motion vectors (RG16F).
+	int mUavSlot_Velocity = -1;
+	int mSrvSlot_Velocity = -1;
+
+	sl::ViewportHandle mSlViewport = { 0 };
+	uint32_t mRenderWidth = 0;
+	uint32_t mRenderHeight = 0;
+
+	DirectX::XMFLOAT2 mJitter = { 0.0f, 0.0f };
+
+	bool mDLSSRREnabled = false;
+	bool mStreamlineInitialized = false;
+
+	
+	void InitializeDLSSRR();
+	void UpdateCameraJitter();
+	void EvaluateDLSSRR(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMMATRIX& invView, const DirectX::XMMATRIX& invProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward, float nearZ, float farZ, float fovY, float aspectRatio);
+	void CleanupStreamline();
+
+	// ===========================================
+
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
@@ -316,7 +357,7 @@ public:
 	 * @param cameraPos Camera world position.
 	 * @param cameraForward Camera forward direction.
 	 */
-	void Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward);
+	void Update(const Camera& camera);
 
 	/**
 	 * @brief Loads a scene from a file path.
@@ -390,5 +431,8 @@ public:
 	 * @return Pointer to IDXGIAdapter3, or nullptr if not available.
 	 */
 	IDXGIAdapter3* GetAdapter() const { return mAdapter.Get(); }
+
+
+	void InitializeStreamline();
 };
 

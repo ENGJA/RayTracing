@@ -188,11 +188,11 @@ void Application::Update()
 	}
 
 	// Render the scene (if loaded)
-	DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
-	DirectX::XMFLOAT3 camPos = mCameraManager.GetActiveCameraPosition();
-	DirectX::XMFLOAT3 camForward = mCameraManager.GetActiveCameraForward();
+	//DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
+	//DirectX::XMFLOAT3 camPos = mCameraManager.GetActiveCameraPosition();
+	//DirectX::XMFLOAT3 camForward = mCameraManager.GetActiveCameraForward();
 
-	mRenderer.Update(vp, camPos, camForward);
+	mRenderer.Update(mCameraManager.GetActiveCamera());
 
 	// Process scene loading AFTER rendering current frame
 	// This ensures the loading screen is visible before we start loading

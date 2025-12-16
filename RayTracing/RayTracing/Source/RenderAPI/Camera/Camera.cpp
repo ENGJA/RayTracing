@@ -82,26 +82,8 @@ void Camera::ChangeFov(float delta)
 }
 
 XMMATRIX Camera::GetViewProjection() const
-{
-    if (mType == CameraType::Fixed)
-    {
-        return mFixedView * mProj;
-    }
-
-    // Free camera - compute view from position and orientation
-    float cy = cosf(mYaw);
-    float sy = sinf(mYaw);
-    float cp = cosf(mPitch);
-    float sp = sinf(mPitch);
-    
-    XMVECTOR frontDir = XMVectorSet(cp * cy, sp, cp * sy, 0.0f);
-    frontDir = XMVector3Normalize(frontDir);
-    
-    XMVECTOR pos = XMLoadFloat3(&mPosition);
-    XMVECTOR up = XMLoadFloat3(&mWorldUp);
-    
-    XMMATRIX view = XMMatrixLookToLH(pos, frontDir, up);
-    return view * mProj;
+{    
+    return GetViewMatrix() * GetProjMatrix();
 }
 
 XMFLOAT3 Camera::GetPosition() const
@@ -154,4 +136,30 @@ void Camera::OnResize(UINT width, UINT height)
 
     mAspect = static_cast<float>(width) / static_cast<float>(height);
     mProj = DirectX::XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
+}
+
+DirectX::XMMATRIX Camera::GetViewMatrix() const
+{
+    if (mType == CameraType::Fixed)
+        return mFixedView;
+
+    float cy = cosf(mYaw);
+    float sy = sinf(mYaw);
+    float cp = cosf(mPitch);
+    float sp = sinf(mPitch);
+
+    XMVECTOR frontDir = XMVectorSet(cp * cy, sp, cp * sy, 0.0f);
+    frontDir = XMVector3Normalize(frontDir);
+
+    XMVECTOR pos = XMLoadFloat3(&mPosition);
+    XMVECTOR up = XMLoadFloat3(&mWorldUp);
+
+    XMMATRIX view = XMMatrixLookToLH(pos, frontDir, up);
+
+	return view;
+}
+
+DirectX::XMMATRIX Camera::GetProjMatrix() const
+{
+	return mProj;
 }

@@ -20,6 +20,22 @@
 
 using std::wcout, std::endl, std::string, std::wstring, std::vector, std::unordered_map, std::function, std::future;
 
+static sl::float4x4 XMMatrixToSLFloat4x4(const DirectX::XMMATRIX& mat)
+{
+	sl::float4x4 result;
+	DirectX::XMFLOAT4X4 temp;
+	DirectX::XMStoreFloat4x4(&temp, mat);
+
+	// Streamline uses row-major matrices
+	for (int row = 0; row < 4; row++)
+	{
+		result[row].x = temp.m[row][0];
+		result[row].y = temp.m[row][1];
+		result[row].z = temp.m[row][2];
+		result[row].w = temp.m[row][3];
+	}
+	return result;
+}
 
 /**
 * @brief Maps TextureType enum to descriptor slot index.
@@ -181,8 +197,8 @@ void Renderer::UploadMeshes(const function<void()>& executeBatch)
 
 void Renderer::BuildMeshGpuData()
 {
-    mUploadHeap.Reset();
-    mCommandList.ResetCommandList(0); // Use allocator 0 for one-time upload, not swap chain index
+	mUploadHeap.Reset();
+	mCommandList.ResetCommandList(0); // Use allocator 0 for one-time upload, not swap chain index
 
 	auto executeBatch = [this]()
 		{
@@ -191,10 +207,10 @@ void Renderer::BuildMeshGpuData()
 			mCommandQueue.ExecuteCommandLists(1, lists);
 			mCommandQueue.Flush();
 
-        mUploadHeap.Reset();
-        mCommandList.ResetCommandList(0); // Always use allocator 0 for uploads
-        mTextureLoader.Reset();
-    };
+			mUploadHeap.Reset();
+			mCommandList.ResetCommandList(0); // Always use allocator 0 for uploads
+			mTextureLoader.Reset();
+		};
 
 	DispatchTextureDecoding();
 	UploadMeshes(executeBatch);
@@ -278,14 +294,14 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	wcout << "Selected device: " << desc.Description << endl;
 
-    // Store adapter for VRAM queries
-    mAdapter = adapter;
+	// Store adapter for VRAM queries
+	mAdapter = adapter;
 
-    mHwnd = hwnd;
-    mDevice.Initialize(adapter.Get());
-    mCommandQueue.Initialize(mDevice.Get());
-    mCommandList.Initialize(mDevice.Get());
-    mSwapChain.Initialize(factory.Get(), hwnd, mCommandQueue.Get(), mDevice.Get(), width, height);
+	mHwnd = hwnd;
+	mDevice.Initialize(adapter.Get());
+	mCommandQueue.Initialize(mDevice.Get());
+	mCommandList.Initialize(mDevice.Get());
+	mSwapChain.Initialize(factory.Get(), hwnd, mCommandQueue.Get(), mDevice.Get(), width, height);
 
 	mDepthBuffer.Initialize(mDevice.Get(), width, height);
 	//D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
@@ -321,6 +337,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	InitializePipelineState();
 
+
+	InitializeStreamline();
+	InitializeDLSSRR();
 	InitializeGBufferResources();
 	InitializeComputePipeline();
 	CreateLightBuffer();
@@ -356,8 +375,9 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 		D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
-    // Initialize ImGui at the end of initialization
-    InitializeImGui(hwnd);
+	// Initialize ImGui at the end of initialization
+	InitializeImGui(hwnd);
+
 
 	// For debugging: recompile shaders on 'G' key press
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
@@ -366,20 +386,22 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 Renderer::~Renderer()
 {
 	wcout << L"Renderer destructor: cleaning up GPU resources..." << endl;
-	
+
 	// Wait for all GPU operations to complete before destroying resources
 	mCommandQueue.Flush();
-	
+
+	CleanupStreamline();
+
 	// Shutdown ImGui first (it uses our descriptor heaps)
 	ShutdownImGui();
-	
+
 	// Unload scene resources (meshes, textures, models)
 	UnloadScene();
-	
+
 	// Clear all remaining GPU resources
 	// Pipeline states, command lists, etc. will be released by their destructors
 	// but we want to ensure everything is done in the right order
-	
+
 	wcout << L"Renderer cleanup complete" << endl;
 }
 
@@ -403,11 +425,27 @@ void Renderer::OnResize(UINT width, UINT height)
 	// 2. Resize SwapChain
 	mSwapChain.Resize(width, height);
 
+
+	// =========================================================================
+	// 3. Resize DLSS Resources
+	// =========================================================================
+	if (mDLSSRREnabled)
+	{
+		slFreeResources(sl::kFeatureDLSS_RR, mSlViewport);
+		mDLSSRREnabled = false;
+		InitializeDLSSRR();
+	}
+	else
+	{
+		mRenderWidth = mWidth;
+		mRenderHeight = mHeight;
+	}
+
 	// =========================================================================
 	// 4. Resize Depth Buffer & Update Descriptors
 	// =========================================================================
 	{
-		mDepthBuffer.Initialize(mDevice.Get(), width, height);
+		mDepthBuffer.Initialize(mDevice.Get(), mRenderHeight, mRenderHeight);
 		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
 		dsvDesc.Format = Config::cDepthBufferFormat;
 		dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
@@ -437,22 +475,22 @@ void Renderer::OnResize(UINT width, UINT height)
 	// =========================================================================
 	{
 		// Albedo
-		auto albedoDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		auto albedoDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, mRenderWidth, mRenderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		D3D12_CLEAR_VALUE clearBlack = { DXGI_FORMAT_R8G8B8A8_UNORM, { 0.0f, 0.0f, 0.0f, 1.0f } };
 		mGBufferAlbedo.Initialize(mDevice.Get(), albedoDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearBlack);
 
 		// Normal
-		auto normalDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		auto normalDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mRenderWidth, mRenderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		D3D12_CLEAR_VALUE clearNormal = { DXGI_FORMAT_R16G16B16A16_FLOAT, { 0.5f, 0.5f, 1.0f, 1.0f } };
 		mGBufferNormal.Initialize(mDevice.Get(), normalDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearNormal);
 
 		// Material
-		auto materialDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		auto materialDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32_FLOAT, mRenderWidth, mRenderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		D3D12_CLEAR_VALUE clearMaterial = { DXGI_FORMAT_R32G32_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
 		mGBufferMaterial.Initialize(mDevice.Get(), materialDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearMaterial);
 
 		// Emissive
-		auto emissiveDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		auto emissiveDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mRenderWidth, mRenderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		D3D12_CLEAR_VALUE clearEmissive = { DXGI_FORMAT_R16G16B16A16_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
 		mGBufferEmission.Initialize(mDevice.Get(), emissiveDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearEmissive);
 
@@ -495,7 +533,7 @@ void Renderer::OnResize(UINT width, UINT height)
 	// =========================================================================
 	{
 		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(
-			DXGI_FORMAT_R16G16B16A16_FLOAT, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+			DXGI_FORMAT_R16G16B16A16_FLOAT, mRenderWidth, mRenderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 		);
 		mOutDiffuseTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 		mOutSpecularTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
@@ -531,41 +569,42 @@ void Renderer::OnResize(UINT width, UINT height)
 	mScissorRect.right = static_cast<LONG>(width);
 	mScissorRect.bottom = static_cast<LONG>(height);
 
+
 	wcout << "Resize complete!" << endl;
 }
 
 bool Renderer::LoadScene(const std::string& path)
 {
-    wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
+	wcout << L"Loading scene: " << wstring(path.begin(), path.end()) << endl;
 
-    auto model = std::make_unique<Model>();
+	auto model = std::make_unique<Model>();
 
-    std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
-    model->loadModel(path);
-    std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
-    std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
-    
-    if (model->mMeshes.empty())
-    {
-        wcout << L"Warning: Scene loaded but contains no meshes." << endl;
+	std::chrono::steady_clock::time_point loadStartTime = std::chrono::steady_clock::now();
+	model->loadModel(path);
+	std::chrono::steady_clock::time_point loadEndTime = std::chrono::steady_clock::now();
+	std::chrono::duration<double> loadElapsedSeconds = loadEndTime - loadStartTime;
 
-        // Create fallback quad for testing
-        vector<::Vertex> cpuVerts = {
-            { { -1, -1, 0 }, {0,0,1}, {0,1} },
-            { { -1,  1, 0 }, {0,0,1}, {0,0} },
-            { {  1,  1, 0 }, {0,0,1}, {1,0} },
-            { {  1, -1, 0 }, {0,0,1}, {1,1} },
-        };
-        vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
-        model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
-        return false;
-    }
+	if (model->mMeshes.empty())
+	{
+		wcout << L"Warning: Scene loaded but contains no meshes." << endl;
 
-    wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+		// Create fallback quad for testing
+		vector<::Vertex> cpuVerts = {
+			{ { -1, -1, 0 }, {0,0,1}, {0,1} },
+			{ { -1,  1, 0 }, {0,0,1}, {0,0} },
+			{ {  1,  1, 0 }, {0,0,1}, {1,0} },
+			{ {  1, -1, 0 }, {0,0,1}, {1,1} },
+		};
+		vector<unsigned int> cpuIdx = { 0,1,2, 0,2,3 };
+		model->mMeshes.push_back(Mesh(cpuVerts, cpuIdx, {}));
+		return false;
+	}
 
-    std::vector<std::unique_ptr<Model>> models;
-    models.push_back(std::move(model));
-    return LoadMultipleScenes(std::move(models));
+	wcout << L"Model loaded in " << loadElapsedSeconds.count() << L" seconds." << endl;
+
+	std::vector<std::unique_ptr<Model>> models;
+	models.push_back(std::move(model));
+	return LoadMultipleScenes(std::move(models));
 }
 
 bool Renderer::LoadSceneFromModel(std::unique_ptr<Model> model)
@@ -592,7 +631,7 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 	// Try to load models one by one, catching any memory allocation failures
 	size_t successfullyLoaded = 0;
 	size_t totalAttempted = models.size();
-	
+
 	for (size_t i = 0; i < models.size(); ++i)
 	{
 		auto& model = models[i];
@@ -607,11 +646,11 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 				wcout << L"Warning: Model " << (i + 1) << L" has no meshes, skipping." << endl;
 				continue;
 			}
-			
+
 			// Try to add the model
 			mModels.push_back(std::move(model));
 			successfullyLoaded++;
-			
+
 			wcout << L"Successfully added model " << successfullyLoaded << L" / " << totalAttempted << endl;
 		}
 		catch (const std::bad_alloc& e)
@@ -637,24 +676,24 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 	wcout << L"Added " << successfullyLoaded << L" / " << totalAttempted << L" models to scene." << endl;
 
 	// Try to build GPU data for all loaded models
-    try
-    {
-        std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
-        BuildMeshGpuData();
-        std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
-        std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
-        wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
-    }
-    catch (const std::runtime_error& e)
-    {
-        wcout << L"GPU memory exhausted during mesh data upload: " << e.what() << endl;
-        wcout << L"Some models may not be fully loaded. Try loading fewer or smaller models." << endl;
-        
-        // If BuildMeshGpuData fails due to GPU memory, we still have valid models in CPU memory
-        // but their GPU data may be incomplete. Better to unload them completely.
-        if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
-		    mMaskedSingleSidedMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
-		    mTransparentSingleSidedMeshes.empty())
+	try
+	{
+		std::chrono::steady_clock::time_point meshBuildStartTime = std::chrono::steady_clock::now();
+		BuildMeshGpuData();
+		std::chrono::steady_clock::time_point meshBuildEndTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> elapsedSeconds = meshBuildEndTime - meshBuildStartTime;
+		wcout << "Mesh GPU data built in " << elapsedSeconds.count() << " seconds." << endl;
+	}
+	catch (const std::runtime_error& e)
+	{
+		wcout << L"GPU memory exhausted during mesh data upload: " << e.what() << endl;
+		wcout << L"Some models may not be fully loaded. Try loading fewer or smaller models." << endl;
+
+		// If BuildMeshGpuData fails due to GPU memory, we still have valid models in CPU memory
+		// but their GPU data may be incomplete. Better to unload them completely.
+		if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() &&
+			mMaskedSingleSidedMeshes.empty() && mMaskedDoubleSidedMeshes.empty() &&
+			mTransparentSingleSidedMeshes.empty())
 		{
 			// No meshes were uploaded at all - complete failure
 			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
@@ -663,23 +702,23 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 			return false;
 		}
 		// else: Some meshes were uploaded, continue with what we have
-    }
-    catch (const std::exception& e)
-    {
-        wcout << L"Error building mesh GPU data: " << e.what() << endl;
-        
-        // Check if we have at least some meshes uploaded
-        if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() && 
-		    mMaskedSingleSidedMeshes.empty() && mMaskedDoubleSidedMeshes.empty() && 
-		    mTransparentSingleSidedMeshes.empty())
+	}
+	catch (const std::exception& e)
+	{
+		wcout << L"Error building mesh GPU data: " << e.what() << endl;
+
+		// Check if we have at least some meshes uploaded
+		if (mOpaqueSingleSidedMeshes.empty() && mOpaqueDoubleSidedMeshes.empty() &&
+			mMaskedSingleSidedMeshes.empty() && mMaskedDoubleSidedMeshes.empty() &&
+			mTransparentSingleSidedMeshes.empty())
 		{
 			wcout << L"No meshes could be uploaded to GPU. Unloading all models." << endl;
 			mModels.clear();
 			mTextureCache.clear();
 			return false;
 		}
-    }
-	
+	}
+
 	// Try to build ray tracing structures
 	try
 	{
@@ -705,14 +744,14 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
 	}
 
-	size_t loadedMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
-	                         mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
-	                         mTransparentSingleSidedMeshes.size();
-	
+	size_t loadedMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
+		mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
+		mTransparentSingleSidedMeshes.size();
+
 	if (loadedMeshCount > 0)
 	{
-		wcout << L"Scene(s) loaded successfully! (" << successfullyLoaded << L" model(s), " 
-		      << loadedMeshCount << L" meshes)" << endl;
+		wcout << L"Scene(s) loaded successfully! (" << successfullyLoaded << L" model(s), "
+			<< loadedMeshCount << L" meshes)" << endl;
 		mSceneLoaded = true;
 		return true;
 	}
@@ -725,50 +764,50 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 
 void Renderer::UnloadScene()
 {
-    wcout << L"Unloading scene..." << endl;
+	wcout << L"Unloading scene..." << endl;
 
-    // Wait for GPU to finish all work
-    mCommandQueue.Flush();
+	// Wait for GPU to finish all work
+	mCommandQueue.Flush();
 
-    // Clear all GPU resources - now we have separate mesh lists
-    mOpaqueSingleSidedMeshes.clear();
-    mOpaqueDoubleSidedMeshes.clear();
-    mMaskedSingleSidedMeshes.clear();
-    mMaskedDoubleSidedMeshes.clear();
-    mTransparentSingleSidedMeshes.clear();
-    
-    mModels.clear();
-    mTextureCache.clear();
-    mStaticLights.clear();
+	// Clear all GPU resources - now we have separate mesh lists
+	mOpaqueSingleSidedMeshes.clear();
+	mOpaqueDoubleSidedMeshes.clear();
+	mMaskedSingleSidedMeshes.clear();
+	mMaskedDoubleSidedMeshes.clear();
+	mTransparentSingleSidedMeshes.clear();
 
-    // Reset heaps
-    mUploadHeap.Reset();
-    mTextureLoader.Reset();
+	mModels.clear();
+	mTextureCache.clear();
+	mStaticLights.clear();
 
-    // Reset constant buffer data
-    mConstantBufferData.numLights = 0;
-    for (int i = 0; i < cMaxLights; ++i)
-    {
-        mConstantBufferData.lights[i] = LightData{};
-    }
+	// Reset heaps
+	mUploadHeap.Reset();
+	mTextureLoader.Reset();
 
-    wcout << L"Scene unloaded." << endl;
+	// Reset constant buffer data
+	mConstantBufferData.numLights = 0;
+	for (int i = 0; i < cMaxLights; ++i)
+	{
+		mConstantBufferData.lights[i] = LightData{};
+	}
+
+	wcout << L"Scene unloaded." << endl;
 }
 
 void Renderer::InitializeDummyTextures()
 {
-    mUploadHeap.Reset();
-    mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
-    mDefaultTextures =
-    {
-        .white = mTextureLoader.CreateSolidDummyTexture(0xFFFFFFFF),    // (255,255,255) in BGRA
-        //.black = mTextureLoader.CreateSolidDummyTexture(0xFF000000),    // (0,0,0) in BGRA
-        .normal = mTextureLoader.CreateSolidDummyTexture(0xFFFF8080),   // (255,128,128) in BGRA
-    };
-    mCommandList.Get()->Close();
-    ID3D12CommandList* lists[] = { mCommandList.Get() };
-    mCommandQueue.ExecuteCommandLists(1, lists);
-    mCommandQueue.Flush();
+	mUploadHeap.Reset();
+	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+	mDefaultTextures =
+	{
+		.white = mTextureLoader.CreateSolidDummyTexture(0xFFFFFFFF),    // (255,255,255) in BGRA
+		//.black = mTextureLoader.CreateSolidDummyTexture(0xFF000000),    // (0,0,0) in BGRA
+		.normal = mTextureLoader.CreateSolidDummyTexture(0xFFFF8080),   // (255,128,128) in BGRA
+	};
+	mCommandList.Get()->Close();
+	ID3D12CommandList* lists[] = { mCommandList.Get() };
+	mCommandQueue.ExecuteCommandLists(1, lists);
+	mCommandQueue.Flush();
 }
 
 
@@ -871,13 +910,13 @@ void Renderer::InitializeGBufferResources()
 {
 	// 1. Initialize Heaps
 	// Create RTV Heap (Capacity 5, Not Visible)
-	mGBufferRtvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 5, false);
+	mGBufferRtvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 6, false);
 
 	// 2. Define Resource Descriptors (Standard D3DX12 code...)
 	auto albedoDescc = CD3DX12_RESOURCE_DESC::Tex2D(
 		DXGI_FORMAT_R8G8B8A8_UNORM,
-		mWidth,
-		mHeight,
+		mRenderWidth,
+		mRenderHeight,
 		1, // array size
 		1, // mip levels
 		1, // sample count
@@ -886,8 +925,8 @@ void Renderer::InitializeGBufferResources()
 	);
 	auto normalDescc = CD3DX12_RESOURCE_DESC::Tex2D(
 		DXGI_FORMAT_R16G16B16A16_FLOAT,
-		mWidth,
-		mHeight,
+		mRenderWidth,
+		mRenderHeight,
 		1, // array size
 		1, // mip levels
 		1, // sample count
@@ -896,8 +935,8 @@ void Renderer::InitializeGBufferResources()
 	);
 	auto materialDescc = CD3DX12_RESOURCE_DESC::Tex2D(
 		DXGI_FORMAT_R32G32_FLOAT,
-		mWidth,
-		mHeight,
+		mRenderWidth,
+		mRenderHeight,
 		1, // array size
 		1, // mip levels
 		1, // sample count
@@ -906,20 +945,33 @@ void Renderer::InitializeGBufferResources()
 	);
 	auto emissiveDesc = CD3DX12_RESOURCE_DESC::Tex2D(
 		DXGI_FORMAT_R16G16B16A16_FLOAT,
-		mWidth,
-		mHeight,
+		mRenderWidth,
+		mRenderHeight,
 		1, // array size
 		1, // mip levels
 		1, // sample count
 		0, // sample quality
 		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
 	);
+	auto velocityDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+		DXGI_FORMAT_R16G16_FLOAT,
+		mRenderWidth,
+		mRenderHeight,
+		1, // array size
+		1, // mip levels
+		1, // sample count
+		0, // sample quality
+		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+	);	
+
+
 
 	// Clear Values...
 	D3D12_CLEAR_VALUE clearBlack = { DXGI_FORMAT_R8G8B8A8_UNORM, { 0.0f, 0.0f, 0.0f, 1.0f } };
 	D3D12_CLEAR_VALUE clearNormal = { DXGI_FORMAT_R16G16B16A16_FLOAT, { 0.5f, 0.5f, 1.0f, 1.0f } };
 	D3D12_CLEAR_VALUE clearMaterial = { DXGI_FORMAT_R32G32_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
 	D3D12_CLEAR_VALUE clearEmissive = { DXGI_FORMAT_R16G16B16A16_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
+	D3D12_CLEAR_VALUE clearVelocity = { DXGI_FORMAT_R16G16_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
 
 	// Create Resources...
 	mGBufferAlbedo.Initialize(
@@ -946,6 +998,12 @@ void Renderer::InitializeGBufferResources()
 		D3D12_HEAP_TYPE_DEFAULT,
 		D3D12_RESOURCE_STATE_COMMON,
 		&clearEmissive);
+	mGBufferVelocity.Initialize(
+		mDevice.Get(),
+		velocityDesc,
+		D3D12_HEAP_TYPE_DEFAULT,
+		D3D12_RESOURCE_STATE_COMMON,
+		&clearVelocity);
 
 	// 3. Create RTVs using the Wrapper
 	// Allocate 3 slots
@@ -953,24 +1011,14 @@ void Renderer::InitializeGBufferResources()
 	auto rtvNormalHandle = mGBufferRtvHeap.Allocate();
 	auto rtvMaterialHandle = mGBufferRtvHeap.Allocate();
 	auto rtvEmissiveHandle = mGBufferRtvHeap.Allocate();
+	auto rtvVelocityHandle = mGBufferRtvHeap.Allocate();
 
 	// Create Views into the allocated handles
-	mDevice.Get()->CreateRenderTargetView(
-		mGBufferAlbedo.Get(),
-		nullptr,
-		rtvAlbedoHandle.cpuHandle);
-	mDevice.Get()->CreateRenderTargetView(
-		mGBufferNormal.Get(),
-		nullptr,
-		rtvNormalHandle.cpuHandle);
-	mDevice.Get()->CreateRenderTargetView(
-		mGBufferMaterial.Get(),
-		nullptr,
-		rtvMaterialHandle.cpuHandle);
-	mDevice.Get()->CreateRenderTargetView(
-		mGBufferEmission.Get(),
-		nullptr,
-		rtvEmissiveHandle.cpuHandle);
+	mDevice.Get()->CreateRenderTargetView(mGBufferAlbedo.Get(), nullptr, rtvAlbedoHandle.cpuHandle);
+	mDevice.Get()->CreateRenderTargetView(mGBufferNormal.Get(), nullptr, rtvNormalHandle.cpuHandle);
+	mDevice.Get()->CreateRenderTargetView(mGBufferMaterial.Get(), nullptr, rtvMaterialHandle.cpuHandle);
+	mDevice.Get()->CreateRenderTargetView(mGBufferEmission.Get(), nullptr, rtvEmissiveHandle.cpuHandle);
+	mDevice.Get()->CreateRenderTargetView(mGBufferVelocity.Get(), nullptr, rtvVelocityHandle.cpuHandle);
 
 	// 4. Create SRVs (Inputs for Compute)
 	auto srvAlbedo = mSrvHeap.Allocate();
@@ -978,18 +1026,20 @@ void Renderer::InitializeGBufferResources()
 	auto srvMaterial = mSrvHeap.Allocate();
 	auto srvDepth = mSrvHeap.Allocate();
 	auto srvEmissive = mSrvHeap.Allocate();
+	auto srvVelocity = mSrvHeap.Allocate();
 
 	mSrvSlot_GBufferAlbedo = srvAlbedo.index;
 	mSrvSlot_GBufferNormal = srvNormal.index;
 	mSrvSlot_GBufferMaterial = srvMaterial.index;
 	mSrvSlot_GBufferEmissive = srvEmissive.index;
 	mSrvSlot_Depth = srvDepth.index;
-
+	mSrvSlot_Velocity = srvVelocity.index;
 
 	CreateTextureView(mGBufferAlbedo.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, srvAlbedo.cpuHandle, 1);
 	CreateTextureView(mGBufferNormal.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, srvNormal.cpuHandle, 1);
 	CreateTextureView(mGBufferMaterial.Get(), DXGI_FORMAT_R32G32_FLOAT, srvMaterial.cpuHandle, 1);
 	CreateTextureView(mGBufferEmission.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, srvEmissive.cpuHandle, 1);
+	CreateTextureView(mGBufferVelocity.Get(), DXGI_FORMAT_R16G16_FLOAT, srvVelocity.cpuHandle, 1);
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC depthSrv = {};
 	depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
@@ -1177,6 +1227,243 @@ void Renderer::InitializeReflectionResources()
 }
 
 
+void Renderer::InitializeStreamline()
+{
+	sl::Preferences pref;
+	pref.showConsole = false;
+	pref.logLevel = sl::LogLevel::eDefault;
+	pref.pathsToPlugins = nullptr;	// Use default plugin path (next to executable)
+	pref.numPathsToPlugins = 0;
+
+	sl::Feature featuresToLoad[] = { sl::kFeatureDLSS_RR };
+	pref.featuresToLoad = featuresToLoad;
+	pref.numFeaturesToLoad = _countof(featuresToLoad);
+
+	if (SL_FAILED(res, slInit(pref)))
+	{
+		std::cerr << "Failed to initialize Streamline. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+
+	if (SL_FAILED(res, slSetD3DDevice(mDevice.Get())))
+	{
+		std::cerr << "Failed to set D3D device for Streamline. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+
+	mStreamlineInitialized = true;
+	std::cout << "Streamline initialized successfully." << std::endl;
+}
+
+void Renderer::InitializeDLSSRR()
+{
+	sl::DLSSDOptions options = {};
+	options.mode = mDLSSMode;
+	options.outputWidth = mWidth;
+	options.outputHeight = mHeight;
+	options.colorBuffersHDR = sl::Boolean::eTrue;
+	options.preExposure = 1.0f;
+	options.exposureScale = 1.0f;
+	options.normalRoughnessMode = sl::DLSSDNormalRoughnessMode::ePacked;
+
+	sl::DLSSDOptimalSettings optimalSettings{};
+
+	if (SL_FAILED(res, slDLSSDGetOptimalSettings(options, optimalSettings)))
+	{
+		std::cerr << "Failed to get DLSS optimal settings. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+
+	mRenderWidth = optimalSettings.optimalRenderWidth;
+	mRenderHeight = optimalSettings.optimalRenderHeight;
+
+	std::cout << "DLSS Optimal Render Size: " << mRenderWidth << "x" << mRenderHeight << std::endl;
+
+	auto dlssOutputDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+		DXGI_FORMAT_R16G16B16A16_FLOAT,
+		mWidth,
+		mHeight,
+		1, // array size
+		1, // mip levels
+		1, // sample count
+		0, // sample quality
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+	);
+
+	mDLSSOutputTexture.Initialize(
+		mDevice.Get(),
+		dlssOutputDesc,
+		D3D12_HEAP_TYPE_DEFAULT,
+		D3D12_RESOURCE_STATE_COMMON);
+
+	auto dlssUavHandle = mSrvHeap.Allocate();
+	mUavSlot_DlssOutput = dlssUavHandle.index;
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC dlssUavViewDesc = {};
+	dlssUavViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	dlssUavViewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+	mDevice.Get()->CreateUnorderedAccessView(
+		mDLSSOutputTexture.Get(),
+		nullptr,
+		&dlssUavViewDesc,
+		dlssUavHandle.cpuHandle);
+
+	auto srvDlssOutputHandle = mSrvHeap.Allocate();
+	mSrvSlot_DlssOutput = srvDlssOutputHandle.index;
+	CreateTextureView(mDLSSOutputTexture.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, srvDlssOutputHandle.cpuHandle, 1);
+
+	if (SL_FAILED(res, slDLSSDSetOptions(mSlViewport, options)))
+	{
+		std::cerr << "Failed to set DLSS options. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+
+	mDLSSRREnabled = true;
+	std::cout << "DLSS initialized successfully." << std::endl;
+}
+
+void Renderer::UpdateCameraJitter()
+{
+	// Halton sequence for jitter (commonly used for TAA/DLSS)
+	// Simple 2,3 Halton sequence implementation
+	auto halton = [](int index, int base) {
+		float result = 0.0f;
+		float f = 1.0f / base;
+		int i = index;
+		while (i > 0)
+		{
+			result += f * (i % base);
+			i /= base;
+			f /= base;
+		}
+		return result;
+	};
+
+	int jitterIndex = mFrameCount % 16 + 1; // Use 16-sample jitter pattern
+	float jitterX = halton(jitterIndex, 2) - 0.5f;
+	float jitterY = halton(jitterIndex, 3) - 0.5f;
+
+	mJitter.x = jitterX / static_cast<float>(mRenderWidth);
+	mJitter.y = jitterY / static_cast<float>(mRenderHeight);
+}
+
+void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
+	const DirectX::XMMATRIX& proj,
+	const DirectX::XMMATRIX& invView,
+	const DirectX::XMMATRIX& invProj,
+	const DirectX::XMFLOAT3& cameraPos,
+	const DirectX::XMFLOAT3& cameraForward,
+	float nearZ, float farZ, float fovY, float aspectRatio)
+{
+	sl::FrameToken* frameToken = nullptr;
+	if (SL_FAILED(res, slGetNewFrameToken(frameToken, &mFrameCount)))
+	{
+		std::cerr << "Failed to get new DLSS frame token. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+
+	sl::Constants slConstants{};
+	slConstants.cameraViewToClip = XMMatrixToSLFloat4x4(proj);
+	slConstants.clipToCameraView = XMMatrixToSLFloat4x4(invProj);
+
+
+	// Clip to previous clip
+	DirectX::XMMATRIX clipToPrevClip = invProj * invView * mPrevViewMatrix * mPrevProjMatrix;
+	slConstants.clipToPrevClip = XMMatrixToSLFloat4x4(clipToPrevClip);
+
+	// Previous clip to current clip
+	DirectX::XMMATRIX prevClipToClip = DirectX::XMMatrixInverse(nullptr, clipToPrevClip);
+	slConstants.prevClipToClip = XMMatrixToSLFloat4x4(prevClipToClip);
+
+	slConstants.jitterOffset = sl::float2(mJitter.x, mJitter.y);
+
+	slConstants.mvecScale = sl::float2(1.0f / static_cast<float>(mRenderWidth), 1.0f / static_cast<float>(mRenderHeight));
+
+	
+	// Camera position and orientation
+	slConstants.cameraPos  = sl::float3(cameraPos.x, cameraPos.y, cameraPos.z);
+	slConstants.cameraUp = sl::float3(0.0f, 1.0f, 0.0f);
+	slConstants.cameraRight = sl::float3(1.0f, 0.0f, 0.0f);
+	slConstants.cameraFwd = sl::float3(cameraForward.x, cameraForward.y, cameraForward.z);
+
+	// Depth settings
+	slConstants.depthInverted = sl::Boolean::eFalse;
+	slConstants.cameraMotionIncluded = sl::Boolean::eFalse;
+	slConstants.motionVectors3D = sl::Boolean::eFalse;
+	slConstants.reset = sl::Boolean::eFalse;
+
+	// Camera near/far
+	slConstants.cameraNear = nearZ;
+	slConstants.cameraFar = farZ;
+	slConstants.cameraFOV = fovY;
+	slConstants.cameraAspectRatio = aspectRatio;
+
+	// Set constants
+	if (SL_FAILED(res, slSetConstants(slConstants, *frameToken, mSlViewport)))
+	{
+		std::cerr << "Failed to set DLSS constants. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+
+	// Create Resource objects on the heap (ResourceTag expects pointers)
+	sl::Resource depthResource(sl::ResourceType::eTex2d, mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource mvecResource(sl::ResourceType::eTex2d, mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource albedoResource(sl::ResourceType::eTex2d, mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource normalResource(sl::ResourceType::eTex2d, mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource roughnessResource(sl::ResourceType::eTex2d, mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource diffuseResource(sl::ResourceType::eTex2d, mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource specularResource(sl::ResourceType::eTex2d, mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource outputResource(sl::ResourceType::eTex2d, mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Create extent for resources
+	sl::Extent renderExtent{ 0, 0, mRenderWidth, mRenderHeight };
+	sl::Extent outputExtent{ 0, 0, mWidth, mHeight };
+
+	// Tag resources
+	std::vector<sl::ResourceTag> tags = {
+		sl::ResourceTag(&depthResource, sl::kBufferTypeDepth, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&mvecResource, sl::kBufferTypeMotionVectors, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&albedoResource, sl::kBufferTypeAlbedo, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&normalResource, sl::kBufferTypeNormals, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&roughnessResource, sl::kBufferTypeRoughness, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&diffuseResource, sl::kBufferTypeDiffuseHitNoisy, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&specularResource, sl::kBufferTypeSpecularHitNoisy, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&outputResource, sl::kBufferTypeScalingOutputColor, sl::eValidUntilPresent, &outputExtent)
+	};
+
+	if (SL_FAILED(res, slSetTagForFrame(*frameToken, mSlViewport, tags.data(), static_cast<uint32_t>(tags.size()), reinterpret_cast<sl::CommandBuffer*>(mCommandList.Get()))))
+	{
+		std::cerr << "Failed to tag DLSS resources. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+
+	const sl::BaseStructure* inputs[] = { nullptr };
+	if (SL_FAILED(res, slEvaluateFeature(sl::kFeatureDLSS_RR, *frameToken, inputs, 0, reinterpret_cast<sl::CommandBuffer*>(mCommandList.Get()))))
+	{
+		std::cerr << "Failed to evaluate DLSS frame. Result was: " << static_cast<int>(res) << std::endl;
+		return;
+	}
+}
+
+void Renderer::CleanupStreamline()
+{
+	if (mDLSSRREnabled)
+	{
+		// Free DLSS-RR resources for our viewport
+		slFreeResources(sl::kFeatureDLSS_RR, mSlViewport);
+		mDLSSRREnabled = false;
+		std::cout << "DLSS-RR resources freed." << std::endl;
+	}
+	if (mStreamlineInitialized)
+	{
+		slShutdown();
+		mStreamlineInitialized = false;
+		std::cout << "Streamline shutdown completed." << std::endl;
+	}
+}
+
+
+
 void Renderer::InitializeRootSignatures()
 {
 	mMeshRootSignature.InitializeMeshRS(mDevice.Get());
@@ -1284,7 +1571,7 @@ void Renderer::InitializeTextureLoader()
 	mTextureLoader.Initialize(mDevice.Get(), &mSrvHeap, &mCommandQueue, &mCommandList, &mUploadHeap, std::move(mipmapShader));
 }
 
-void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward)
+void Renderer::Update(const Camera& camera)
 {
 	// compute delta time
 	LARGE_INTEGER now;
@@ -1292,13 +1579,27 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 	double dt = static_cast<double>(now.QuadPart - mPrevCounter.QuadPart) * mSecondsPerCount;
 	mPrevCounter = now;
 
+
+	auto view = camera.GetViewMatrix();
+	auto invView = DirectX::XMMatrixInverse(nullptr, view);
+	auto proj = camera.GetProjMatrix();
+	auto invProj = DirectX::XMMatrixInverse(nullptr, proj);
+	auto viewProj = view * proj;
+	auto invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
+	auto cameraPos = camera.GetPosition();
+	auto cameraFwd = camera.GetForward();
+
+	auto jitterMatrix = DirectX::XMMatrixTranslation(mJitter.x * 2.0f, -mJitter.y * 2.0f, 0.0f);
+	auto jitteredProj = proj * jitterMatrix;
+	auto jitteredViewProj = view * jitteredProj;
+
 	size_t cbOffset;
 	if (mSceneLoaded)
 	{
-		mConstantBufferData.vpMatrix = viewProj;
-		mConstantBufferData.InvVpMatrix = DirectX::XMMatrixInverse(nullptr, viewProj);
+		mConstantBufferData.vpMatrix = jitteredViewProj;
+		mConstantBufferData.InvVpMatrix = invViewProj;
 		mConstantBufferData.viewPos = cameraPos;
-		mConstantBufferData.frameCount = mFrameCount++;
+		mConstantBufferData.frameCount = mFrameCount;
 
 		UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
 		size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes
@@ -1337,6 +1638,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
 				CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE),
 				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
+				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
 			};
 			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
@@ -1359,10 +1661,12 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 			mCommandList.Get()->ClearDepthStencilView(mDepthBuffer.GetDSVHandle(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 			// C. Set Render Targets
+			D3D12_VIEWPORT renderViewport = { 0.0f, 0.0f, static_cast<float>(mRenderWidth), static_cast<float>(mRenderHeight), 0.0f, 1.0f };
+			D3D12_RECT renderScissorRect = { 0, 0, static_cast<LONG>(mRenderWidth), static_cast<LONG>(mRenderHeight) };
 			auto dsvHandle = mDepthBuffer.GetDSVHandle();
 			mCommandList.Get()->OMSetRenderTargets(4, rtvHandles, FALSE, &dsvHandle);
-			mCommandList.Get()->RSSetViewports(1, &mViewport);
-			mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+			mCommandList.Get()->RSSetViewports(1, &renderViewport);
+			mCommandList.Get()->RSSetScissorRects(1, &renderScissorRect);
 
 			// D. Draw Opaque & Masked Geometry
 			mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
@@ -1455,53 +1759,92 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 			// Bind Reflection Output UAV (Slot u0 in Reflections.hlsl)
 			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Diffuse));
 
-			mReflectionsPipeline.Dispatch(mCommandList.Get(), mWidth, mHeight);
+			mReflectionsPipeline.Dispatch(mCommandList.Get(), mRenderWidth, mRenderHeight);
 		}
 
 		// =========================================================================
-		// STAGE 4: COMPOSITE (Merge Direct + Reflection)
+		// STAGE 4:DLSS RAY RECONSTRUCTION OR COMPOSITE PASS
 		// =========================================================================
 		{
-			// Barriers: Reflection -> Read, DirectLight -> Read, Output -> Write
-			// (For simplicity, let's say we write back into mComputeOutputTexture)
-			D3D12_RESOURCE_BARRIER barriers[]
+			if (mDLSSRREnabled)
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-			};
-			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+				D3D12_RESOURCE_BARRIER barriers[]
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				};
+				mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+				float nearZ = camera.GetNearZ();
+				float farZ = camera.GetFarZ();
+				float fovY = camera.GetFovY();
+				float aspectRatio = camera.GetAspect();
 
-			// Bind Composite Pipeline
-			mCommandList.Get()->SetComputeRootSignature(mCompositeRootSignature.Get());
-			mCommandList.Get()->SetPipelineState(mPipelineStateComposite.Get());
+				EvaluateDLSSRR(view, proj, invView, invProj, cameraPos, cameraFwd, nearZ, farZ, fovY, aspectRatio);
+				D3D12_RESOURCE_BARRIER copyBarriers[]
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST)
+				};
+				mCommandList.Get()->ResourceBarrier(_countof(copyBarriers), copyBarriers);
 
-			// Bind Descriptors
-			// Slot 0: CBV
-			mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
+				mCommandList.Get()->CopyResource(mComputeOutputTexture.Get(), mDLSSOutputTexture.Get());
 
-			// Slot 1: Direct Lighting Table (t0)
-			mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_Diffuse));
-
-			// Slot 1: Reflection SRV (t1)
-			mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHeap.GetGpuHandle(mSrvSlot_Specular));
-
-			// Slot 2: G-Buffer Table (t2 - t5)
-			mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
-
-			// Slot 3: Output UAV (u0)
-			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
-
-			// Dispatch
-			mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
-
-			D3D12_RESOURCE_BARRIER cleanup[]
+				// Restore OutputTexture to Target for Transparency
+				D3D12_RESOURCE_BARRIER restoreBarriers[]
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET),
+					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+					// Transitions for next frame (inputs back to common/UAV if needed? usually handled at start of frame)
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				};
+				mCommandList.Get()->ResourceBarrier(_countof(restoreBarriers), restoreBarriers);
+			}
+			else
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-			};
+				// Barriers: Reflection -> Read, DirectLight -> Read, Output -> Write
+				// (For simplicity, let's say we write back into mComputeOutputTexture)
+				D3D12_RESOURCE_BARRIER barriers[]
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+				};
+				mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
-			mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+				// Bind Composite Pipeline
+				mCommandList.Get()->SetComputeRootSignature(mCompositeRootSignature.Get());
+				mCommandList.Get()->SetPipelineState(mPipelineStateComposite.Get());
+
+				// Bind Descriptors
+				// Slot 0: CBV
+				mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
+
+				// Slot 1: Direct Lighting Table (t0)
+				mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_Diffuse));
+
+				// Slot 1: Reflection SRV (t1)
+				mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHeap.GetGpuHandle(mSrvSlot_Specular));
+
+				// Slot 2: G-Buffer Table (t2 - t5)
+				mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
+
+				// Slot 3: Output UAV (u0)
+				mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
+
+				// Dispatch
+				mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+
+				D3D12_RESOURCE_BARRIER cleanup[]
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				};
+
+				mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+			}
 		}
 
 		// =========================================================================================
@@ -1534,7 +1877,7 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 			mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
 
 			for (const auto& mesh : mTransparentSingleSidedMeshes)
-			    DrawMesh(mesh);
+				DrawMesh(mesh);
 
 			for (const auto& mesh : mTransparentDoubleSidedMeshes)
 				DrawMesh(mesh);
@@ -1622,150 +1965,155 @@ void Renderer::Update(const DirectX::XMMATRIX& viewProj, const DirectX::XMFLOAT3
 
 	// Signal and increment the fence value
 	mCommandQueue.SignalFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
+
+	mPrevViewMatrix = view;
+	mPrevProjMatrix = proj;
+	mFrameCount++;
+	UpdateCameraJitter();
 }
 
 void Renderer::DrawMesh(const MeshGpuData& mesh)
 {
-    mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
-    mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
-    mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
+	mCommandList.Get()->IASetVertexBuffers(0, 1, &mesh.vbv);
+	mCommandList.Get()->IASetIndexBuffer(&mesh.ibv);
+	mCommandList.Get()->SetGraphicsRootDescriptorTable(1, mesh.materialTable.gpuHandle);
 	mCommandList.Get()->SetGraphicsRoot32BitConstants(2, sizeof(MeshMaterialData) / 4, &mesh.materialData, 0);
-    mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
+	mCommandList.Get()->DrawIndexedInstanced(mesh.ibv.SizeInBytes / sizeof(UINT), 1, 0, 0, 0);
 }
 
 void Renderer::SortTransparentMeshes(const DirectX::XMFLOAT3& cameraPos)
 {
-    for (auto& mesh : mTransparentSingleSidedMeshes)
-    {
-        DirectX::XMVECTOR center = DirectX::XMLoadFloat3(&mesh.center);
-        DirectX::XMVECTOR camPos = DirectX::XMLoadFloat3(&cameraPos);
-        DirectX::XMVECTOR toCamera = DirectX::XMVectorSubtract(camPos, center);
-        mesh.distanceToCamera = DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(toCamera));
-    }
+	for (auto& mesh : mTransparentSingleSidedMeshes)
+	{
+		DirectX::XMVECTOR center = DirectX::XMLoadFloat3(&mesh.center);
+		DirectX::XMVECTOR camPos = DirectX::XMLoadFloat3(&cameraPos);
+		DirectX::XMVECTOR toCamera = DirectX::XMVectorSubtract(camPos, center);
+		mesh.distanceToCamera = DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(toCamera));
+	}
 
-    std::sort(mTransparentSingleSidedMeshes.begin(), mTransparentSingleSidedMeshes.end(),
-        [](const MeshGpuData& a, const MeshGpuData& b)
-        {
-            return a.distanceToCamera > b.distanceToCamera;
-        });
+	std::sort(mTransparentSingleSidedMeshes.begin(), mTransparentSingleSidedMeshes.end(),
+		[](const MeshGpuData& a, const MeshGpuData& b)
+		{
+			return a.distanceToCamera > b.distanceToCamera;
+		});
 }
 
 void Renderer::InitializeImGui(HWND hwnd)
 {
-    // Create ImGui context
-    IMGUI_CHECKVERSION();
-    mImGuiContext = ImGui::CreateContext();
-    ImGui::SetCurrentContext(mImGuiContext);
+	// Create ImGui context
+	IMGUI_CHECKVERSION();
+	mImGuiContext = ImGui::CreateContext();
+	ImGui::SetCurrentContext(mImGuiContext);
 
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    // Configure font rendering for better quality
-    ImFontConfig fontConfig;
-    fontConfig.OversampleH = 3;  // Horizontal oversampling for sharper text
-    fontConfig.OversampleV = 3;  // Vertical oversampling for sharper text
-    fontConfig.PixelSnapH = false;  // Better subpixel rendering
-    
-    // Try to load Segoe UI font (Windows system font) for better quality
-    ImFont* font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 17.0f, &fontConfig);
-    
-    // If Segoe UI fails to load, fall back to default font with high quality settings
-    if (!font)
-    {
-        wcout << "Warning: Could not load Segoe UI font, using default ImGui font" << endl;
-        io.Fonts->AddFontDefault(&fontConfig);
-    }
+	// Configure font rendering for better quality
+	ImFontConfig fontConfig;
+	fontConfig.OversampleH = 3;  // Horizontal oversampling for sharper text
+	fontConfig.OversampleV = 3;  // Vertical oversampling for sharper text
+	fontConfig.PixelSnapH = false;  // Better subpixel rendering
 
-    // Build font atlas with higher quality
-    io.Fonts->Build();
+	// Try to load Segoe UI font (Windows system font) for better quality
+	ImFont* font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 17.0f, &fontConfig);
 
-    // Setup ImGui style
-    ImGui::StyleColorsDark();
-    
-    // Adjust style for better text rendering
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.AntiAliasedLines = true;
-    style.AntiAliasedFill = true;
-    style.AntiAliasedLinesUseTex = true;
-    
-    // Slightly adjust rounding for modern look
-    style.WindowRounding = 6.0f;
-    style.FrameRounding = 4.0f;
-    style.GrabRounding = 4.0f;
+	// If Segoe UI fails to load, fall back to default font with high quality settings
+	if (!font)
+	{
+		wcout << "Warning: Could not load Segoe UI font, using default ImGui font" << endl;
+		io.Fonts->AddFontDefault(&fontConfig);
+	}
 
-    // Create descriptor heap for ImGui (1 descriptor for font texture)
+	// Build font atlas with higher quality
+	io.Fonts->Build();
+
+	// Setup ImGui style
+	ImGui::StyleColorsDark();
+
+	// Adjust style for better text rendering
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.AntiAliasedLines = true;
+	style.AntiAliasedFill = true;
+	style.AntiAliasedLinesUseTex = true;
+
+	// Slightly adjust rounding for modern look
+	style.WindowRounding = 6.0f;
+	style.FrameRounding = 4.0f;
+	style.GrabRounding = 4.0f;
+
+	// Create descriptor heap for ImGui (1 descriptor for font texture)
 	mImGuiSrvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, true);
 
-    // Initialize Win32 backend first
-    ImGui_ImplWin32_Init(hwnd);
-    
-    // Initialize DX12 backend
-    ImGui_ImplDX12_Init(
-        mDevice.Get(),
-        Config::cFrameCount,
-        Config::cBackBufferFormat,
-        mImGuiSrvHeap.Get(),
-        mImGuiSrvHeap.GetCpuHandle(0),
-        mImGuiSrvHeap.GetGpuHandle(0)
-    );
+	// Initialize Win32 backend first
+	ImGui_ImplWin32_Init(hwnd);
 
-    // CRITICAL: Manually build and upload font atlas
-    // Get font texture data
-    unsigned char* pixels;
-    int width, height;
-    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-    
-    // Open command list for upload
-    mCommandList.ResetCommandList(0);
-    
-    // Bind ImGui descriptor heap
-    ID3D12DescriptorHeap* heaps[] = { mImGuiSrvHeap.Get() };
-    mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
-    
-    // Create device objects (this uploads the font texture)
-    ImGui_ImplDX12_CreateDeviceObjects();
-    
-    // Close and execute command list
-    mCommandList.Get()->Close();
-    ID3D12CommandList* lists[] = { mCommandList.Get() };
-    mCommandQueue.ExecuteCommandLists(1, lists);
-    mCommandQueue.Flush();
-    
-    wcout << "ImGui initialized: Font atlas " << width << "x" << height << " uploaded to GPU" << endl;
+	// Initialize DX12 backend
+	ImGui_ImplDX12_Init(
+		mDevice.Get(),
+		Config::cFrameCount,
+		Config::cBackBufferFormat,
+		mImGuiSrvHeap.Get(),
+		mImGuiSrvHeap.GetCpuHandle(0),
+		mImGuiSrvHeap.GetGpuHandle(0)
+	);
+
+	// CRITICAL: Manually build and upload font atlas
+	// Get font texture data
+	unsigned char* pixels;
+	int width, height;
+	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+	// Open command list for upload
+	mCommandList.ResetCommandList(0);
+
+	// Bind ImGui descriptor heap
+	ID3D12DescriptorHeap* heaps[] = { mImGuiSrvHeap.Get() };
+	mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+
+	// Create device objects (this uploads the font texture)
+	ImGui_ImplDX12_CreateDeviceObjects();
+
+	// Close and execute command list
+	mCommandList.Get()->Close();
+	ID3D12CommandList* lists[] = { mCommandList.Get() };
+	mCommandQueue.ExecuteCommandLists(1, lists);
+	mCommandQueue.Flush();
+
+	wcout << "ImGui initialized: Font atlas " << width << "x" << height << " uploaded to GPU" << endl;
 }
 
 void Renderer::ShutdownImGui()
 {
-    if (mImGuiContext)
-    {
-        ImGui_ImplDX12_Shutdown();
-        ImGui_ImplWin32_Shutdown();
-        ImGui::DestroyContext(mImGuiContext);
-        mImGuiContext = nullptr;
-    }
+	if (mImGuiContext)
+	{
+		ImGui_ImplDX12_Shutdown();
+		ImGui_ImplWin32_Shutdown();
+		ImGui::DestroyContext(mImGuiContext);
+		mImGuiContext = nullptr;
+	}
 }
 
 void Renderer::BeginImGuiFrame()
 {
-    ImGui::SetCurrentContext(mImGuiContext);
-    
-    // Correct order: DX12 backend first (builds font atlas), then Win32, then ImGui
-    ImGui_ImplDX12_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
+	ImGui::SetCurrentContext(mImGuiContext);
+
+	// Correct order: DX12 backend first (builds font atlas), then Win32, then ImGui
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
 }
 
 void Renderer::RenderImGui()
 {
-    ImGui::SetCurrentContext(mImGuiContext);
-    ImGui::Render();
+	ImGui::SetCurrentContext(mImGuiContext);
+	ImGui::Render();
 
-    // Bind ImGui descriptor heap
-    ID3D12DescriptorHeap* imguiHeaps[] = { mImGuiSrvHeap.Get() };
-    mCommandList.Get()->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+	// Bind ImGui descriptor heap
+	ID3D12DescriptorHeap* imguiHeaps[] = { mImGuiSrvHeap.Get() };
+	mCommandList.Get()->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
 
-    // Render ImGui draw data
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
+	// Render ImGui draw data
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 }
 
 bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
@@ -1780,14 +2128,14 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 
 	// Store the count of models before adding extensions
 	size_t previousModelCount = mModels.size();
-	size_t previousMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
-	                           mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
-	                           mTransparentSingleSidedMeshes.size();
-	
+	size_t previousMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
+		mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
+		mTransparentSingleSidedMeshes.size();
+
 	// Try to load models one by one, catching any memory allocation failures
 	size_t successfullyLoaded = 0;
 	size_t totalAttempted = models.size();
-	
+
 	for (size_t i = 0; i < models.size(); ++i)
 	{
 		auto& model = models[i];
@@ -1802,11 +2150,11 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 				wcout << L"Warning: Extension model " << (i + 1) << L" has no meshes, skipping." << endl;
 				continue;
 			}
-			
+
 			// Try to add the model
 			mModels.push_back(std::move(model));
 			successfullyLoaded++;
-			
+
 			wcout << L"Successfully added extension model " << successfullyLoaded << L" / " << totalAttempted << endl;
 		}
 		catch (const std::bad_alloc& e)
@@ -1844,10 +2192,10 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 	{
 		wcout << L"GPU memory exhausted during mesh data upload: " << e.what() << endl;
 		wcout << L"Extension models could not be fully loaded. Reverting to previous state." << endl;
-		
+
 		// Remove the extension models that we just added
 		mModels.resize(previousModelCount);
-		
+
 		// Rebuild GPU data with just the original models
 		try
 		{
@@ -1857,16 +2205,16 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 		{
 			wcout << L"Critical error: Failed to restore previous state!" << endl;
 		}
-		
+
 		return false;
 	}
 	catch (const std::exception& e)
 	{
 		wcout << L"Error building mesh GPU data: " << e.what() << endl;
-		
+
 		// Remove the extension models and try to restore previous state
 		mModels.resize(previousModelCount);
-		
+
 		try
 		{
 			BuildMeshGpuData();
@@ -1875,10 +2223,10 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 		{
 			wcout << L"Critical error: Failed to restore previous state!" << endl;
 		}
-		
+
 		return false;
 	}
-	
+
 	// Try to build ray tracing structures
 	try
 	{
@@ -1904,12 +2252,12 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 		wcout << L"Warning: Failed to collect lights: " << e.what() << endl;
 	}
 
-	size_t newMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() + 
-	                      mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() + 
-	                      mTransparentSingleSidedMeshes.size();
+	size_t newMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
+		mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
+		mTransparentSingleSidedMeshes.size();
 	size_t addedMeshCount = newMeshCount - previousMeshCount;
-	
-	wcout << L"Extension scene(s) added successfully! (Total: " << mModels.size() << L" model(s), " 
-	      << newMeshCount << L" meshes, added: " << addedMeshCount << L" meshes)" << endl;
+
+	wcout << L"Extension scene(s) added successfully! (Total: " << mModels.size() << L" model(s), "
+		<< newMeshCount << L" meshes, added: " << addedMeshCount << L" meshes)" << endl;
 	return true;
 }

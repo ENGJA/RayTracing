@@ -86,4 +86,6 @@ public:
      * @param height New render target height.
      */
     void OnResize(UINT width, UINT height);
+
+	const Camera& GetActiveCamera() const { return mCameras[mActiveIndex]; }
 };
