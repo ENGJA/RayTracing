@@ -104,4 +104,12 @@ public:
      * @param height New render target height.
      */
     void OnResize(UINT width, UINT height);
+
+
+    float GetNearZ() const { return mNearZ; }
+	float GetFarZ() const { return mFarZ; }
+	float GetFovY() const { return mFovY; }
+    DirectX::XMMATRIX GetViewMatrix() const;
+	DirectX::XMMATRIX GetProjMatrix() const;
+	float GetAspect() const { return mAspect; }
 };
