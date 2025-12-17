@@ -62,8 +62,8 @@ void main(uint3 id : SV_DispatchThreadID)
     float3 finalColor = direct * albedo + refl; // * F;
     //finalColor *= albedo; // Modulate by albedo
     finalColor += emissive; // Add emissive
-    finalColor = finalColor / (finalColor + 1.0); // Reinhard tonemapping)
-    finalColor = pow(finalColor, 1.0 / 2.2); // Gamma correction
+    //finalColor = finalColor / (finalColor + 1.0); // Reinhard tonemapping)
+    //finalColor = pow(finalColor, 1.0 / 2.2); // Gamma correction
     
     // Final Combine: Direct + (Reflection * Fresnel)
     gOutput[id.xy] = float4(finalColor, 1.0);

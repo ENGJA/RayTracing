@@ -5,6 +5,8 @@
 RaytracingAccelerationStructure gScene : register(t5);
 RWTexture2D<float4> gOutDiffuse : register(u0);
 RWTexture2D<float4> gOutSpecular : register(u1);
+RWTexture2D<float4> gOutAlbedoSpecular : register(u2);
+
 //RWTexture2D<float4> gOutNormal : register(u2);
 //RWTexture2D<float4> gOutAlbedo : register(u3);
 
@@ -193,6 +195,7 @@ void RayGen()
         
         gOutDiffuse[pixel] = float4(sky, 1.0);
         gOutSpecular[pixel] = float4(0, 0, 0, 0);
+        gOutAlbedoSpecular[pixel] = float4(0, 0, 0, 0);
         //gOutAlbedo[pixel] = float4(0, 0, 0, 0); // Sky has no albedo
         //gOutNormal[pixel] = float4(0, 0, 0, 0);
         return;
@@ -309,6 +312,7 @@ void RayGen()
     
     gOutDiffuse[pixel] = float4(diffuseTotal, 1.0);
     gOutSpecular[pixel] = float4(specularTotal, 1.0);
+    gOutAlbedoSpecular[pixel] = float4(F0, 1.0);
     //gOutAlbedo[pixel] = float4(albedo, 1.0);
     //gOutNormal[pixel] = float4(normalize(normal) * 0.5 + 0.5, 1.0);    
 }

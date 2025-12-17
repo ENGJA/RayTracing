@@ -166,6 +166,7 @@ private:
 
 	int mSrvSlot_LightBuffer = -1;  // For the StructuredBuffer<Light>
 	int mRtvIndex_ComputeOutput = -1; // For the Compute Shader Output RTV
+	int mSrvIndex_ComputeOutput = -1; // For the Compute Shader Output SRV
 
 
 
@@ -224,6 +225,10 @@ private:
 	bool mDLSSRREnabled = false;
 	bool mStreamlineInitialized = false;
 
+	D3D12Resource mAlbedoSpecularTex; ///< Intermediate texture for Albedo + Specular input to DLSS.
+	int mUavSlot_AlbedoSpecular = -1;
+	int mSrvSlot_AlbedoSpecular = -1;
+
 	
 	void InitializeDLSSRR();
 	void UpdateCameraJitter();
@@ -231,7 +236,13 @@ private:
 	void CleanupStreamline();
 
 	// ===========================================
-
+	// Tonemapping resources
+	D3D12RootSignature mTonemapRootSignature;
+	D3D12PipelineState mPipelineStateTonemap;
+	D3D12Resource mTonemapOutputTexture;
+	int mUavSlot_TonemapOutput = -1;
+	void InitializeTonemapPipeline();
+	void InitializeTonemapResources();
 
 	HLSLCompiler mShaderCompiler; ///< HLSL shader compiler instance.
 
