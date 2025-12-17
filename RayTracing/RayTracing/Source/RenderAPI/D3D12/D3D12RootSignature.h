@@ -18,7 +18,12 @@ public:
 
 	void InitializeCompositeRS(ID3D12Device* pDevice);
 
+	void InitializeTonemapRS(ID3D12Device* pDevice);
+
 	void Initialize(ID3D12Device* pDevice, const D3D12_VERSIONED_ROOT_SIGNATURE_DESC& rootSignatureDesc);
+
+	void InitializeRTGlobalRS(ID3D12Device* pDevice);
+
 	/**
 	 * @brief Returns the native root signature pointer.
 	 */

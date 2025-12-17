@@ -375,6 +375,7 @@
     <FxCompile Include="Source\Shaders\TransparentPixelShader.hlsl" />
     <FxCompile Include="Source\Shaders\Reflections.hlsl" />
     <FxCompile Include="Source\Shaders\CompositeCS.hlsl" />
+    <FxCompile Include="Source\Shaders\ToneMapCS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
