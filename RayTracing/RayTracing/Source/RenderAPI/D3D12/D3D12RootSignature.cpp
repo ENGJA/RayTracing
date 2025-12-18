@@ -100,12 +100,12 @@ void D3D12RootSignature::InitializeComputeRS(ID3D12Device* pDevice)
 void D3D12RootSignature::InitializeCompositeRS(ID3D12Device* pDevice)
 {
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[4]{};
-	// Range 0: Diffuse Lighting Texture (t0) - 1 Descriptor
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-	// Range 1: Reflection Texture (t1) - 1 Descriptor
-	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
-	// Range 2: G-Buffer Table (t2 - t6) - 5 Descriptors (Albedo, Normal, Material, Depth, Emissive)
-	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 2);
+	// Range 0: Diffuse, specular, albedo, albedoSpecular SRVs (t0-t3) - 4 Descriptors
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
+	// Range 1: Normals SRV (t4) - 1 Descriptor
+	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
+	// Range 2: Depth SRV (t5) - 1 Descriptor
+	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);
 	// Range 3: Output UAV (u0) - 1 Descriptor
 	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
 
@@ -114,11 +114,11 @@ void D3D12RootSignature::InitializeCompositeRS(ID3D12Device* pDevice)
 	params[0].InitAsConstantBufferView(0);
 	// Param 1: Direct Lighting SRV (t0)
 	params[1].InitAsDescriptorTable(1, &ranges[0]);
-	// Param 2: Reflection SRV (t1)
+	// Param 2: G-Buffer Normal SRV (t4)
 	params[2].InitAsDescriptorTable(1, &ranges[1]);
-	// Param 3: G-Buffer SRVs (t2-t6)
+	// Param 3: G-Buffer Depth SRV (t5)
 	params[3].InitAsDescriptorTable(1, &ranges[2]);
-	// Param 4: Output UAV (u0)
+	// Param 2: Output UAV (u0)
 	params[4].InitAsDescriptorTable(1, &ranges[3]);
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC sigDesc{};
@@ -179,9 +179,9 @@ void D3D12RootSignature::InitializeRTGlobalRS(ID3D12Device* pDevice)
 	CD3DX12_DESCRIPTOR_RANGE1 gbufferSrvRange;
 	gbufferSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
-	// Range 2: Output Texture (UAV) -> u0-u2
+	// Range 2: Output Texture (UAV) -> u0-u3
 	CD3DX12_DESCRIPTOR_RANGE1 outputUavRange;
-	outputUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 3, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	outputUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 4, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
 	// --- 2. Define Parameters ---
 	CD3DX12_ROOT_PARAMETER1 computeParams[5]{};

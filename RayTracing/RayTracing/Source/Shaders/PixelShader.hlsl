@@ -97,7 +97,7 @@ PSOutput main(PSInput input)
     output.Albedo = float4(albedo, alpha);
     output.Normal = float4(N, 0.0f);
     //output.Material = float2(0, 1);
-    output.Material = float2(metalness, roughness);
+    output.Material = float2(roughness, metalness);
     output.Emissive = float4(emissive, 1.0f);
     
     
