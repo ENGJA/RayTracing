@@ -82,6 +82,7 @@ private:
 
 	D3D12RootSignature mMeshRootSignature; ///< Root signature for mesh rendering.
 	D3D12RootSignature mComputeRootSignature; ///< Root signature for compute shader passes.
+	D3D12RootSignature mRtGlobalRootSignature; ///< Global root signature for ray tracing.
 
 
 	D3D12PipelineState mPipelineStateOpaqueSingle; ///< Pipeline state and root signature for opaque single-sided objects.

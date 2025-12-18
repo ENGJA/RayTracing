@@ -498,11 +498,16 @@ void Renderer::OnResize(UINT width, UINT height)
 		D3D12_CLEAR_VALUE clearEmissive = { DXGI_FORMAT_R16G16B16A16_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
 		mGBufferEmission.Initialize(mDevice.Get(), emissiveDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearEmissive);
 
+		auto velocityDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16_FLOAT, mRenderWidth, mRenderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		D3D12_CLEAR_VALUE clearVelocity = { DXGI_FORMAT_R16G16_FLOAT, { 0.0f, 0.0f, 0.0f, 1.0f } };
+		mGBufferVelocity.Initialize(mDevice.Get(), velocityDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, &clearVelocity);
+
 		// Update SRVs (Use existing slots)
 		CreateTextureView(mGBufferAlbedo.Get(), DXGI_FORMAT_R8G8B8A8_UNORM, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferAlbedo), 1);
 		CreateTextureView(mGBufferNormal.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferNormal), 1);
 		CreateTextureView(mGBufferMaterial.Get(), DXGI_FORMAT_R32G32_FLOAT, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferMaterial), 1);
 		CreateTextureView(mGBufferEmission.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, mSrvHeap.GetCpuHandle(mSrvSlot_GBufferEmissive), 1);
+		CreateTextureView(mGBufferVelocity.Get(), DXGI_FORMAT_R16G16_FLOAT, mSrvHeap.GetCpuHandle(mSrvSlot_Velocity), 1);
 
 		// Update RTVs (Render Target Views)
 		// Assumption: RTV Heap was allocated linearly: 0=Albedo, 1=Normal, 2=Material, 3=Emissive
@@ -510,6 +515,7 @@ void Renderer::OnResize(UINT width, UINT height)
 		mDevice.Get()->CreateRenderTargetView(mGBufferNormal.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(1));
 		mDevice.Get()->CreateRenderTargetView(mGBufferMaterial.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(2));
 		mDevice.Get()->CreateRenderTargetView(mGBufferEmission.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(3));
+		mDevice.Get()->CreateRenderTargetView(mGBufferVelocity.Get(), nullptr, mGBufferRtvHeap.GetCpuHandle(4));
 	}
 
 	// =========================================================================
@@ -549,6 +555,8 @@ void Renderer::OnResize(UINT width, UINT height)
 		);
 		mOutDiffuseTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 		mOutSpecularTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+		mOutAlbedoTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+		mOutAlbedoSpecularTex.Initialize(mDevice.Get(), desc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
 
 		// Update UAVs
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
@@ -556,6 +564,8 @@ void Renderer::OnResize(UINT width, UINT height)
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 		mDevice.Get()->CreateUnorderedAccessView(mOutDiffuseTex.Get(), nullptr, &uavDesc, mSrvHeap.GetCpuHandle(mUavSlot_Diffuse));
 		mDevice.Get()->CreateUnorderedAccessView(mOutSpecularTex.Get(), nullptr, &uavDesc, mSrvHeap.GetCpuHandle(mUavSlot_Specular));
+		mDevice.Get()->CreateUnorderedAccessView(mOutAlbedoTex.Get(), nullptr, &uavDesc, mSrvHeap.GetCpuHandle(mUavSlot_Albedo));
+		mDevice.Get()->CreateUnorderedAccessView(mOutAlbedoSpecularTex.Get(), nullptr, &uavDesc, mSrvHeap.GetCpuHandle(mUavSlot_AlbedoSpecular));
 
 		// Update SRVs
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -565,6 +575,8 @@ void Renderer::OnResize(UINT width, UINT height)
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		mDevice.Get()->CreateShaderResourceView(mOutDiffuseTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_Diffuse));
 		mDevice.Get()->CreateShaderResourceView(mOutSpecularTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_Specular));
+		mDevice.Get()->CreateShaderResourceView(mOutAlbedoTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_Albedo));
+		mDevice.Get()->CreateShaderResourceView(mOutAlbedoSpecularTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_AlbedoSpecular));
 	}
 	// =========================================================================
 	// 8. Resize Tonemap Resources
@@ -913,13 +925,13 @@ void Renderer::InitializeRayTracing()
 	D3D12RootSignature localRootSig;
 	localRootSig.Initialize(mDevice.Get(), localDesc);
 
-	D3D12RootSignature globalRootSig;
-	globalRootSig.InitializeRTGlobalRS(mDevice.Get());
+	//D3D12RootSignature globalRootSig;
+	mRtGlobalRootSignature.InitializeRTGlobalRS(mDevice.Get());
 
 	HLSLShader libraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/Reflections.hlsl", L"lib_6_3", {}, L"");
 
 	// 3. Initialize Pipeline
-	mReflectionsPipeline.Initialize(mDevice.Get(), &globalRootSig, &localRootSig, libraryShader.GetShaderBlob());
+	mReflectionsPipeline.Initialize(mDevice.Get(), &mRtGlobalRootSignature, &localRootSig, libraryShader.GetShaderBlob());
 
 	// 4. Build Shader Binding Table (SBT)
 	std::vector<MeshGpuData> allMeshes;
@@ -1784,28 +1796,31 @@ void Renderer::Update(const Camera& camera)
 			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
 			// B. Clear Targets
-			D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[4] = {
+			D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[] = {
 				mGBufferRtvHeap.GetCpuHandle(0),
 				mGBufferRtvHeap.GetCpuHandle(1),
 				mGBufferRtvHeap.GetCpuHandle(2),
-				mGBufferRtvHeap.GetCpuHandle(3)
+				mGBufferRtvHeap.GetCpuHandle(3),
+				mGBufferRtvHeap.GetCpuHandle(4),
 			};
 
 			float clearColorBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 			float clearColorNormal[4] = { 0.5f, 0.5f, 1.0f, 1.0f };
 			float clearColorMaterial[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			float clearColorVelocity[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 			float clearDepth = 1.0f;
 			mCommandList.Get()->ClearRenderTargetView(rtvHandles[0], clearColorBlack, 0, nullptr);
 			mCommandList.Get()->ClearRenderTargetView(rtvHandles[1], clearColorNormal, 0, nullptr);
 			mCommandList.Get()->ClearRenderTargetView(rtvHandles[2], clearColorMaterial, 0, nullptr);
 			mCommandList.Get()->ClearRenderTargetView(rtvHandles[3], clearColorBlack, 0, nullptr);
+			mCommandList.Get()->ClearRenderTargetView(rtvHandles[4], clearColorVelocity, 0, nullptr);
 			mCommandList.Get()->ClearDepthStencilView(mDepthBuffer.GetDSVHandle(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 			// C. Set Render Targets
 			D3D12_VIEWPORT renderViewport = { 0.0f, 0.0f, static_cast<float>(mRenderWidth), static_cast<float>(mRenderHeight), 0.0f, 1.0f };
 			D3D12_RECT renderScissorRect = { 0, 0, static_cast<LONG>(mRenderWidth), static_cast<LONG>(mRenderHeight) };
 			auto dsvHandle = mDepthBuffer.GetDSVHandle();
-			mCommandList.Get()->OMSetRenderTargets(4, rtvHandles, FALSE, &dsvHandle);
+			mCommandList.Get()->OMSetRenderTargets(_countof(rtvHandles), rtvHandles, FALSE, &dsvHandle);
 			mCommandList.Get()->RSSetViewports(1, &renderViewport);
 			mCommandList.Get()->RSSetScissorRects(1, &renderScissorRect);
 
@@ -1889,7 +1904,7 @@ void Renderer::Update(const Camera& camera)
 
 			// 2. Dispatch Rays
 			// Note: The Global Root Sig needs binding just like a Compute Shader
-			mCommandList.Get()->SetComputeRootSignature(mComputeRootSignature.Get());
+			mCommandList.Get()->SetComputeRootSignature(mRtGlobalRootSignature.Get());
 			mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
 			mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo)); // G-Buffer
 			mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
@@ -1935,7 +1950,7 @@ void Renderer::Update(const Camera& camera)
 			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
 
 			// Dispatch
-			mCommandList.Get()->Dispatch((mWidth + 7) / 8, (mHeight + 7) / 8, 1);
+			mCommandList.Get()->Dispatch((mRenderWidth + 7) / 8, (mRenderHeight + 7) / 8, 1);
 
 			D3D12_RESOURCE_BARRIER cleanup[]
 			{
@@ -2000,18 +2015,18 @@ void Renderer::Update(const Camera& camera)
 
 			// Bind Targets
 			// We write Color to ComputeOutput, and Read Depth from DepthBuffer
-			D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
-			D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
+			//D3D12_CPU_DESCRIPTOR_HANDLE rtv = mGBufferRtvHeap.GetCpuHandle(mRtvIndex_ComputeOutput);
+			//D3D12_CPU_DESCRIPTOR_HANDLE dsv = mDepthBuffer.GetDSVHandle();
 
-			mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-			mCommandList.Get()->RSSetViewports(1, &mViewport);
-			mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+			//mCommandList.Get()->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+			//mCommandList.Get()->RSSetViewports(1, &mViewport);
+			//mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
 
-			// Draw Transparent Meshes
-			mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
-			mCommandList.Get()->SetPipelineState(mPipelineStateTransparentSingle.Get());
-			mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
+			//// Draw Transparent Meshes
+			//mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
+			//mCommandList.Get()->SetPipelineState(mPipelineStateTransparentSingle.Get());
+			//mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			//mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress());
 
 			//for (const auto& mesh : mTransparentSingleSidedMeshes)
 			//	DrawMesh(mesh);
@@ -2038,7 +2053,7 @@ void Renderer::Update(const Camera& camera)
 			mCommandList.Get()->SetPipelineState(mPipelineStateTonemap.Get());
 			// Bind Descriptors
 			// Slot 0: SRV (t0)
-			mCommandList.Get()->SetComputeRootDescriptorTable(0, mSrvHeap.GetGpuHandle(mSrvIndex_ComputeOutput));
+			mCommandList.Get()->SetComputeRootDescriptorTable(0, mSrvHeap.GetGpuHandle(mSrvSlot_DlssOutput));
 			// Slot 1: UAV (u0)
 			mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mUavSlot_TonemapOutput));
 			// Dispatch
@@ -2084,7 +2099,7 @@ void Renderer::Update(const Camera& camera)
 				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
-
+				CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				//CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				//CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON)
@@ -2420,7 +2435,7 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 
 	size_t newMeshCount = mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
 		mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
-		mTransparentSingleSidedMeshes.size();
+		mTransparentSingleSidedMeshes.size() + mTransparentDoubleSidedMeshes.size();
 	size_t addedMeshCount = newMeshCount - previousMeshCount;
 
 	wcout << L"Extension scene(s) added successfully! (Total: " << mModels.size() << L" model(s), "
