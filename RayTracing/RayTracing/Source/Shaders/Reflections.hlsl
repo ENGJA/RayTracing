@@ -5,7 +5,8 @@
 RaytracingAccelerationStructure gScene : register(t5);
 RWTexture2D<float4> gOutDiffuse : register(u0);
 RWTexture2D<float4> gOutSpecular : register(u1);
-RWTexture2D<float4> gOutAlbedoSpecular : register(u2);
+RWTexture2D<float4> gOutAlbedo : register(u2);
+RWTexture2D<float4> gOutAlbedoSpecular : register(u3);
 
 //RWTexture2D<float4> gOutNormal : register(u2);
 //RWTexture2D<float4> gOutAlbedo : register(u3);
@@ -193,8 +194,9 @@ void RayGen()
         float t = 0.5 * (rayDir.y + 1.0);
         float3 sky = lerp(float3(0.3, 0.3, 0.3), float3(0.5, 0.7, 1.0), t);
         
-        gOutDiffuse[pixel] = float4(sky, 1.0);
+        gOutDiffuse[pixel] = float4(1, 1, 1, 1); 
         gOutSpecular[pixel] = float4(0, 0, 0, 0);
+        gOutAlbedo[pixel] = float4(sky, 1.0);
         gOutAlbedoSpecular[pixel] = float4(0, 0, 0, 0);
         //gOutAlbedo[pixel] = float4(0, 0, 0, 0); // Sky has no albedo
         //gOutNormal[pixel] = float4(0, 0, 0, 0);
@@ -205,8 +207,8 @@ void RayGen()
     float3 normal = gGBufferNormal.Load(uint3(pixel, 0)).xyz;
     float3 albedo = gGBufferAlbedo.Load(uint3(pixel, 0)).xyz;
     float2 mats = gGBufferMaterial.Load(uint3(pixel, 0));
-    float metalness = mats.x;
-    float roughness = mats.y;
+    float roughness = mats.x;
+    float metalness = mats.y;
 
     float3 V = normalize(viewPos - worldPos);
     float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);    
@@ -270,7 +272,7 @@ void RayGen()
                 float G = GeometrySmith(normal, V, L_central, roughness);
                 
                 // Specular part (kS)
-                float3 numerator = NDF * G * F;
+                float3 numerator = NDF * G;// * F;
                 float denominator = 4.0 * max(dot(normal, V), 0.0f) * NdotL + 0.0001;
                 float3 specular = numerator / denominator;                
                 
@@ -312,6 +314,7 @@ void RayGen()
     
     gOutDiffuse[pixel] = float4(diffuseTotal, 1.0);
     gOutSpecular[pixel] = float4(specularTotal, 1.0);
+    gOutAlbedo[pixel] = float4(albedo, 1.0);
     gOutAlbedoSpecular[pixel] = float4(F0, 1.0);
     //gOutAlbedo[pixel] = float4(albedo, 1.0);
     //gOutNormal[pixel] = float4(normalize(normal) * 0.5 + 0.5, 1.0);    

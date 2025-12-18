@@ -225,9 +225,13 @@ private:
 	bool mDLSSRREnabled = false;
 	bool mStreamlineInitialized = false;
 
-	D3D12Resource mAlbedoSpecularTex; ///< Intermediate texture for Albedo + Specular input to DLSS.
+	D3D12Resource mOutAlbedoSpecularTex; ///< Intermediate texture for Albedo + Specular input to DLSS.
 	int mUavSlot_AlbedoSpecular = -1;
 	int mSrvSlot_AlbedoSpecular = -1;
+
+	D3D12Resource mOutAlbedoTex; ///< Intermediate texture for Albedo input to DLSS.
+	int mUavSlot_Albedo = -1;
+	int mSrvSlot_Albedo = -1;
 
 	
 	void InitializeDLSSRR();
@@ -341,6 +345,8 @@ private:
 	 * @brief Initializes ray tracing acceleration structures.
 	 */
 	void InitializeRayTracing();
+
+	void SetAllResourcesNames();
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.

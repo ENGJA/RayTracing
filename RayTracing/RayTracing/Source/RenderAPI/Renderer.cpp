@@ -383,6 +383,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	// For debugging: recompile shaders on 'G' key press
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
+
+	SetAllResourcesNames();
 }
 
 Renderer::~Renderer()
@@ -563,6 +565,18 @@ void Renderer::OnResize(UINT width, UINT height)
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		mDevice.Get()->CreateShaderResourceView(mOutDiffuseTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_Diffuse));
 		mDevice.Get()->CreateShaderResourceView(mOutSpecularTex.Get(), &srvDesc, mSrvHeap.GetCpuHandle(mSrvSlot_Specular));
+	}
+	// =========================================================================
+	// 8. Resize Tonemap Resources
+	// =========================================================================
+	{
+		// Resize tonemap output texture
+		auto tonemapDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, mWidth, mHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		mTonemapOutputTexture.Initialize(mDevice.Get(), tonemapDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+		D3D12_UNORDERED_ACCESS_VIEW_DESC tonemapDescUAV = {};
+		tonemapDescUAV.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		tonemapDescUAV.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		mDevice.Get()->CreateUnorderedAccessView(mTonemapOutputTexture.Get(), nullptr, &tonemapDescUAV, mSrvHeap.GetCpuHandle(mUavSlot_TonemapOutput));
 	}
 
 	// 8. Update Viewport and Scissor Rect
@@ -918,6 +932,29 @@ void Renderer::InitializeRayTracing()
 	mReflectionsPipeline.BuildSBT(mDevice.Get(), allMeshes);
 }
 
+void Renderer::SetAllResourcesNames()
+{
+	mConstantBuffer.Get()->SetName(L"Constant Buffer");
+	mDepthBuffer.GetResource()->SetName(L"Depth Buffer");
+	mGBufferAlbedo.Get()->SetName(L"G-Buffer Albedo");
+	mGBufferNormal.Get()->SetName(L"G-Buffer Normal");
+	mGBufferMaterial.Get()->SetName(L"G-Buffer Material");
+	mGBufferEmission.Get()->SetName(L"G-Buffer Emissive");
+	mGBufferVelocity.Get()->SetName(L"G-Buffer Velocity");
+	mComputeOutputTexture.Get()->SetName(L"Compute Output Texture");
+	mTonemapOutputTexture.Get()->SetName(L"Tonemap Output Texture");
+	mOutDiffuseTex.Get()->SetName(L"Reflection Out Diffuse Texture");
+	mOutSpecularTex.Get()->SetName(L"Reflection Out Specular Texture");
+	mDLSSOutputTexture.Get()->SetName(L"DLSS Output Texture");
+//	mTLAS.Get()->SetName(L"Top-Level Acceleration Structure");
+//	mTLAS_Scratch.Get()->SetName(L"TLAS Scratch Buffer");
+//	mInstanceDescBuffer.Get()->SetName(L"TLAS Instance Descriptions");
+	mGlobalLightBuffer.Get()->SetName(L"Global Light Buffer");
+	mOutAlbedoSpecularTex.Get()->SetName(L"Reflection Out AlbedoSpecular Texture");
+	mOutAlbedoTex.Get()->SetName(L"Reflection Out Albedo Texture");
+
+}
+
 
 void Renderer::InitializeGBufferResources()
 {
@@ -1211,7 +1248,12 @@ void Renderer::InitializeReflectionResources()
 		desc,
 		D3D12_HEAP_TYPE_DEFAULT,
 		D3D12_RESOURCE_STATE_COMMON);
-	mAlbedoSpecularTex.Initialize(
+	mOutAlbedoTex.Initialize(
+		mDevice.Get(),
+		desc,
+		D3D12_HEAP_TYPE_DEFAULT,
+		D3D12_RESOURCE_STATE_COMMON);
+	mOutAlbedoSpecularTex.Initialize(
 		mDevice.Get(),
 		desc,
 		D3D12_HEAP_TYPE_DEFAULT,
@@ -1219,17 +1261,20 @@ void Renderer::InitializeReflectionResources()
 
 	mOutDiffuseTex.Get()->SetName(L"Out Diffuse Texture");
 	mOutSpecularTex.Get()->SetName(L"Out Specular Texture");
-	mAlbedoSpecularTex.Get()->SetName(L"Albedo Specular Texture");
+	mOutAlbedoTex.Get()->SetName(L"Albedo Texture");
+	mOutAlbedoSpecularTex.Get()->SetName(L"Albedo Specular Texture");
 
 
 	// 2. Create UAV (For writing in DXR)
-	auto uavAlloc = mSrvHeap.Allocate(3);
+	auto uavAlloc = mSrvHeap.Allocate(4);
 	mUavSlot_Diffuse = uavAlloc.index;
 	mUavSlot_Specular = uavAlloc.index + 1;
-	mUavSlot_AlbedoSpecular = uavAlloc.index + 2;
+	mUavSlot_Albedo = uavAlloc.index + 2;
+	mUavSlot_AlbedoSpecular = uavAlloc.index + 3;
 
 	auto diffuseUavHandle = uavAlloc.cpuHandle;
 	auto specularUavHandle = mSrvHeap.GetCpuHandle(mUavSlot_Specular);
+	auto albedoUavHandle = mSrvHeap.GetCpuHandle(mUavSlot_Albedo);
 	auto albedoSpecularUavHandle = mSrvHeap.GetCpuHandle(mUavSlot_AlbedoSpecular);
 
 	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
@@ -1237,17 +1282,20 @@ void Renderer::InitializeReflectionResources()
 	uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 	mDevice.Get()->CreateUnorderedAccessView(mOutDiffuseTex.Get(), nullptr, &uavDesc, diffuseUavHandle);
 	mDevice.Get()->CreateUnorderedAccessView(mOutSpecularTex.Get(), nullptr, &uavDesc, specularUavHandle);
-	mDevice.Get()->CreateUnorderedAccessView(mAlbedoSpecularTex.Get(), nullptr, &uavDesc, albedoSpecularUavHandle);
+	mDevice.Get()->CreateUnorderedAccessView(mOutAlbedoTex.Get(), nullptr, &uavDesc, albedoUavHandle);
+	mDevice.Get()->CreateUnorderedAccessView(mOutAlbedoSpecularTex.Get(), nullptr, &uavDesc, albedoSpecularUavHandle);
 
 
 	// 3. Create SRV (For reading in Composite Pass)
-	auto srvAlloc = mSrvHeap.Allocate(3);
+	auto srvAlloc = mSrvHeap.Allocate(4);
 	mSrvSlot_Diffuse = srvAlloc.index;
 	mSrvSlot_Specular = srvAlloc.index + 1;
-	mSrvSlot_AlbedoSpecular = srvAlloc.index + 2;
+	mSrvSlot_Albedo = srvAlloc.index + 2;
+	mSrvSlot_AlbedoSpecular = srvAlloc.index + 3;
 
 	auto diffuseSrvHandle = srvAlloc.cpuHandle;
 	auto specularSrvHandle = mSrvHeap.GetCpuHandle(mSrvSlot_Specular);
+	auto albedoSrvHandle = mSrvHeap.GetCpuHandle(mSrvSlot_Albedo);
 	auto albedoSpecularSrvHandle = mSrvHeap.GetCpuHandle(mSrvSlot_AlbedoSpecular);
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -1257,7 +1305,8 @@ void Renderer::InitializeReflectionResources()
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	mDevice.Get()->CreateShaderResourceView(mOutDiffuseTex.Get(), &srvDesc, diffuseSrvHandle);
 	mDevice.Get()->CreateShaderResourceView(mOutSpecularTex.Get(), &srvDesc, specularSrvHandle);
-	mDevice.Get()->CreateShaderResourceView(mAlbedoSpecularTex.Get(), &srvDesc, albedoSpecularSrvHandle);
+	mDevice.Get()->CreateShaderResourceView(mOutAlbedoTex.Get(), &srvDesc, albedoSrvHandle);
+	mDevice.Get()->CreateShaderResourceView(mOutAlbedoSpecularTex.Get(), &srvDesc, albedoSpecularSrvHandle);
 }
 
 
@@ -1448,14 +1497,14 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 	// Create Resource objects on the heap (ResourceTag expects pointers)
 	sl::Resource depthResource(sl::ResourceType::eTex2d, mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource mvecResource(sl::ResourceType::eTex2d, mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	sl::Resource albedoResource(sl::ResourceType::eTex2d, mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource albedoResource(sl::ResourceType::eTex2d, mOutAlbedoTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource normalResource(sl::ResourceType::eTex2d, mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource roughnessResource(sl::ResourceType::eTex2d, mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	sl::Resource diffuseResource(sl::ResourceType::eTex2d, mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	sl::Resource specularResource(sl::ResourceType::eTex2d, mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	//sl::Resource diffuseResource(sl::ResourceType::eTex2d, mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	//sl::Resource specularResource(sl::ResourceType::eTex2d, mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource outputResource(sl::ResourceType::eTex2d, mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	sl::Resource inputColorResource(sl::ResourceType::eTex2d, mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	sl::Resource albedoSpecularResource(sl::ResourceType::eTex2d, mAlbedoSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource albedoSpecularResource(sl::ResourceType::eTex2d, mOutAlbedoSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 	// Create extent for resources
 	sl::Extent renderExtent{ 0, 0, mRenderWidth, mRenderHeight };
@@ -1468,8 +1517,8 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 		sl::ResourceTag(&albedoResource, sl::kBufferTypeAlbedo, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&normalResource, sl::kBufferTypeNormals, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&roughnessResource, sl::kBufferTypeRoughness, sl::eValidUntilPresent, &renderExtent),
-		sl::ResourceTag(&diffuseResource, sl::kBufferTypeDiffuseHitNoisy, sl::eValidUntilPresent, &renderExtent),
-		sl::ResourceTag(&specularResource, sl::kBufferTypeSpecularHitNoisy, sl::eValidUntilPresent, &renderExtent),
+//		sl::ResourceTag(&diffuseResource, sl::kBufferTypeDiffuseHitNoisy, sl::eValidUntilPresent, &renderExtent),
+//		sl::ResourceTag(&specularResource, sl::kBufferTypeSpecularHitNoisy, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&outputResource, sl::kBufferTypeScalingOutputColor, sl::eValidUntilPresent, &outputExtent),
 		sl::ResourceTag(&inputColorResource, sl::kBufferTypeScalingInputColor, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&albedoSpecularResource, sl::kBufferTypeSpecularAlbedo, sl::eValidUntilPresent, &renderExtent)
@@ -1511,7 +1560,7 @@ void Renderer::InitializeTonemapPipeline()
 	HLSLShader tonemapShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/TonemapCS.hlsl", L"cs_6_0");
 	mPipelineStateTonemap.InitializeCompute(
 		mDevice.Get(),
-		mComputeRootSignature.Get(),
+		mTonemapRootSignature.Get(),
 		std::move(tonemapShader));
 }
 
@@ -1873,16 +1922,16 @@ void Renderer::Update(const Camera& camera)
 			// Slot 0: CBV
 			mCommandList.Get()->SetComputeRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
 
-			// Slot 1: Direct Lighting Table (t0)
+			// Slot 1: Diffuse, Specular, Albedo, SpecularAlbedo SRVs (t0 - t3)
 			mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHeap.GetGpuHandle(mSrvSlot_Diffuse));
 
-			// Slot 1: Reflection SRV (t1)
-			mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHeap.GetGpuHandle(mSrvSlot_Specular));
+			// Slot 2: G-Buffer Normal SRV (t4)
+			mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferNormal));
 
-			// Slot 2: G-Buffer Table (t2 - t5)
-			mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferAlbedo));
+			// Slot 3: G-Buffer Depth SRV (t5)
+			mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_Depth));
 
-			// Slot 3: Output UAV (u0)
+			// Slot 4: Output UAV (u0)
 			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
 
 			// Dispatch
@@ -1918,16 +1967,7 @@ void Renderer::Update(const Camera& camera)
 				float aspectRatio = camera.GetAspect();
 
 				EvaluateDLSSRR(view, proj, invView, invProj, cameraPos, cameraFwd, nearZ, farZ, fovY, aspectRatio);
-//				D3D12_RESOURCE_BARRIER copyBarriers[]
-//				{
-//					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-//					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST)
-//				};
-//				mCommandList.Get()->ResourceBarrier(_countof(copyBarriers), copyBarriers);
-//
-//				mCommandList.Get()->CopyResource(mComputeOutputTexture.Get(), mDLSSOutputTexture.Get());
 
-				// Restore OutputTexture to Target for Transparency
 				D3D12_RESOURCE_BARRIER restoreBarriers[]
 				{
 //					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET),
@@ -1990,6 +2030,9 @@ void Renderer::Update(const Camera& camera)
 			};
 			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
+			ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
+			mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+
 			// Bind Composite Pipeline
 			mCommandList.Get()->SetComputeRootSignature(mTonemapRootSignature.Get());
 			mCommandList.Get()->SetPipelineState(mPipelineStateTonemap.Get());
@@ -2024,7 +2067,7 @@ void Renderer::Update(const Camera& camera)
 			// Copy
 			mCommandList.Get()->CopyResource(
 				mSwapChain.GetCurrentBackBuffer(),
-				mComputeOutputTexture.Get());
+				mTonemapOutputTexture.Get());
 
 			// Transition Back Buffer -> Present
 			D3D12_RESOURCE_BARRIER renderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -2040,7 +2083,11 @@ void Renderer::Update(const Camera& camera)
 				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+
+				//CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON)
 			};
 			mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
 		}
