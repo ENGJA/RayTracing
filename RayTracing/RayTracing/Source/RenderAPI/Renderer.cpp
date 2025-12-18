@@ -1324,12 +1324,13 @@ void Renderer::InitializeReflectionResources()
 
 void Renderer::InitializeStreamline()
 {
-	sl::Preferences pref;
+	sl::Preferences pref{};
 	pref.showConsole = false;
 	pref.logLevel = sl::LogLevel::eDefault;
 	//pref.logLevel = sl::LogLevel::eOff;
 	pref.pathsToPlugins = nullptr;	// Use default plugin path (next to executable)
 	pref.numPathsToPlugins = 0;
+	pref.applicationId = 231313132;
 
 	sl::Feature featuresToLoad[] = { sl::kFeatureDLSS_RR };
 	pref.featuresToLoad = featuresToLoad;
