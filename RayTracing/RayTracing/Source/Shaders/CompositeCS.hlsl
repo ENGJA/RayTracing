@@ -6,6 +6,7 @@ Texture2D<float3> gAlbedo : register(t2);
 Texture2D<float3> gAlbedoSpecular : register(t3);
 Texture2D<float3> gNormal : register(t4);
 Texture2D<float> gDepth : register(t5);
+Texture2D<float3> gEmissive : register(t6);
 
 RWTexture2D<float4> gOutput : register(u0);
 
@@ -45,7 +46,7 @@ void main(uint3 id : SV_DispatchThreadID)
     //float2 mats = gMaterial[id.xy];
     float3 albedo = gAlbedo[id.xy];
     float3 albedoSpecular = gAlbedoSpecular[id.xy];
-    //float3 emissive = gEmissive[id.xy].rgb;
+    float3 emissive = gEmissive[id.xy].rgb;
     
     //// Reconstruct View Vector
     float3 worldPos = GetWorldPosition(uv, depth); // Need UV conversion logic here
@@ -59,9 +60,9 @@ void main(uint3 id : SV_DispatchThreadID)
     float3 F = FresnelSchlick(max(dot(N, V), 0.0), F0);
     
     
-    float3 finalColor = direct * albedo + refl; // * F;
+    float3 finalColor = direct * albedo + refl * F;
     //finalColor *= albedo; // Modulate by albedo
-    //finalColor += emissive; // Add emissive
+    finalColor += emissive; // Add emissive
     //finalColor = finalColor / (finalColor + 1.0); // Reinhard tonemapping)
     //finalColor = pow(finalColor, 1.0 / 2.2); // Gamma correction
     

@@ -1513,6 +1513,7 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 	sl::Resource albedoResource(sl::ResourceType::eTex2d, mOutAlbedoTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource normalResource(sl::ResourceType::eTex2d, mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource roughnessResource(sl::ResourceType::eTex2d, mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource emissiveResource(sl::ResourceType::eTex2d, mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	//sl::Resource diffuseResource(sl::ResourceType::eTex2d, mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	//sl::Resource specularResource(sl::ResourceType::eTex2d, mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource outputResource(sl::ResourceType::eTex2d, mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -1530,6 +1531,7 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 		sl::ResourceTag(&albedoResource, sl::kBufferTypeAlbedo, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&normalResource, sl::kBufferTypeNormals, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&roughnessResource, sl::kBufferTypeRoughness, sl::eValidUntilPresent, &renderExtent),
+		sl::ResourceTag(&emissiveResource, sl::kBufferTypeEmissive, sl::eValidUntilPresent, &renderExtent),
 //		sl::ResourceTag(&diffuseResource, sl::kBufferTypeDiffuseHitNoisy, sl::eValidUntilPresent, &renderExtent),
 //		sl::ResourceTag(&specularResource, sl::kBufferTypeSpecularHitNoisy, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&outputResource, sl::kBufferTypeScalingOutputColor, sl::eValidUntilPresent, &outputExtent),
@@ -1947,8 +1949,11 @@ void Renderer::Update(const Camera& camera)
 			// Slot 3: G-Buffer Depth SRV (t5)
 			mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHeap.GetGpuHandle(mSrvSlot_Depth));
 
-			// Slot 4: Output UAV (u0)
-			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mUavSlot_Output));
+			// Slot 4: G-Buffer Emissive SRV (t6)
+			mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHeap.GetGpuHandle(mSrvSlot_GBufferEmissive));
+
+			// Slot 5: Output UAV (u0)
+			mCommandList.Get()->SetComputeRootDescriptorTable(5, mSrvHeap.GetGpuHandle(mUavSlot_Output));
 
 			// Dispatch
 			mCommandList.Get()->Dispatch((mRenderWidth + 7) / 8, (mRenderHeight + 7) / 8, 1);
