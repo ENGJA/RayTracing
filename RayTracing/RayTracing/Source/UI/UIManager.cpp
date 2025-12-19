@@ -272,21 +272,28 @@ void UIManager::RenderSettingsWindow()
 	ImGui::Spacing();
 
 	ImGui::Text("DLSS Settings");
-	// Removed "Off" from the list as requested.
-	// Note: The indices in this array must match the logic for mCurrentDLSSMode.
-	// If mCurrentDLSSMode corresponds to sl::DLSSMode values (0=Off, 1=MaxPerf, etc.),
-	// and we remove Off, we need to handle the offset.
-	// Assuming for now we just want to hide it and force a valid mode if it was Off.
 	
-	const char* dlssModes[] = { "Max Performance", "Balanced", "Max Quality", "Ultra Performance" };
+	// DLSS Modes corresponding to sl::DLSSMode enum:
+	// eOff = 0, eMaxPerformance = 1, eBalanced = 2, eMaxQuality = 3, 
+	// eUltraPerformance = 4, eUltraQuality = 5, eDLAA = 6
+	const char* dlssModes[] = { 
+		//"Off",                // 0
+		"Max Performance",    // 1
+		"Balanced",           // 2
+		"Max Quality",        // 3
+		"Ultra Performance",  // 4
+		"Ultra Quality",      // 5
+		"DLAA"                // 6
+	};
 	
-	// Adjust current mode index for UI (0-based in this list corresponds to 1-based in DLSSMode if Off is 0)
-	int uiModeIndex = mCurrentDLSSMode - 1;
-	if (uiModeIndex < 0) uiModeIndex = 0; // Default to Max Performance if it was Off
+	// Current mode directly maps to array index
+	int uiModeIndex = mCurrentDLSSMode;
+	if (uiModeIndex < 0 || uiModeIndex >= IM_ARRAYSIZE(dlssModes))
+		uiModeIndex = 0; // Default to Off if out of range
 
 	if (ImGui::Combo("DLSS Mode", &uiModeIndex, dlssModes, IM_ARRAYSIZE(dlssModes)))
 	{
-		mCurrentDLSSMode = uiModeIndex + 1; // Convert back to DLSSMode value
+		mCurrentDLSSMode = uiModeIndex + 1; // Direct mapping
 		if (mSetDLSSModeCallback)
 			mSetDLSSModeCallback(mCurrentDLSSMode);
 	}
