@@ -387,6 +387,27 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	SetAllResourcesNames();
 }
 
+void Renderer::SetDLSSMode(sl::DLSSMode mode)
+{
+	if (mDLSSMode == mode)
+		return;
+
+	mDLSSMode = mode;
+	wcout << "DLSS Mode changed to: " << static_cast<int>(mode) << endl;
+
+	if (mDLSSRREnabled)
+	{
+		// Re-initialize DLSS with new mode
+		slFreeResources(sl::kFeatureDLSS_RR, mSlViewport);
+		mDLSSRREnabled = false;
+	}
+
+	if (mDLSSMode != sl::DLSSMode::eOff)
+	{
+		InitializeDLSSRR();
+	}
+}
+
 Renderer::~Renderer()
 {
 	wcout << L"Renderer destructor: cleaning up GPU resources..." << endl;
@@ -1140,9 +1161,9 @@ void Renderer::InitializeComputePipeline()
 	mUavSlot_Output = uavHandle.index;
 
 	D3D12_UNORDERED_ACCESS_VIEW_DESC uavViewDesc = {};
-	uavViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	//uavViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	uavViewDesc.Format = DXGI_FORMAT_UNKNOWN;
 	uavViewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-
 	mDevice.Get()->CreateUnorderedAccessView(
 		mComputeOutputTexture.Get(),
 		nullptr,
@@ -1160,7 +1181,7 @@ void Renderer::InitializeComputePipeline()
 	auto srvHandle = mSrvHeap.Allocate();
 	mSrvIndex_ComputeOutput = srvHandle.index;
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MipLevels = 1;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -1614,7 +1635,6 @@ void Renderer::InitializeTonemapResources()
 	//	mTonemapOutputTexture.Get(),
 	//	nullptr,
 	//	rtvHandle.cpuHandle);
-
 }
 
 

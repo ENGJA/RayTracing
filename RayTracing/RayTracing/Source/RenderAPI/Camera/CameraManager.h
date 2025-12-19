@@ -88,4 +88,5 @@ public:
     void OnResize(UINT width, UINT height);
 
 	const Camera& GetActiveCamera() const { return mCameras[mActiveIndex]; }
+	Camera& GetActiveCamera() { return mCameras[mActiveIndex]; }
 };

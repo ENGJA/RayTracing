@@ -23,6 +23,7 @@ public:
 	using ToggleMenuCallback = std::function<void()>;
 	using ExitCallback = std::function<void()>;
 	using ExitToMainMenuCallback = std::function<void()>;
+	using SetDLSSModeCallback = std::function<void(int)>;
 
 	/**
 	 * @brief Application states for UI rendering.
@@ -83,6 +84,16 @@ public:
 	 * @brief Set callback for adding extension scenes to current scene.
 	 */
 	void SetAddExtensionScenesCallback(AddExtensionScenesCallback callback) { mAddExtensionScenesCallback = callback; }
+
+	/**
+	 * @brief Set callback for changing DLSS mode.
+	 */
+	void SetSetDLSSModeCallback(SetDLSSModeCallback callback) { mSetDLSSModeCallback = callback; }
+
+	/**
+	 * @brief Set current DLSS mode index for UI display.
+	 */
+	void SetCurrentDLSSMode(int mode) { mCurrentDLSSMode = mode; }
 
 	/**
 	 * @brief Toggle settings window visibility.
@@ -157,4 +168,7 @@ private:
 	ToggleMenuCallback mToggleMenuCallback;
 	ExitCallback mExitCallback;
 	ExitToMainMenuCallback mExitToMainMenuCallback;
+	SetDLSSModeCallback mSetDLSSModeCallback;
+
+	int mCurrentDLSSMode = 0;
 };

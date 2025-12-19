@@ -240,6 +240,10 @@ private:
 	void EvaluateDLSSRR(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMMATRIX& invView, const DirectX::XMMATRIX& invProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward, float nearZ, float farZ, float fovY, float aspectRatio);
 	void CleanupStreamline();
 
+public:
+	void SetDLSSMode(sl::DLSSMode mode);
+	sl::DLSSMode GetDLSSMode() const { return mDLSSMode; }
+
 	// ===========================================
 	// Tonemapping resources
 	D3D12RootSignature mTonemapRootSignature;
