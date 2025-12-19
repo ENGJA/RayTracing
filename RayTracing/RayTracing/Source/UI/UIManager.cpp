@@ -206,7 +206,7 @@ void UIManager::RenderPauseMenu()
 void UIManager::RenderSettingsWindow()
 {
 	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_Once);
-	ImGui::SetNextWindowSize(ImVec2(450, 180), ImGuiCond_Once);
+	ImGui::SetNextWindowSize(ImVec2(450, 330), ImGuiCond_Once);
 
 	if (!ImGui::Begin("Settings", &mShowSettingsWindow, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize))
 	{
@@ -236,6 +236,61 @@ void UIManager::RenderSettingsWindow()
 		mCameraManager->SetMoveSpeedMultiplier(currentSpeed);
 	}
 	
+	ImGui::Spacing();
+	
+	// Get current active camera
+	Camera& activeCamera = mCameraManager->GetActiveCamera();
+	
+	// Near plane slider
+	float nearZ = activeCamera.GetNearZ();
+	ImGui::Text("Near Plane: %.3f", nearZ);
+	if (ImGui::SliderFloat("##near", &nearZ, 0.001f, 10.0f, "%.3f"))
+	{
+		// Clamp to ensure near < far
+		float farZ = activeCamera.GetFarZ();
+		if (nearZ >= farZ)
+			nearZ = farZ - 0.01f;
+		activeCamera.SetNearZ(nearZ);
+	}
+	
+	ImGui::Spacing();
+	
+	// Far plane slider
+	float farZ = activeCamera.GetFarZ();
+	ImGui::Text("Far Plane: %.1f", farZ);
+	if (ImGui::SliderFloat("##far", &farZ, 1.0f, 1000.0f, "%.1f"))
+	{
+		// Clamp to ensure far > near
+		float nearZ = activeCamera.GetNearZ();
+		if (farZ <= nearZ)
+			farZ = nearZ + 0.01f;
+		activeCamera.SetFarZ(farZ);
+	}
+	
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	ImGui::Text("DLSS Settings");
+	// Removed "Off" from the list as requested.
+	// Note: The indices in this array must match the logic for mCurrentDLSSMode.
+	// If mCurrentDLSSMode corresponds to sl::DLSSMode values (0=Off, 1=MaxPerf, etc.),
+	// and we remove Off, we need to handle the offset.
+	// Assuming for now we just want to hide it and force a valid mode if it was Off.
+	
+	const char* dlssModes[] = { "Max Performance", "Balanced", "Max Quality", "Ultra Performance" };
+	
+	// Adjust current mode index for UI (0-based in this list corresponds to 1-based in DLSSMode if Off is 0)
+	int uiModeIndex = mCurrentDLSSMode - 1;
+	if (uiModeIndex < 0) uiModeIndex = 0; // Default to Max Performance if it was Off
+
+	if (ImGui::Combo("DLSS Mode", &uiModeIndex, dlssModes, IM_ARRAYSIZE(dlssModes)))
+	{
+		mCurrentDLSSMode = uiModeIndex + 1; // Convert back to DLSSMode value
+		if (mSetDLSSModeCallback)
+			mSetDLSSModeCallback(mCurrentDLSSMode);
+	}
+
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();
@@ -385,7 +440,6 @@ void UIManager::RenderPerformanceOverlay()
 		float cpuUsage = mPerformanceMonitor->GetCPUUsage();
 		float gpuUsage = mPerformanceMonitor->GetGPUUsage();
 		float gpu3DUsage = mPerformanceMonitor->GetGPU3DUsage();
-		float gpuComputeUsage = mPerformanceMonitor->GetGPUComputeUsage();
 		float ramUsage = mPerformanceMonitor->GetRAMUsageMB();
 		float vramUsage = mPerformanceMonitor->GetVRAMUsageMB();
 
@@ -402,10 +456,14 @@ void UIManager::RenderPerformanceOverlay()
 		
 		ImGui::Text("CPU: %.1f%%", cpuUsage);
 		
-		if (gpuUsage > 0.0f)
+		// Display GPU usage (prefer 3D usage, fallback to general GPU usage)
+		if (gpu3DUsage > 0.0f)
 		{
-			ImGui::Text("GPU 3D/Graphics: %.1f%%", gpu3DUsage);
-			ImGui::Text("GPU Compute/RT: %.1f%%", gpuComputeUsage);
+			ImGui::Text("GPU: %.1f%%", gpu3DUsage);
+		}
+		else if (gpuUsage > 0.0f)
+		{
+			ImGui::Text("GPU: %.1f%%", gpuUsage);
 		}
 		else
 		{

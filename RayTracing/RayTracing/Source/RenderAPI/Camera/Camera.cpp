@@ -81,6 +81,20 @@ void Camera::ChangeFov(float delta)
     mProj = XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
 }
 
+void Camera::SetNearZ(float nearZ)
+{
+    if (mType == CameraType::Fixed) return;
+    mNearZ = nearZ;
+    mProj = XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
+}
+
+void Camera::SetFarZ(float farZ)
+{
+    if (mType == CameraType::Fixed) return;
+    mFarZ = farZ;
+    mProj = XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
+}
+
 XMMATRIX Camera::GetViewProjection() const
 {    
     return GetViewMatrix() * GetProjMatrix();

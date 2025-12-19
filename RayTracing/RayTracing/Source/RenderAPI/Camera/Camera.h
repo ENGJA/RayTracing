@@ -97,6 +97,8 @@ public:
     void AddPitch(float delta);
     void MoveLocal(float forward, float right, float up);
     void ChangeFov(float delta);
+    void SetNearZ(float nearZ);
+    void SetFarZ(float farZ);
 
     /**
      * @brief Update aspect ratio and rebuild projection matrix.

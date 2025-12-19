@@ -254,6 +254,13 @@ void Application::OnCreate(HWND hwnd)
 		ExitToMainMenu();
 	});
 	
+	mUIManager.SetSetDLSSModeCallback([this](int mode) {
+		mRenderer.SetDLSSMode(static_cast<sl::DLSSMode>(mode));
+	});
+
+	// Initialize UI with current DLSS mode
+	mUIManager.SetCurrentDLSSMode(static_cast<int>(mRenderer.GetDLSSMode()));
+
 	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
 		if (mCurrentState == UIManager::AppState::Scene || mCurrentState == UIManager::AppState::Menu)
