@@ -25,6 +25,8 @@
 #include <dxgi1_6.h>
 #include <dxgidebug.h>
 #include <d3dx12.h>
+#include <DDSTextureLoader.h>
+#include <ResourceUploadBatch.h>
 
 // nvidia
 #include <streamline/sl.h>

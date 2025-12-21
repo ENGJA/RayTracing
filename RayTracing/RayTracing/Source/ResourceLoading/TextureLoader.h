@@ -7,6 +7,7 @@
 #include "Mipmapping/MipmapGenerator.h"
 #include "ResourceLoading/ImageDecoder.h"
 
+
 struct GPUTexture
 {
     D3D12Resource resource;
@@ -40,6 +41,15 @@ public:
 	* @return Created GPU texture with resource and SRV.
 	*/
 	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue);
+
+	/**
+	 * @brief Queues a DDS texture load into the provided upload batch.
+	 * @param path File path to the .dds file.
+	 * @param batch Reference to the active ResourceUploadBatch.
+	 * @return GPUTexture struct with metadata (Width/Height/Format).
+	 * Note: Content is not on GPU until batch.End() is called.
+	 */
+	GPUTexture CreateTextureFromDDSPath(const std::wstring& path, DirectX::ResourceUploadBatch& batch);
 
 	/**
 	* @brief Creates a solid color 1x1 texture for default/dummy usage.

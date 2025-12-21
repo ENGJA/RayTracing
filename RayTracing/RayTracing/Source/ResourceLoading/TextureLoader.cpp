@@ -2,6 +2,7 @@
 #include "TextureLoader.h"
 #include "helpers.h"
 
+
 using Microsoft::WRL::ComPtr;
 using std::wcout, std::endl;
 
@@ -104,6 +105,34 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 
 	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, executeQueue);
 
+	return gpuTex;
+}
+
+GPUTexture TextureLoader::CreateTextureFromDDSPath(const std::wstring& path, DirectX::ResourceUploadBatch& batch)
+{
+	GPUTexture gpuTex{};
+
+	// 1. Create the Resource
+	HRESULT hr = DirectX::CreateDDSTextureFromFile(
+		mDevice,
+		batch,
+		path.c_str(),
+		gpuTex.resource.GetAddressOf(), true);
+	ASSERT_HR(hr, L"Failed to create texture from DDS file: " + path);
+
+	D3D12_RESOURCE_DESC desc = gpuTex.resource.Get()->GetDesc();
+	gpuTex.width = static_cast<UINT>(desc.Width);
+	gpuTex.height = desc.Height;
+	gpuTex.mipLevels = desc.MipLevels;
+	gpuTex.format = desc.Format;
+
+	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		gpuTex.resource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+
+	batch.Transition(gpuTex.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	return gpuTex;
 }
 
