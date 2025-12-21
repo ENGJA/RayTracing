@@ -16,6 +16,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <ranges>
 
 // directx
 #include <d3d12.h>

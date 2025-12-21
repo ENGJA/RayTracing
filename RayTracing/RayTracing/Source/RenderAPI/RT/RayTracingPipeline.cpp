@@ -64,8 +64,12 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 
 
 
-void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::vector<MeshGpuData>& meshes)
+void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer_list<std::span<const MeshGpuData>>& meshes)
 {
+	size_t totalMeshes = 0;
+	for (const auto& meshSpan : meshes)
+		totalMeshes += meshSpan.size();
+
     // Hit Group Record = [Shader ID (32B)] + [IndexBuffer Ptr (8B)] + [VertexBuffer Ptr (8B)] + [Texture Handle (8B)]
     UINT shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES; // 32
     UINT recordSize = shaderIDSize + 8 * 3; // ID + 1 GPU Descriptor Handle (64-bit)
@@ -73,7 +77,7 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::vector<Mesh
 
     mRayGenSectionSize = recordSize;    // 1 RayGen shader
     mMissSectionSize = recordSize * 2;  // 2 Miss shaders (Color + Shadow)
-    mHitGroupSectionSize = recordSize * static_cast<UINT>(meshes.size()); // 1 HitGroup per mesh
+    mHitGroupSectionSize = recordSize * static_cast<UINT>(totalMeshes); // 1 HitGroup per mesh
 
     // Total Size: 1 RayGen + 2 Miss (Color/Shadow) + N HitGroups (one per mesh)
     UINT sbtSize = mRayGenSectionSize + mMissSectionSize + mHitGroupSectionSize;
@@ -105,33 +109,36 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::vector<Mesh
 
     // 4. Write Hit Groups (Per Mesh)
     void* hitGroupId = props->GetShaderIdentifier(L"HitGroup");
-    for (const auto& mesh : meshes)
+    for (const auto& meshSpan : meshes)
     {
-        uint8_t* pDataStart = pData;
+        for (const auto& mesh : meshSpan)
+        {
+            uint8_t* pDataStart = pData;
 
-        // A. Copy Shader ID for "HitGroup"
-        memcpy(pData, hitGroupId, shaderIDSize);
-        pData += shaderIDSize;
+            // A. Copy Shader ID for "HitGroup"
+            memcpy(pData, hitGroupId, shaderIDSize);
+            pData += shaderIDSize;
 
-        // B. Copy Root Argument: The GPU Pointer to the Index Buffer
+            // B. Copy Root Argument: The GPU Pointer to the Index Buffer
 
-        // Arg 0: Index Buffer GPU Address (8 bytes)
-        auto indexBufferAddr = mesh.ib.Get()->GetGPUVirtualAddress();
-        memcpy(pData, &indexBufferAddr, sizeof(indexBufferAddr));
-        pData += sizeof(indexBufferAddr);
+            // Arg 0: Index Buffer GPU Address (8 bytes)
+            auto indexBufferAddr = mesh.ib.Get()->GetGPUVirtualAddress();
+            memcpy(pData, &indexBufferAddr, sizeof(indexBufferAddr));
+            pData += sizeof(indexBufferAddr);
 
-        // Arg 1: Vertex Buffer GPU Address (8 bytes)
-        auto vertexBufferAddr = mesh.vb.Get()->GetGPUVirtualAddress();
-        memcpy(pData, &vertexBufferAddr, sizeof(vertexBufferAddr));
-        pData += sizeof(vertexBufferAddr);
+            // Arg 1: Vertex Buffer GPU Address (8 bytes)
+            auto vertexBufferAddr = mesh.vb.Get()->GetGPUVirtualAddress();
+            memcpy(pData, &vertexBufferAddr, sizeof(vertexBufferAddr));
+            pData += sizeof(vertexBufferAddr);
 
-        // Arg 2: Texture Descriptor Table Handle (8 bytes)
-        auto textureHandle = mesh.materialTable.gpuHandle;
-        memcpy(pData, &textureHandle, sizeof(textureHandle));
+            // Arg 2: Texture Descriptor Table Handle (8 bytes)
+            auto textureHandle = mesh.materialTable.gpuHandle;
+            memcpy(pData, &textureHandle, sizeof(textureHandle));
 
 
-        pData = pDataStart + recordSize; // Advance to next record (considering alignment)
-    }
+            pData = pDataStart + recordSize; // Advance to next record (considering alignment)
+        }
+    }    
 
     mSBTStorage.Get()->Unmap(0, nullptr);
 }
