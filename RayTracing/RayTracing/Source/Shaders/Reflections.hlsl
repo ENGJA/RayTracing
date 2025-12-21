@@ -179,6 +179,28 @@ float2 GetHitUV(uint triangleIndex, float2 bary)
     return uv0 * b.x + uv1 * b.y + uv2 * b.z;
 }
 
+// Based on "Ray Tracing Gems" Chapter 6
+float3 GetShadowRayOrigin(float3 pos, float3 normal)
+{
+    const float origin = 1.0f / 32.0f;
+    const float float_scale = 1.0f / 65536.0f;
+    const float int_scale = 256.0f;
+
+    // Offset the position along the normal based on the magnitude of the position components
+    int3 of_i = int3(int_scale * normal.x, int_scale * normal.y, int_scale * normal.z);
+
+    float3 p_i = float3(
+        asfloat(asint(pos.x) + ((pos.x < 0) ? -of_i.x : of_i.x)),
+        asfloat(asint(pos.y) + ((pos.y < 0) ? -of_i.y : of_i.y)),
+        asfloat(asint(pos.z) + ((pos.z < 0) ? -of_i.z : of_i.z))
+    );
+
+    // Apply a specialized offset relative to the plane equation
+    return float3(abs(pos.x) < origin ? pos.x + float_scale * normal.x : p_i.x,
+                  abs(pos.y) < origin ? pos.y + float_scale * normal.y : p_i.y,
+                  abs(pos.z) < origin ? pos.z + float_scale * normal.z : p_i.z);
+}
+
 // --- RAY GEN ---
 [shader("raygeneration")]
 void RayGen()
@@ -218,8 +240,8 @@ void RayGen()
     
     diffuseTotal += float3(0.05, 0.05, 0.05); // ambient
     
-    
-    float bias = 0.001f;
+    float distToCamera = length(viewPos - worldPos);
+    float bias = 0.001f + distToCamera * 0.002f;
     
     uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
     // Direct Lighting
@@ -256,6 +278,7 @@ void RayGen()
             
             RayDesc ray;
             ray.Origin = worldPos + normal * bias;
+            //ray.Origin = GetShadowRayOrigin(worldPos, normal);
             ray.Direction = L_shadow;
             ray.TMin = 0.01;
             ray.TMax = dist - 0.05f;
@@ -300,6 +323,7 @@ void RayGen()
         {
             RayDesc ray;
             ray.Origin = worldPos + normal * bias;
+            //ray.Origin = GetShadowRayOrigin(worldPos, normal);
             ray.Direction = R;
             ray.TMin = 0.01f;
             ray.TMax = 1000.0f;
