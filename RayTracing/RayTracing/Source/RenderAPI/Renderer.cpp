@@ -54,6 +54,9 @@ void Renderer::DispatchTextureDecoding()
 			for (const Texture& cpuTex : mesh.mTextures)
 			{
 				string fullPath = modelPtr->mDirectory + "\\" + cpuTex.mPath;
+				bool isDDS = fullPath.ends_with(".dds") || fullPath.ends_with(".DDS");
+				if (isDDS)
+					continue; // DDS textures are loaded directly on the GPU
 				auto it = mTextureCache.find(fullPath);
 				if (it == mTextureCache.end())
 				{
@@ -65,7 +68,7 @@ void Renderer::DispatchTextureDecoding()
 	}
 }
 
-void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpuData& gpuData, const function<void()>& executeBatch)
+void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpuData& gpuData, const function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch)
 {
 	unordered_map<int, string> textureMap;
 	for (const Texture& cpuTex : mesh.mTextures)
@@ -84,14 +87,24 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
 			{
 				string fullPath = directory + "\\" + it->second;
 				GPUTextureLoadState& loadState = mTextureCache[fullPath];
-				if (loadState.decodeFuture.valid())
-					loadState.decodedImage = loadState.decodeFuture.get();
 
 				if (!loadState.gpuTexture.resource.Get())
 				{
-					loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
-					loadState.decodedImage = {}; // free CPU-side decoded image data
+					bool isDDS = fullPath.ends_with(".dds") || fullPath.ends_with(".DDS");
+					if (isDDS)
+					{
+						loadState.gpuTexture = mTextureLoader.CreateTextureFromDDSPath(wstring(fullPath.begin(), fullPath.end()), ddsBatch);
+					}
+					else
+					{
+						if (loadState.decodeFuture.valid())
+							loadState.decodedImage = loadState.decodeFuture.get();
+
+						loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
+						loadState.decodedImage = {};
+					}
 				}
+				
 				GPUTexture& gpuTex = loadState.gpuTexture;
 				CreateTextureView(gpuTex.resource.Get(), gpuTex.format, dst, gpuTex.mipLevels);
 			}
@@ -108,7 +121,7 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
 	processSlot(4, mDefaultTextures.white);  // Emissive	
 }
 
-void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const function<void()>& executeBatch)
+void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch)
 {
 	const size_t vbSize = mesh.mVertices.size() * sizeof(::Vertex);
 	const size_t ibSize = mesh.mIndices.size() * sizeof(unsigned int);
@@ -158,7 +171,7 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 	gpu.ibv.SizeInBytes = ibSizeUINT;
 	gpu.ibv.Format = DXGI_FORMAT_R32_UINT;
 
-	CreateMaterial(mesh, directory, gpu, executeBatch);
+	CreateMaterial(mesh, directory, gpu, executeBatch, ddsBatch);
 
 	gpu.center = mesh.mCenter;
 	switch (mesh.mRenderLayer)
@@ -186,12 +199,12 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 	}
 }
 
-void Renderer::UploadMeshes(const function<void()>& executeBatch)
+void Renderer::UploadMeshes(const function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch)
 {
 	for (const auto& modelPtr : mModels)
 	{
 		for (const Mesh& mesh : modelPtr->mMeshes)
-			UploadSingleMesh(mesh, modelPtr->mDirectory, executeBatch);
+			UploadSingleMesh(mesh, modelPtr->mDirectory, executeBatch, ddsBatch);
 	}
 }
 
@@ -199,6 +212,8 @@ void Renderer::BuildMeshGpuData()
 {
 	mUploadHeap.Reset();
 	mCommandList.ResetCommandList(0); // Use allocator 0 for one-time upload, not swap chain index
+	DirectX::ResourceUploadBatch ddsBatch(mDevice.Get());
+	ddsBatch.Begin();
 
 	auto executeBatch = [this]()
 		{
@@ -213,9 +228,12 @@ void Renderer::BuildMeshGpuData()
 		};
 
 	DispatchTextureDecoding();
-	UploadMeshes(executeBatch);
-
+	UploadMeshes(executeBatch, ddsBatch);
 	executeBatch();
+
+	auto ddsUploadFuture = ddsBatch.End(mCommandQueue.Get());
+	ddsUploadFuture.wait();
+
 	mCommandList.Get()->Close();
 }
 

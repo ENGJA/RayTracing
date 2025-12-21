@@ -8,6 +8,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> mResource;
 
 public:
+
+	ID3D12Resource** GetAddressOf() { return mResource.GetAddressOf(); }
 	/**
 	 * @brief Returns the native resource pointer.
 	 */

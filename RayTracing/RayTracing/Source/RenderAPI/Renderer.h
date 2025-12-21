@@ -314,7 +314,7 @@ public:
 	* @brief Uploads GPU resources for all meshes in all models.
 	* @param executeBatch Function to execute the command queue when needed.
 	*/
-    void UploadMeshes(const std::function<void()>& executeBatch);
+    void UploadMeshes(const std::function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch);
 
 	/**
 	* @brief Uploads GPU resources for a single mesh.
@@ -322,7 +322,7 @@ public:
 	* @param directory Directory of the model owning the mesh (for texture paths).
 	* @param executeBatch Function to execute the command queue when needed.
 	*/
-	void UploadSingleMesh(const Mesh& mesh, const std::string& directory, const std::function<void()>& executeBatch);
+	void UploadSingleMesh(const Mesh& mesh, const std::string& directory, const std::function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch);
 
 	/**
 	 * @brief Creates material texture descriptors for a mesh.
@@ -331,7 +331,7 @@ public:
 	 * @param dst CPU descriptor handle where to write the material SRV descriptors.
 	 * @param executeBatch Function to execute the command queue when needed.
 	 */
-	void CreateMaterial(const Mesh& mesh, const std::string& directory, MeshGpuData& gpuData, const std::function<void()>& executeBatch);
+	void CreateMaterial(const Mesh& mesh, const std::string& directory, MeshGpuData& gpuData, const std::function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch);
 
 	/**
 	 * @brief Draws a single mesh (binds its buffers and material).
