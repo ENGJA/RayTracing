@@ -17,7 +17,7 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
     // --- 1. Define the Pipeline ---
     CD3DX12_STATE_OBJECT_DESC pipelineDesc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
 
-    // A. Shader Library (Compile 'Reflections.hlsl' to lib_6_5)
+    // A. Shader Library (Compile 'DeferredRT.hlsl' to lib_6_5)
     // You need to load this blob via your ShaderCompiler
     auto lib = pipelineDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
 	CD3DX12_SHADER_BYTECODE shaderBytecode(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize());
