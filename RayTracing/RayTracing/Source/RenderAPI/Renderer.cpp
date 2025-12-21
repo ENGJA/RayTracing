@@ -385,27 +385,31 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 
 	SetAllResourcesNames();
-}
+} 
 
 void Renderer::SetDLSSMode(sl::DLSSMode mode)
 {
+	//return;
 	if (mDLSSMode == mode)
 		return;
 
 	mDLSSMode = mode;
 	wcout << "DLSS Mode changed to: " << static_cast<int>(mode) << endl;
 
-	if (mDLSSRREnabled)
-	{
-		// Re-initialize DLSS with new mode
-		slFreeResources(sl::kFeatureDLSS_RR, mSlViewport);
-		mDLSSRREnabled = false;
-	}
+	// TODO: change after DLSS reinit fix
+	OnResize(mWidth, mHeight);
 
-	if (mDLSSMode != sl::DLSSMode::eOff)
-	{
-		InitializeDLSSRR();
-	}
+	//if (mDLSSRREnabled)
+	//{
+	//	// Re-initialize DLSS with new mode
+	//	slFreeResources(sl::kFeatureDLSS_RR, mSlViewport);
+	//	mDLSSRREnabled = false;
+	//}
+
+	//if (mDLSSMode != sl::DLSSMode::eOff)
+	//{
+	//	InitializeDLSSRR();
+	//}
 }
 
 Renderer::~Renderer()
@@ -435,8 +439,9 @@ void Renderer::OnResize(UINT width, UINT height)
 	if (width == 0 || height == 0)
 		return; // Ignore invalid sizes (minimized window)
 
-	if (width == mWidth && height == mHeight)
-		return; // No actual resize
+	// TODO: uncomment after DLSS reinit fix
+	//if (width == mWidth && height == mHeight)
+	//	return; // No actual resize
 
 	wcout << "Resizing renderer to " << width << "x" << height << endl;
 
@@ -1416,7 +1421,7 @@ void Renderer::InitializeDLSSRR()
 		D3D12_HEAP_TYPE_DEFAULT,
 		D3D12_RESOURCE_STATE_COMMON);
 
-	auto dlssUavHandle = mSrvHeap.Allocate();
+	static auto dlssUavHandle = mSrvHeap.Allocate();
 	mUavSlot_DlssOutput = dlssUavHandle.index;
 
 	D3D12_UNORDERED_ACCESS_VIEW_DESC dlssUavViewDesc = {};
@@ -1428,7 +1433,7 @@ void Renderer::InitializeDLSSRR()
 		&dlssUavViewDesc,
 		dlssUavHandle.cpuHandle);
 
-	auto srvDlssOutputHandle = mSrvHeap.Allocate();
+	static auto srvDlssOutputHandle = mSrvHeap.Allocate();
 	mSrvSlot_DlssOutput = srvDlssOutputHandle.index;
 	CreateTextureView(mDLSSOutputTexture.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, srvDlssOutputHandle.cpuHandle, 1);
 
@@ -2021,7 +2026,8 @@ void Renderer::Update(const Camera& camera)
 			}
 			else
 			{
-
+				// not implemented
+				throw std::logic_error("Not implemented");
 			}
 		}
 
