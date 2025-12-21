@@ -296,7 +296,7 @@ void RayGen()
                 float G = GeometrySmith(normal, V, L_central, roughness);
                 
                 // Specular part (kS)
-                float3 numerator = NDF * G;// * F;
+                float3 numerator = NDF * G * F;
                 float denominator = 4.0 * max(dot(normal, V), 0.0f) * NdotL + 0.0001;
                 float3 specular = numerator / denominator;                
                 

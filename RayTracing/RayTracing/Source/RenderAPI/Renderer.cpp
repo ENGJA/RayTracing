@@ -1007,17 +1007,11 @@ void Renderer::RenderHybrid(const Camera& camera)
 		// Slot 1: Diffuse, Specular, Albedo, SpecularAlbedo SRVs (t0 - t3)
 		mCommandList.Get()->SetComputeRootDescriptorTable(1, mSrvHandle_Diffuse.gpuHandle);
 
-		// Slot 2: G-Buffer Normal SRV (t4)
-		mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHandle_GBufferNormal.gpuHandle);
+		// Slot 2: Emissive
+		mCommandList.Get()->SetComputeRootDescriptorTable(2, mSrvHandle_GBufferEmissive.gpuHandle);		
 
-		// Slot 3: G-Buffer Depth SRV (t5)
-		mCommandList.Get()->SetComputeRootDescriptorTable(3, mSrvHandle_Depth.gpuHandle);
-
-		// Slot 4: G-Buffer Emissive SRV (t6)
-		mCommandList.Get()->SetComputeRootDescriptorTable(4, mSrvHandle_GBufferEmissive.gpuHandle);
-
-		// Slot 5: Output UAV (u0)
-		mCommandList.Get()->SetComputeRootDescriptorTable(5, mUavHandle_CompositeOutput.gpuHandle);
+		// Slot 3: Output UAV (u0)
+		mCommandList.Get()->SetComputeRootDescriptorTable(3, mUavHandle_CompositeOutput.gpuHandle);
 
 		// Dispatch
 		mCommandList.Get()->Dispatch((mRenderWidth + 7) / 8, (mRenderHeight + 7) / 8, 1);
