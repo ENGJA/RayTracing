@@ -797,7 +797,7 @@ void Renderer::InitializeRayTracing()
 	//D3D12RootSignature globalRootSig;
 	mRtGlobalRootSignature.InitializeRTGlobalRS(mDevice.Get());
 
-	HLSLShader libraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/Reflections.hlsl", L"lib_6_3", {}, L"");
+	HLSLShader libraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredRT.hlsl", L"lib_6_3", {}, L"");
 
 	// 3. Initialize Pipeline
 	mReflectionsPipeline.Initialize(mDevice.Get(), &mRtGlobalRootSignature, &localRootSig, libraryShader.GetShaderBlob());
@@ -977,7 +977,7 @@ void Renderer::RenderHybrid(const Camera& camera)
 		mCommandList.Get()->SetComputeRootShaderResourceView(2, mTLAS.Get()->GetGPUVirtualAddress());
 		mCommandList.Get()->SetComputeRootShaderResourceView(3, mGlobalLightBuffer.Get()->GetGPUVirtualAddress());
 
-		// Bind Reflection Output UAV (Slot u0 in Reflections.hlsl)
+		// Bind Reflection Output UAV (Slot u0 in DeferredRT.hlsl)
 		mCommandList.Get()->SetComputeRootDescriptorTable(4, mUavHandle_Diffuse.gpuHandle);
 
 		mReflectionsPipeline.Dispatch(mCommandList.Get(), mRenderWidth, mRenderHeight);
@@ -1724,8 +1724,8 @@ void Renderer::InitializeRootSignatures()
 
 void Renderer::InitializePipelineState()
 {
-	HLSLShader vertexShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/VertexShader.hlsl", L"vs_6_0");
-	HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0");
+	HLSLShader vertexShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredVS.hlsl", L"vs_6_0");
+	HLSLShader pixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredPS.hlsl", L"ps_6_0");
 	HLSLShader computeShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/LightPassCS.hlsl", L"cs_6_5");
 	HLSLShader transparentPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/TransparentPixelShader.hlsl", L"ps_6_0");
 	HLSLShader compositeShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/CompositeCS.hlsl", L"cs_6_0");
@@ -1733,7 +1733,7 @@ void Renderer::InitializePipelineState()
 	std::vector<ShaderMacro> maskedDefines = {
 		{ L"ALPHA_TEST", L"1" }
 	};
-	HLSLShader maskedPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/PixelShader.hlsl", L"ps_6_0", maskedDefines);
+	HLSLShader maskedPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredPS.hlsl", L"ps_6_0", maskedDefines);
 
 	constexpr D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 	{
