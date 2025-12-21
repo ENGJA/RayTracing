@@ -88,10 +88,5 @@ private:
 	*/
 	static D3D12_RESOURCE_DESC CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels);
 
-	/**
-	* @brief Creates a default transition barrier for a texture resource (COPY_DEST to PIXEL_SHADER_RESOURCE).
-	* @param resource Texture resource.
-	* @return Resource barrier structure.
-	*/
-	static D3D12_RESOURCE_BARRIER CreateTextureTransitionBarrier(ID3D12Resource* resource);
+
 };

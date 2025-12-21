@@ -278,6 +278,7 @@ void Renderer::CollectStaticLights()
 	int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
 	memcpy(mConstantBufferData.lights, mStaticLights.data(), staticCount * sizeof(LightData));
 	mConstantBufferData.numLights = staticCount;
+	mConstantBufferData.numPointLights = pointLightCount;
 
 
 	{
