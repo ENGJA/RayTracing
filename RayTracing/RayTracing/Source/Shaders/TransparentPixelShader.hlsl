@@ -16,8 +16,9 @@ cbuffer FrameCB : register(b0)
     float4x4 invViewProj;
     float3 viewPos;
     int numLights;
+    int numPointLights;
     int frameCount;
-    float3 _pad;
+    float2 _pad;
     LightData lights[25];
 };
 

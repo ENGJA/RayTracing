@@ -222,38 +222,45 @@ void Renderer::BuildMeshGpuData()
 void Renderer::CollectStaticLights()
 {
 	mStaticLights.clear();
+	vector<LightData> dirLights;
 	for (const auto& modelPtr : mModels)
 	{
-		if (!modelPtr) continue;
+		if (!modelPtr)
+			continue;
+
 		for (const auto& l : modelPtr->mLights)
 		{
-			mStaticLights.push_back(l);
-			if (mStaticLights.size() >= cMaxLights) break;
+			if (l.dirType.w > 0.5f)
+			{
+				// Directional light; collect separately to add at the end
+				dirLights.push_back(l);
+			}
+			else
+			{
+				// Point/spot light; add directly if we have space
+				mStaticLights.push_back(l);
+			}
 		}
-		if (mStaticLights.size() >= cMaxLights) break;
 	}
 
-	// Copy static lights once into CPU-side constant buffer data so Update doesn't have to re-create them.
-	int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
-	for (int i = 0; i < staticCount; ++i)
-	{
-		mConstantBufferData.lights[i] = mStaticLights[i];
-	}
-	// Set numLights to static count for now; Update will adjust (append camera light) each frame if needed.
+	int pointLightCount = static_cast<int>(mStaticLights.size());
+	// Append directional lights at the end
+	mStaticLights.insert(mStaticLights.end(), dirLights.begin(), dirLights.end());
 
 	if (mStaticLights.size() < cMaxLights)
 	{
 		LightData sunLight{};
-		//sunLight.dirType = DirectX::XMFLOAT4(0.5f, -1.0f, 0.5f, 1.0f); // directional light
 		sunLight.dirType = DirectX::XMFLOAT4(0.2f, -1.0f, 0.2f, 1.0f); // directional flag
 		sunLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 0.9f, 1.0f);
 		sunLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 0.9f, 1.0f);
-		mStaticLights.push_back(sunLight);
-		mConstantBufferData.lights[staticCount] = sunLight;
-		staticCount++;
+		mStaticLights.push_back(sunLight);	
 	}
 
+	// Copy static lights once into CPU-side constant buffer data so Update doesn't have to re-create them.
+	int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
+	memcpy(mConstantBufferData.lights, mStaticLights.data(), staticCount * sizeof(LightData));
 	mConstantBufferData.numLights = staticCount;
+
 
 	{
 		void* pData;
@@ -385,7 +392,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
 
 	SetAllResourcesNames();
-} 
+}
 
 void Renderer::SetDLSSMode(sl::DLSSMode mode)
 {
@@ -984,9 +991,9 @@ void Renderer::SetAllResourcesNames()
 	mOutDiffuseTex.Get()->SetName(L"Reflection Out Diffuse Texture");
 	mOutSpecularTex.Get()->SetName(L"Reflection Out Specular Texture");
 	mDLSSOutputTexture.Get()->SetName(L"DLSS Output Texture");
-//	mTLAS.Get()->SetName(L"Top-Level Acceleration Structure");
-//	mTLAS_Scratch.Get()->SetName(L"TLAS Scratch Buffer");
-//	mInstanceDescBuffer.Get()->SetName(L"TLAS Instance Descriptions");
+	//	mTLAS.Get()->SetName(L"Top-Level Acceleration Structure");
+	//	mTLAS_Scratch.Get()->SetName(L"TLAS Scratch Buffer");
+	//	mInstanceDescBuffer.Get()->SetName(L"TLAS Instance Descriptions");
 	mGlobalLightBuffer.Get()->SetName(L"Global Light Buffer");
 	mOutAlbedoSpecularTex.Get()->SetName(L"Reflection Out AlbedoSpecular Texture");
 	mOutAlbedoTex.Get()->SetName(L"Reflection Out Albedo Texture");
@@ -1050,7 +1057,7 @@ void Renderer::InitializeGBufferResources()
 		1, // sample count
 		0, // sample quality
 		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
-	);	
+	);
 
 
 
@@ -1462,7 +1469,7 @@ void Renderer::UpdateCameraJitter()
 			f /= base;
 		}
 		return result;
-	};
+		};
 
 	int jitterIndex = mFrameCount % 16 + 1; // Use 16-sample jitter pattern
 	float jitterX = halton(jitterIndex, 2) - 0.5f;
@@ -1504,9 +1511,9 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 
 	slConstants.mvecScale = sl::float2(1.0f / static_cast<float>(mRenderWidth), 1.0f / static_cast<float>(mRenderHeight));
 
-	
+
 	// Camera position and orientation
-	slConstants.cameraPos  = sl::float3(cameraPos.x, cameraPos.y, cameraPos.z);
+	slConstants.cameraPos = sl::float3(cameraPos.x, cameraPos.y, cameraPos.z);
 	slConstants.cameraUp = sl::float3(0.0f, 1.0f, 0.0f);
 	slConstants.cameraRight = sl::float3(1.0f, 0.0f, 0.0f);
 	slConstants.cameraFwd = sl::float3(cameraForward.x, cameraForward.y, cameraForward.z);
@@ -1558,11 +1565,11 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 		sl::ResourceTag(&normalResource, sl::kBufferTypeNormals, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&roughnessResource, sl::kBufferTypeRoughness, sl::eValidUntilPresent, &renderExtent),
 		sl::ResourceTag(&emissiveResource, sl::kBufferTypeEmissive, sl::eValidUntilPresent, &renderExtent),
-//		sl::ResourceTag(&diffuseResource, sl::kBufferTypeDiffuseHitNoisy, sl::eValidUntilPresent, &renderExtent),
-//		sl::ResourceTag(&specularResource, sl::kBufferTypeSpecularHitNoisy, sl::eValidUntilPresent, &renderExtent),
-		sl::ResourceTag(&outputResource, sl::kBufferTypeScalingOutputColor, sl::eValidUntilPresent, &outputExtent),
-		sl::ResourceTag(&inputColorResource, sl::kBufferTypeScalingInputColor, sl::eValidUntilPresent, &renderExtent),
-		sl::ResourceTag(&albedoSpecularResource, sl::kBufferTypeSpecularAlbedo, sl::eValidUntilPresent, &renderExtent)
+		//		sl::ResourceTag(&diffuseResource, sl::kBufferTypeDiffuseHitNoisy, sl::eValidUntilPresent, &renderExtent),
+		//		sl::ResourceTag(&specularResource, sl::kBufferTypeSpecularHitNoisy, sl::eValidUntilPresent, &renderExtent),
+				sl::ResourceTag(&outputResource, sl::kBufferTypeScalingOutputColor, sl::eValidUntilPresent, &outputExtent),
+				sl::ResourceTag(&inputColorResource, sl::kBufferTypeScalingInputColor, sl::eValidUntilPresent, &renderExtent),
+				sl::ResourceTag(&albedoSpecularResource, sl::kBufferTypeSpecularAlbedo, sl::eValidUntilPresent, &renderExtent)
 	};
 
 	if (SL_FAILED(res, slSetTagForFrame(*frameToken, mSlViewport, tags.data(), static_cast<uint32_t>(tags.size()), reinterpret_cast<sl::CommandBuffer*>(mCommandList.Get()))))
@@ -1989,7 +1996,7 @@ void Renderer::Update(const Camera& camera)
 				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 			};
 
-			mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);						
+			mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
 		}
 
 		// =========================================================================
@@ -2016,11 +2023,11 @@ void Renderer::Update(const Camera& camera)
 
 				D3D12_RESOURCE_BARRIER restoreBarriers[]
 				{
-//					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET),
-//					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
-					// Transitions for next frame (inputs back to common/UAV if needed? usually handled at start of frame)
-					CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-					CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					//					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET),
+					//					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+										// Transitions for next frame (inputs back to common/UAV if needed? usually handled at start of frame)
+										CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+										CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				};
 				mCommandList.Get()->ResourceBarrier(_countof(restoreBarriers), restoreBarriers);
 			}
