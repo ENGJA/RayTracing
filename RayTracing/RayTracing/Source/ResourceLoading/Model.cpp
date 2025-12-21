@@ -103,62 +103,60 @@ void Model::loadModel(const string& path)
 	aiMatrix4x4 identity;
 
 	mLights.clear();
-	if (scene->mNumLights > 0)
+	for (unsigned int li = 0; li < scene->mNumLights && mLights.size() < cMaxLights; ++li)
 	{
-		for (unsigned int li = 0; li < scene->mNumLights && mLights.size() < cMaxLights; ++li)
+		aiLight* aLight = scene->mLights[li];
+		LightData ld{};
+		//ld.color = DirectX::XMFLOAT4(
+		//	1.0f,
+		//	0.8f,
+		//	0.3f,
+		//	0.5f 
+		//);
+
+		ld.diffuseColor = aLight->mColorDiffuse.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
+			aLight->mColorDiffuse.r,
+			aLight->mColorDiffuse.g,
+			aLight->mColorDiffuse.b,
+			1.0f 
+		);
+
+		ld.specularColor = aLight->mColorSpecular.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
+			aLight->mColorSpecular.r,
+			aLight->mColorSpecular.g,
+			aLight->mColorSpecular.b,
+			1.0f 
+		);
+
+		if (aLight->mType == aiLightSource_DIRECTIONAL)
 		{
-			aiLight* aLight = scene->mLights[li];
-			LightData ld{};
-			//ld.color = DirectX::XMFLOAT4(
-			//	1.0f,
-			//	0.8f,
-			//	0.3f,
-			//	0.5f 
-			//);
-
-			ld.diffuseColor = aLight->mColorDiffuse.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
-				aLight->mColorDiffuse.r,
-				aLight->mColorDiffuse.g,
-				aLight->mColorDiffuse.b,
+			ld.dirType = DirectX::XMFLOAT4(
+				aLight->mDirection.x,
+				aLight->mDirection.y,
+				aLight->mDirection.z,
 				1.0f 
 			);
-
-			ld.specularColor = aLight->mColorSpecular.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
-				aLight->mColorSpecular.r,
-				aLight->mColorSpecular.g,
-				aLight->mColorSpecular.b,
-				1.0f 
-			);
-
-			if (aLight->mType == aiLightSource_DIRECTIONAL)
-			{
-				ld.dirType = DirectX::XMFLOAT4(
-					aLight->mDirection.x,
-					aLight->mDirection.y,
-					aLight->mDirection.z,
-					1.0f 
-				);
-				ld.position = DirectX::XMFLOAT4(0, 0, 0, 0);
-			}
-			else 
-			{
-				ld.position = DirectX::XMFLOAT4(
-					aLight->mPosition.x,
-					aLight->mPosition.y,
-					aLight->mPosition.z,
-					1.0f 
-				);
-				ld.dirType = DirectX::XMFLOAT4(
-					aLight->mDirection.x,
-					aLight->mDirection.y,
-					aLight->mDirection.z,
-					0.0f 
-				);
-			}
-
-			mLights.push_back(ld);
+			ld.position = DirectX::XMFLOAT4(0, 0, 0, 0);
 		}
+		else 
+		{
+			ld.position = DirectX::XMFLOAT4(
+				aLight->mPosition.x,
+				aLight->mPosition.y,
+				aLight->mPosition.z,
+				1.0f 
+			);
+			ld.dirType = DirectX::XMFLOAT4(
+				aLight->mDirection.x,
+				aLight->mDirection.y,
+				aLight->mDirection.z,
+				0.0f 
+			);
+		}
+
+		mLights.push_back(ld);
 	}
+	
 
 	processNode(scene->mRootNode, scene, identity, tangentSpaceHandednessMultiplier );
 }

@@ -33,9 +33,10 @@ cbuffer CBData : register(b0)
     float4x4 invViewProj : packoffset(c4); // Added for consistency with LightPassCS
     float3 viewPos    : packoffset(c8);
     int numLights     : packoffset(c8.w);
+    int numPointLights : packoffset(c9.x);
     
-    int frameCount : packoffset(c9.x);
-    float3 _pad : packoffset(c9.y);
+    int frameCount : packoffset(c9.y);
+    float2 _pad : packoffset(c9.z);
     Light lights[25] : packoffset(c10);
 };
 
