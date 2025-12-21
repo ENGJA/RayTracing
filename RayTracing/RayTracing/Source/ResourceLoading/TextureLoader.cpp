@@ -100,7 +100,10 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 
 	mCmdList->Get()->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 
-	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
+	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		gpuTex.resource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
 	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, executeQueue);
@@ -125,14 +128,6 @@ GPUTexture TextureLoader::CreateTextureFromDDSPath(const std::wstring& path, Dir
 	gpuTex.height = desc.Height;
 	gpuTex.mipLevels = desc.MipLevels;
 	gpuTex.format = desc.Format;
-
-	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		gpuTex.resource.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-	);
-
-	batch.Transition(gpuTex.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	return gpuTex;
 }
 
@@ -174,8 +169,11 @@ GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
 
 	mCmdList->Get()->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 
-	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		gpuTex.resource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
 	return gpuTex;
@@ -183,31 +181,14 @@ GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
 
 D3D12_RESOURCE_DESC TextureLoader::CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels)
 {
-	return
-	{
-		.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-		.Width = width,
-		.Height = height,
-		.DepthOrArraySize = 1,
-		.MipLevels = mipLevels,
-		.Format = DXGI_FORMAT_R8G8B8A8_UNORM,
-		.SampleDesc = { 1, 0 },
-		.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
-		.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-	};
-}
-
-D3D12_RESOURCE_BARRIER TextureLoader::CreateTextureTransitionBarrier(ID3D12Resource* pResource)
-{
-	return
-	{
-		.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-		.Transition = 
-			{
-			.pResource = pResource,
-			.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-			.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST,
-			.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-			}
-	};
+	return CD3DX12_RESOURCE_DESC::Tex2D(
+		DXGI_FORMAT_R8G8B8A8_UNORM,
+		width,
+		height,
+		1, // array size
+		mipLevels,
+		1, // sample count
+		0, // sample quality
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	);
 }
