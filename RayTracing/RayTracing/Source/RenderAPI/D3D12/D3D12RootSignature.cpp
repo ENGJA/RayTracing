@@ -99,31 +99,23 @@ void D3D12RootSignature::InitializeComputeRS(ID3D12Device* pDevice)
 
 void D3D12RootSignature::InitializeCompositeRS(ID3D12Device* pDevice)
 {
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[5]{};
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[3]{};
 	// Range 0: Diffuse, specular, albedo, albedoSpecular SRVs (t0-t3) - 4 Descriptors
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
-	// Range 1: Normals SRV (t4) - 1 Descriptor
+	// Range 1: Emissive SRV (t4) - 1 Descriptor
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
-	// Range 2: Depth SRV (t5) - 1 Descriptor
-	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);
-	// Range 3: Emissive SRV (t6) - 1 Descriptor
-	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);
-	// Range 4: Output UAV (u0) - 1 Descriptor
-	ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+	// Range 2: Output UAV (u0) - 1 Descriptor
+	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
 
-	CD3DX12_ROOT_PARAMETER1 params[6]{};
+	CD3DX12_ROOT_PARAMETER1 params[4]{};
 	// Param 0: Constant Buffer (b0)
 	params[0].InitAsConstantBufferView(0);
 	// Param 1: Direct Lighting SRV (t0)
 	params[1].InitAsDescriptorTable(1, &ranges[0]);
-	// Param 2: G-Buffer Normal SRV (t4)
+	// Param 2: Emissive SRV (t4)
 	params[2].InitAsDescriptorTable(1, &ranges[1]);
-	// Param 3: G-Buffer Depth SRV (t5)
+	// Param 3: Output UAV (u0)
 	params[3].InitAsDescriptorTable(1, &ranges[2]);
-	// Param 4: G-Buffer Emissive SRV (t6)
-	params[4].InitAsDescriptorTable(1, &ranges[3]);
-	// Param 5: Output UAV (u0)
-	params[5].InitAsDescriptorTable(1, &ranges[4]);
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC sigDesc{};
 	sigDesc.Init_1_1(_countof(params), params);
