@@ -143,7 +143,7 @@ private:
 	D3D12PipelineState mComputeState;; ///< Pipeline state for compute shader passes.
 	//D3D12RootSignature mComputeRootSignature; ///< Root signature for compute shader passes.
 
-	D3D12Resource mComputeOutputTexture; ///< Output texture for compute shader passes.
+	D3D12Resource mCompositeOutputTexture; ///< Output texture for compute shader passes.
 
 	//D3D12Resource mDirectLightingTexture; ///< Intermediate texture for direct lighting results.
 
@@ -154,25 +154,29 @@ private:
 	
 
 	// --- Descriptor Indices (Saved during initialization) ---
-	int mSrvSlot_GBufferAlbedo = -1;
-	int mSrvSlot_GBufferNormal = -1;
-	int mSrvSlot_GBufferMaterial = -1;
-	int mSrvSlot_GBufferEmissive = -1;
-	int mSrvSlot_Depth = -1;
+	DescriptorHandle mRtvHandle_GBufferAlbedo;
+	DescriptorHandle mRtvHandle_GBufferNormal;
+	DescriptorHandle mRtvHandle_GBufferMaterial;
+	DescriptorHandle mRtvHandle_GBufferEmissive;
+	DescriptorHandle mRtvHandle_GBufferVelocity;
 
-	int mUavSlot_Output = -1;       // For the Compute Shader Output
+	DescriptorHandle mSrvHandle_GBufferAlbedo;
+	DescriptorHandle mSrvHandle_GBufferNormal;
+	DescriptorHandle mSrvHandle_GBufferMaterial;
+	DescriptorHandle mSrvHandle_GBufferEmissive;
+	DescriptorHandle mSrvHandle_GBufferVelocity;
+	DescriptorHandle mSrvHandle_Depth;
 
-	//int mUavSlot_DirectLighting = -1;
-	//int mSrvSlot_DirectLighting = -1;
+	DescriptorHandle mUavHandle_CompositeOutput;
+	DescriptorHandle mRtvHandle_CompositeOutput;
+	DescriptorHandle mSrvHandle_CompositeOutput;
 
-	int mSrvSlot_LightBuffer = -1;  // For the StructuredBuffer<Light>
-	int mRtvIndex_ComputeOutput = -1; // For the Compute Shader Output RTV
-	int mSrvIndex_ComputeOutput = -1; // For the Compute Shader Output SRV
-
+	DescriptorHandle mSrvHandle_LightBuffer;  // For the StructuredBuffer<Light>
+	//int mSrvSlot_LightBuffer = -1;  // For the StructuredBuffer<Light>
 
 
 	void InitializeGBufferResources();
-	void InitializeComputePipeline();
+	void InitializeCompositeResources();
 	void CreateLightBuffer();
 
 	// ===========================================
@@ -181,28 +185,26 @@ private:
 	// Ray tracing pipeline for reflections
 
 	RayTracingPipeline mReflectionsPipeline;
-	//D3D12Resource mReflectionTexture;
-	int mUavSlot_Diffuse = -1;
-	int mUavSlot_Specular = -1;
-	int mSrvSlot_Diffuse = -1;
-	int mSrvSlot_Specular = -1;
-//	int mUavSlot_Reflection = -1;
-//	int mSrvSlot_Reflection = -1;
+
+	DescriptorHandle mUavHandle_Diffuse;
+	DescriptorHandle mUavHandle_Specular;
+	DescriptorHandle mSrvHandle_Diffuse;
+	DescriptorHandle mSrvHandle_Specular;
 
 	D3D12RootSignature mCompositeRootSignature;
 	D3D12PipelineState mPipelineStateComposite;	
 
 	void InitializeReflectionResources();
-	void InitializeCompositePipeline();
-	void DispatchCompositePass();
 
 	// ===========================================
 
 	// ===========================================
 	// DLSS Integration
 	D3D12Resource mDLSSOutputTexture;
-	int mUavSlot_DlssOutput = -1;
-	int mSrvSlot_DlssOutput = -1;
+	DescriptorHandle mUavHandle_DlssOutput;
+	DescriptorHandle mSrvHandle_DlssOutput;
+	//int mUavSlot_DlssOutput = -1;
+	//int mSrvSlot_DlssOutput = -1;
 
 	DirectX::XMMATRIX mPrevViewMatrix;
 	DirectX::XMMATRIX mPrevProjMatrix;
@@ -214,8 +216,6 @@ private:
 	sl::Constants mDLSS_Constants{};
 
 	D3D12Resource mGBufferVelocity;    ///< G-buffer render target for motion vectors (RG16F).
-	int mUavSlot_Velocity = -1;
-	int mSrvSlot_Velocity = -1;
 
 	sl::ViewportHandle mSlViewport = { 0 };
 	uint32_t mRenderWidth = 0;
@@ -227,18 +227,21 @@ private:
 	bool mStreamlineInitialized = false;
 
 	D3D12Resource mOutAlbedoSpecularTex; ///< Intermediate texture for Albedo + Specular input to DLSS.
-	int mUavSlot_AlbedoSpecular = -1;
-	int mSrvSlot_AlbedoSpecular = -1;
+	DescriptorHandle mUavHandle_AlbedoSpecular;
+	DescriptorHandle mSrvHandle_AlbedoSpecular;
 
 	D3D12Resource mOutAlbedoTex; ///< Intermediate texture for Albedo input to DLSS.
-	int mUavSlot_Albedo = -1;
-	int mSrvSlot_Albedo = -1;
+	DescriptorHandle mUavHandle_Albedo;
+	DescriptorHandle mSrvHandle_Albedo;
 
 	
 	void InitializeDLSSRR();
 	void UpdateCameraJitter();
 	void EvaluateDLSSRR(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMMATRIX& invView, const DirectX::XMMATRIX& invProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward, float nearZ, float farZ, float fovY, float aspectRatio);
 	void CleanupStreamline();
+
+	void AllocateHandles();
+	void InitializeDepthBuffer();
 
 public:
 	void SetDLSSMode(sl::DLSSMode mode);
@@ -249,7 +252,8 @@ public:
 	D3D12RootSignature mTonemapRootSignature;
 	D3D12PipelineState mPipelineStateTonemap;
 	D3D12Resource mTonemapOutputTexture;
-	int mUavSlot_TonemapOutput = -1;
+	DescriptorHandle mUavHandle_TonemapOutput;
+	//int mUavSlot_TonemapOutput = -1;
 	void InitializeTonemapPipeline();
 	void InitializeTonemapResources();
 
@@ -352,6 +356,8 @@ public:
 	void InitializeRayTracing();
 
 	void SetAllResourcesNames();
+
+	void RenderHybrid(const Camera& camera);
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
@@ -380,13 +386,6 @@ public:
 	 * @param cameraForward Camera forward direction.
 	 */
 	void Update(const Camera& camera);
-
-	/**
-	 * @brief Loads a scene from a file path.
-	 * @param path Path to the scene file (e.g., .gltf, .obj).
-	 * @return true if scene loaded successfully, false otherwise.
-	 */
-	bool LoadScene(const std::string& path);
 	
 	/**
 	 * @brief Loads a scene from an already-loaded Model (for async loading).

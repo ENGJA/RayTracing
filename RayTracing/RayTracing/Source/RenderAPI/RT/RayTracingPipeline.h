@@ -3,7 +3,7 @@
 #include "RenderAPI/HLSL/HLSLShader.h"
 #include "RenderAPI/D3D12/D3D12Resource.h"
 
-class MeshGpuData;
+struct MeshGpuData;
 
 class RayTracingPipeline
 {
@@ -28,7 +28,7 @@ public:
      * @brief Builds the SBT linking each mesh to its material textures.
      * This allows the shader to know "Mesh X uses Texture Y".
      */
-    void BuildSBT(ID3D12Device5* pDevice, const std::vector<MeshGpuData>& meshes);
+    void BuildSBT(ID3D12Device5* pDevice, const std::initializer_list<std::span<const MeshGpuData>>& meshes);
 
     void Dispatch(ID3D12GraphicsCommandList4* pCmd, UINT width, UINT height);
 };
