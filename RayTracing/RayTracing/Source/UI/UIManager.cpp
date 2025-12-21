@@ -273,27 +273,31 @@ void UIManager::RenderSettingsWindow()
 
 	ImGui::Text("DLSS Settings");
 	
-	// DLSS Modes corresponding to sl::DLSSMode enum:
-	// eOff = 0, eMaxPerformance = 1, eBalanced = 2, eMaxQuality = 3, 
-	// eUltraPerformance = 4, eUltraQuality = 5, eDLAA = 6
-	const char* dlssModes[] = { 
-		//"Off",                // 0
+	// DLSS Modes mapping to sl::DLSSMode enum values (excluding Ultra Quality)
+	// Ordered from lowest to highest quality
+	const char* dlssModes[] = {
+		"Ultra Performance",  // sl::DLSSMode::eUltraPerformance = 4
 		"Max Performance",    // 1
 		"Balanced",           // 2
 		"Max Quality",        // 3
-		"Ultra Performance",  // 4
-		"Ultra Quality",      // 5
 		"DLAA"                // 6
 	};
-	
-	// Current mode directly maps to array index
-	int uiModeIndex = mCurrentDLSSMode;
-	if (uiModeIndex < 0 || uiModeIndex >= IM_ARRAYSIZE(dlssModes))
-		uiModeIndex = 0; // Default to Off if out of range
+	const int dlssModeValues[] = { 4, 1, 2, 3, 6 };
+
+	// Find UI index corresponding to current mode value
+	int uiModeIndex = 0;
+	for (int i = 0; i < IM_ARRAYSIZE(dlssModeValues); ++i)
+	{
+		if (mCurrentDLSSMode == dlssModeValues[i])
+		{
+			uiModeIndex = i;
+			break;
+		}
+	}
 
 	if (ImGui::Combo("DLSS Mode", &uiModeIndex, dlssModes, IM_ARRAYSIZE(dlssModes)))
 	{
-		mCurrentDLSSMode = uiModeIndex + 1; // Direct mapping
+		mCurrentDLSSMode = dlssModeValues[uiModeIndex];
 		if (mSetDLSSModeCallback)
 			mSetDLSSModeCallback(mCurrentDLSSMode);
 	}
@@ -431,11 +435,11 @@ void UIManager::RenderPerformanceOverlay()
 	ImGui::SetNextWindowBgAlpha(0.35f);
 
 	ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration | 
-	                                ImGuiWindowFlags_AlwaysAutoResize | 
-	                                ImGuiWindowFlags_NoSavedSettings | 
-	                                ImGuiWindowFlags_NoFocusOnAppearing | 
-	                                ImGuiWindowFlags_NoNav | 
-	                                ImGuiWindowFlags_NoMove;
+							ImGuiWindowFlags_AlwaysAutoResize | 
+							ImGuiWindowFlags_NoSavedSettings | 
+							ImGuiWindowFlags_NoFocusOnAppearing | 
+							ImGuiWindowFlags_NoNav | 
+							ImGuiWindowFlags_NoMove;
 
 	if (ImGui::Begin("Performance", nullptr, windowFlags))
 	{
