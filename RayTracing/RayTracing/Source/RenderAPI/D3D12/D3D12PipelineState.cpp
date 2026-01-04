@@ -50,6 +50,51 @@ void D3D12PipelineState::InitializeTransparent(ID3D12Device* pDevice, ID3D12Root
 	ASSERT_HR(hr, "Failed to create pipeline state object.");
 }
 
+void D3D12PipelineState::InitializeForwardOpaque(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided)
+{
+	InitializeCommon(pDevice, rootSig, std::move(vertexShader), std::move(pixelShader));
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc, doubleSided);
+
+	gpsDesc.NumRenderTargets = 1;
+	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	gpsDesc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+	gpsDesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+	gpsDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+
+	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	gpsDesc.BlendState.RenderTarget[0].BlendEnable = FALSE;
+	gpsDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+	HRESULT hr = pDevice->CreateGraphicsPipelineState(&gpsDesc, IID_PPV_ARGS(mPipelineState.ReleaseAndGetAddressOf()));
+	ASSERT_HR(hr, "Failed to create forward opaque pipeline state.");
+}
+
+void D3D12PipelineState::InitializeForwardTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided)
+{
+	InitializeCommon(pDevice, rootSig, std::move(vertexShader), std::move(pixelShader));
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpsDesc = MakeBaseDesc(inputLayoutDesc, doubleSided);
+
+	gpsDesc.NumRenderTargets = 1;
+	gpsDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	gpsDesc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+	gpsDesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+	gpsDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+
+	gpsDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // Read-only depth for transparency
+
+	// Standard Alpha Blend
+	gpsDesc.BlendState.RenderTarget[0].BlendEnable = TRUE;
+	gpsDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	gpsDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	gpsDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	gpsDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	gpsDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+	gpsDesc.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	HRESULT hr = pDevice->CreateGraphicsPipelineState(&gpsDesc, IID_PPV_ARGS(mPipelineState.ReleaseAndGetAddressOf()));
+	ASSERT_HR(hr, "Failed to create forward transparent pipeline state.");
+}
+
 void D3D12PipelineState::InitializeCompute(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader computeShader)
 {
 	mRootSignature = rootSig;

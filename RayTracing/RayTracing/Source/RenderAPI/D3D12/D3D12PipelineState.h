@@ -50,6 +50,11 @@ public:
 	 */
 	void InitializeTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided= false);
 
+	void InitializeForwardOpaque(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false);
+
+	void InitializeForwardTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false);
+
+
 	void InitializeCompute(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader computeShader);
 	/**
 	 * @brief Returns the native root signature pointer.

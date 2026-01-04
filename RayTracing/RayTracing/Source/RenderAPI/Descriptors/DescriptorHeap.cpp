@@ -17,7 +17,8 @@ void DescriptorHeap::Initialize(ID3D12Device* pDevice, D3D12_DESCRIPTOR_HEAP_TYP
 DescriptorHandle DescriptorHeap::Allocate(UINT count)
 {
 	DescriptorHandle alloc{};
-	if (mAllocated + count > mCapacity) return alloc;
+	if (mAllocated + count > mCapacity) 
+		return alloc;
 
 	alloc.index = mAllocated;
 	alloc.cpuHandle = GetCpuHandle(mAllocated);
