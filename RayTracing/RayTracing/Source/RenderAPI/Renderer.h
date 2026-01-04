@@ -69,6 +69,12 @@ struct DefaultTextures
 	GPUTexture normal;
 };
 
+enum class RenderMode
+{
+	Hybrid,
+	ForwardPhong
+};
+
 /**
  * @brief High level renderer that wires up D3D12 device, swap chain, pipeline, and per-frame resources.
  */
@@ -79,6 +85,25 @@ private:
 	Microsoft::WRL::ComPtr<IDXGIAdapter3> mAdapter; ///< DXGI adapter for VRAM queries.
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
+
+
+	RenderMode mCurrentRenderMode = RenderMode::ForwardPhong;
+
+	// Phong 
+	D3D12Resource mPhongOutputTexture;
+	DescriptorHandle mRtvHandle_PhongOutput;
+	DescriptorHandle mSrvHandle_PhongOutput;
+
+	D3D12PipelineState mPipelineStatePhongOpaqueSingle;
+	D3D12PipelineState mPipelineStatePhongOpaqueDouble;
+	D3D12PipelineState mPipelineStatePhongTransparentSingle;
+	D3D12PipelineState mPipelineStatePhongTransparentDouble;
+	D3D12PipelineState mPipelineStatePhongMaskedSingle;
+	D3D12PipelineState mPipelineStatePhongMaskedDouble;
+	void RenderPhong(const Camera& camera);
+
+
+
 
 	D3D12RootSignature mMeshRootSignature; ///< Root signature for mesh rendering.
 	D3D12RootSignature mComputeRootSignature; ///< Root signature for compute shader passes.
@@ -98,7 +123,9 @@ private:
 	UINT mWidth = 0; ///< Back buffer width.
 	UINT mHeight = 0; ///< Back buffer height.
 
-	DepthBuffer mDepthBuffer; ///< Depth-stencil buffer and view.
+	DepthBuffer mDepthBuffer; ///< Depth-stencil buffer and view. (DLSS resolution)
+	DepthBuffer mNativeDepthBuffer; ///< Depth-stencil buffer and view. (Native resolution for Phong)
+
 
 	D3D12_VIEWPORT mViewport{}; ///< Viewport for rendering.
 	D3D12_RECT mScissorRect{}; ///< Scissor rectangle.
@@ -138,7 +165,7 @@ private:
 	D3D12Resource mGBufferMaterial;  ///< G-buffer render target for material properties (RGBA8).
 	D3D12Resource mGBufferEmission;  ///< G-buffer render target for emission (RGBA16F).
 
-	DescriptorHeap mGBufferRtvHeap; ///< RTV heap for G-buffer render targets.
+	DescriptorHeap mRtvHeap; ///< RTV heap for G-buffer render targets.
 
 	D3D12PipelineState mComputeState;; ///< Pipeline state for compute shader passes.
 	//D3D12RootSignature mComputeRootSignature; ///< Root signature for compute shader passes.
@@ -151,7 +178,7 @@ private:
 
 	D3D12Resource mOutDiffuseTex;
 	D3D12Resource mOutSpecularTex;
-	
+
 
 	// --- Descriptor Indices (Saved during initialization) ---
 	DescriptorHandle mRtvHandle_GBufferAlbedo;
@@ -192,7 +219,7 @@ private:
 	DescriptorHandle mSrvHandle_Specular;
 
 	D3D12RootSignature mCompositeRootSignature;
-	D3D12PipelineState mPipelineStateComposite;	
+	D3D12PipelineState mPipelineStateComposite;
 
 	void InitializeReflectionResources();
 
@@ -203,13 +230,14 @@ private:
 	D3D12Resource mDLSSOutputTexture;
 	DescriptorHandle mUavHandle_DlssOutput;
 	DescriptorHandle mSrvHandle_DlssOutput;
+	DescriptorHandle mRtvHandle_DlssOutput;
 	//int mUavSlot_DlssOutput = -1;
 	//int mSrvSlot_DlssOutput = -1;
 
 	DirectX::XMMATRIX mPrevViewMatrix;
 	DirectX::XMMATRIX mPrevProjMatrix;
 	sl::DLSSMode mDLSSMode = sl::DLSSMode::eMaxQuality;
-	
+
 	sl::Feature* mDLSS_FeatureHandle = nullptr;
 	sl::DLSSOptions mDLSS_Options{};
 	sl::DLSSDOptions mDLSSD_Options{};
@@ -234,7 +262,7 @@ private:
 	DescriptorHandle mUavHandle_Albedo;
 	DescriptorHandle mSrvHandle_Albedo;
 
-	
+
 	void InitializeDLSSRR();
 	void UpdateCameraJitter();
 	void EvaluateDLSSRR(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, const DirectX::XMMATRIX& invView, const DirectX::XMMATRIX& invProj, const DirectX::XMFLOAT3& cameraPos, const DirectX::XMFLOAT3& cameraForward, float nearZ, float farZ, float fovY, float aspectRatio);
@@ -288,13 +316,13 @@ public:
 	/**
 	* @brief Builds GPU resources for all loaded meshes in all models.
 	*/
-    void BuildMeshGpuData();
+	void BuildMeshGpuData();
 
 
 	/**
 	* @brief Collects static lights from all models into a single array for efficient access.
 	*/
-    void CollectStaticLights();
+	void CollectStaticLights();
 
 	/**
 	* @brief Creates a shader resource view for a texture resource.
@@ -303,18 +331,18 @@ public:
 	* @param handle CPU descriptor handle where to create the SRV.
 	* @param mipLevels Number of mip levels in the texture.
 	*/
-    void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
+	void CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels);
 
 	/**
 	* @brief Dispatches asynchronous texture decoding tasks for all textures used in loaded models.
 	*/
-    void DispatchTextureDecoding();
+	void DispatchTextureDecoding();
 
 	/**
 	* @brief Uploads GPU resources for all meshes in all models.
 	* @param executeBatch Function to execute the command queue when needed.
 	*/
-    void UploadMeshes(const std::function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch);
+	void UploadMeshes(const std::function<void()>& executeBatch, DirectX::ResourceUploadBatch& ddsBatch);
 
 	/**
 	* @brief Uploads GPU resources for a single mesh.
@@ -366,19 +394,19 @@ public:
 	 * @param height Client height.
 	 */
 	void Initialize(HWND hwnd, UINT width, UINT height);
-	
+
 	/**
 	 * @brief Destructor ensures proper cleanup of GPU resources.
 	 */
 	~Renderer();
-	
+
 	/**
 	 * @brief Handles window resize by recreating swap chain buffers and depth buffer.
 	 * @param width New client width.
 	 * @param height New client height.
 	 */
 	void OnResize(UINT width, UINT height);
-	
+
 	/**
 	 * @brief Records and submits commands for one frame and presents.
 	 * @param viewProj View-projection matrix provided from external source (CameraManager).
@@ -386,14 +414,14 @@ public:
 	 * @param cameraForward Camera forward direction.
 	 */
 	void Update(const Camera& camera);
-	
+
 	/**
 	 * @brief Loads a scene from an already-loaded Model (for async loading).
 	 * @param model Unique pointer to a Model loaded on background thread.
 	 * @return true if scene uploaded successfully, false otherwise.
 	 */
 	bool LoadSceneFromModel(std::unique_ptr<Model> model);
-	
+
 	/**
 	 * @brief Loads multiple scenes from already-loaded Models.
 	 * Handles memory limits by loading as many models as fit.
@@ -401,7 +429,7 @@ public:
 	 * @return true if at least one scene uploaded successfully, false otherwise.
 	 */
 	bool LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models);
-	
+
 	/**
 	 * @brief Adds multiple extension scenes to the currently loaded scene.
 	 * Does not unload existing models, only adds new ones.
@@ -409,18 +437,18 @@ public:
 	 * @return true if at least one scene uploaded successfully, false otherwise.
 	 */
 	bool AddExtensionScenes(std::vector<std::unique_ptr<Model>> models);
-	
+
 	/**
 	 * @brief Unloads the currently loaded scene and frees GPU resources.
 	 */
 	void UnloadScene();
-	
+
 	/**
 	 * @brief Checks if a scene is currently loaded.
 	 * @return true if scene is loaded, false otherwise.
 	 */
 	bool HasScene() const { return !mModels.empty(); }
-	
+
 	/**
 	 * @brief Gets the number of loaded models.
 	 * @return Number of models currently loaded.
@@ -455,5 +483,9 @@ public:
 
 
 	void InitializeStreamline();
+
+
+	void SetRenderMode(RenderMode mode) { mCurrentRenderMode = mode; }
+	RenderMode GetRenderMode() const { return mCurrentRenderMode; }
 };
 

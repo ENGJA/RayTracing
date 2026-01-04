@@ -342,7 +342,7 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	// Shader-visible SRV heap for textures (increase capacity for many material descriptors)
 	mSrvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, Config::cNumberOfSrvDescriptors, true);
-	mGBufferRtvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 6, false);
+	mRtvHeap.Initialize(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 7, false);
 	AllocateHandles();
 
 	// Shared upload heap (512 MB)
@@ -401,6 +401,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	// For debugging: recompile shaders on 'G' key press
 	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
+	InputManager::Instance.RegisterKeyPressedCallback('H', std::bind(&Renderer::SetRenderMode, this, RenderMode::Hybrid));
+	InputManager::Instance.RegisterKeyPressedCallback('P', std::bind(&Renderer::SetRenderMode, this, RenderMode::ForwardPhong));
 
 	SetAllResourcesNames();
 }
@@ -903,11 +905,11 @@ void Renderer::RenderHybrid(const Camera& camera)
 
 		// B. Clear Targets
 		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[] = {
-			mGBufferRtvHeap.GetCpuHandle(0),
-			mGBufferRtvHeap.GetCpuHandle(1),
-			mGBufferRtvHeap.GetCpuHandle(2),
-			mGBufferRtvHeap.GetCpuHandle(3),
-			mGBufferRtvHeap.GetCpuHandle(4),
+			mRtvHeap.GetCpuHandle(0),
+			mRtvHeap.GetCpuHandle(1),
+			mRtvHeap.GetCpuHandle(2),
+			mRtvHeap.GetCpuHandle(3),
+			mRtvHeap.GetCpuHandle(4),
 		};
 
 		float clearColorBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -1102,6 +1104,86 @@ void Renderer::RenderHybrid(const Camera& camera)
 }
 
 
+void Renderer::RenderPhong(const Camera& camera)
+{
+	auto viewProj = camera.GetViewProjection();
+	auto cameraPos = camera.GetPosition();
+
+	size_t cbOffset;
+	{
+		mConstantBufferData.vpMatrix = viewProj;
+		mConstantBufferData.viewPos = cameraPos;
+		mConstantBufferData.frameCount = mFrameCount;
+
+		UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
+		size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes
+		cbOffset = alignedSize * currentBackBufferIndex;
+
+		void* pData;
+		mConstantBuffer.Get()->Map(0, nullptr, &pData);
+		uint8_t* pByteData = reinterpret_cast<uint8_t*>(pData);
+		memcpy(pByteData + cbOffset, &mConstantBufferData, sizeof(ConstantBufferData));
+		mConstantBuffer.Get()->Unmap(0, nullptr);
+		SortTransparentMeshes(cameraPos);
+	}
+
+	mCommandQueue.WaitForFenceInFrame(mSwapChain.GetCurrentBackBufferIndex());
+	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+
+	ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
+	mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
+
+	D3D12_RESOURCE_BARRIER barriers[] = {
+		CD3DX12_RESOURCE_BARRIER::Transition(mPhongOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET),
+		CD3DX12_RESOURCE_BARRIER::Transition(mNativeDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE)
+	};
+	mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+
+	auto rtvHandle = mRtvHandle_PhongOutput.cpuHandle;
+	auto dsvHandle = mNativeDepthBuffer.GetDSVHandle();
+	// Clear
+	float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f }; // Black background
+	mCommandList.Get()->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	mCommandList.Get()->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+	mCommandList.Get()->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+
+	// Viewport
+	mCommandList.Get()->RSSetViewports(1, &mViewport);
+	mCommandList.Get()->RSSetScissorRects(1, &mScissorRect);
+
+	// 3. Draw Geometry
+	mCommandList.Get()->SetGraphicsRootSignature(mMeshRootSignature.Get());
+	mCommandList.Get()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList.Get()->SetGraphicsRootConstantBufferView(0, mConstantBuffer.Get()->GetGPUVirtualAddress() + cbOffset);
+
+	// Opaque
+	mCommandList.Get()->SetPipelineState(mPipelineStatePhongOpaqueSingle.Get());
+	for (const auto& mesh : mOpaqueSingleSidedMeshes) DrawMesh(mesh);
+
+	mCommandList.Get()->SetPipelineState(mPipelineStatePhongOpaqueDouble.Get());
+	for (const auto& mesh : mOpaqueDoubleSidedMeshes) DrawMesh(mesh);
+
+	// Masked
+	mCommandList.Get()->SetPipelineState(mPipelineStatePhongMaskedSingle.Get());
+	for (const auto& mesh : mMaskedSingleSidedMeshes) DrawMesh(mesh);
+
+	mCommandList.Get()->SetPipelineState(mPipelineStatePhongMaskedDouble.Get());
+	for (const auto& mesh : mMaskedDoubleSidedMeshes) DrawMesh(mesh);
+
+	// Transparent
+	mCommandList.Get()->SetPipelineState(mPipelineStatePhongTransparentSingle.Get());
+	for (const auto& mesh : mTransparentSingleSidedMeshes) DrawMesh(mesh);
+
+	mCommandList.Get()->SetPipelineState(mPipelineStatePhongTransparentDouble.Get());
+	for (const auto& mesh : mTransparentDoubleSidedMeshes) DrawMesh(mesh);
+
+	D3D12_RESOURCE_BARRIER endBarriers[] = {
+		CD3DX12_RESOURCE_BARRIER::Transition(mPhongOutputTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+	};
+	mCommandList.Get()->ResourceBarrier(_countof(endBarriers), endBarriers);
+}
+
 void Renderer::InitializeGBufferResources()
 {
 	// 1. Initialize Heaps
@@ -1237,47 +1319,93 @@ void Renderer::InitializeCompositeResources()
 	// 1. Create Final Output Texture (UAV)
 	// This is where the Composite Shader writes the merged result.
 	// ====================================================================================
-	auto uavDesc = CD3DX12_RESOURCE_DESC::Tex2D(
-		DXGI_FORMAT_R16G16B16A16_FLOAT,
-		mRenderWidth,
-		mRenderHeight,
-		1, // array size
-		1, // mip levels
-		1, // sample count
-		0, // sample quality
-		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
-	);
+	{
+		auto uavDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+			DXGI_FORMAT_R16G16B16A16_FLOAT,
+			mRenderWidth,
+			mRenderHeight,
+			1, // array size
+			1, // mip levels
+			1, // sample count
+			0, // sample quality
+			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+		);
 
-	mCompositeOutputTexture.Initialize(
-		mDevice.Get(),
-		uavDesc,
-		D3D12_HEAP_TYPE_DEFAULT,
-		D3D12_RESOURCE_STATE_COMMON);
+		mCompositeOutputTexture.Initialize(
+			mDevice.Get(),
+			uavDesc,
+			D3D12_HEAP_TYPE_DEFAULT,
+			D3D12_RESOURCE_STATE_COMMON);
 
-	D3D12_UNORDERED_ACCESS_VIEW_DESC uavViewDesc = {};
-	uavViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	//uavViewDesc.Format = DXGI_FORMAT_UNKNOWN;
-	uavViewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-	mDevice.Get()->CreateUnorderedAccessView(
-		mCompositeOutputTexture.Get(),
-		nullptr,
-		&uavViewDesc,
-		mUavHandle_CompositeOutput.cpuHandle);
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavViewDesc = {};
+		uavViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		//uavViewDesc.Format = DXGI_FORMAT_UNKNOWN;
+		uavViewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		mDevice.Get()->CreateUnorderedAccessView(
+			mCompositeOutputTexture.Get(),
+			nullptr,
+			&uavViewDesc,
+			mUavHandle_CompositeOutput.cpuHandle);
 
-	mDevice.Get()->CreateRenderTargetView(
-		mCompositeOutputTexture.Get(),
-		nullptr,
-		mRtvHandle_CompositeOutput.cpuHandle);
-
+		mDevice.Get()->CreateRenderTargetView(
+			mCompositeOutputTexture.Get(),
+			nullptr,
+			mRtvHandle_CompositeOutput.cpuHandle);
+	}
 	// ====================================================================================
 	// 2. Create SRV for reading in DLSS / Tonemap Pass
 	// ====================================================================================
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MipLevels = 1;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	mDevice.Get()->CreateShaderResourceView(mCompositeOutputTexture.Get(), &srvDesc, mSrvHandle_CompositeOutput.cpuHandle);
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		mDevice.Get()->CreateShaderResourceView(mCompositeOutputTexture.Get(), &srvDesc, mSrvHandle_CompositeOutput.cpuHandle);
+	}
+
+	// ====================================================================================
+	// 3. Phong Output Texture
+	// ====================================================================================
+	{
+		auto phongDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+			DXGI_FORMAT_R16G16B16A16_FLOAT,
+			mWidth,
+			mHeight,
+			1, // array size
+			1, // mip levels
+			1, // sample count
+			0, // sample quality
+			D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+		);
+		D3D12_CLEAR_VALUE clearVal = {};
+		clearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		clearVal.Color[0] = 0.0f;
+		clearVal.Color[1] = 0.0f;
+		clearVal.Color[2] = 0.0f;
+		clearVal.Color[3] = 1.0f;
+
+		// Create Resource
+		mPhongOutputTexture.Initialize(
+			mDevice.Get(),
+			phongDesc,
+			D3D12_HEAP_TYPE_DEFAULT,
+			D3D12_RESOURCE_STATE_COMMON,
+			&clearVal);
+
+		// Create RTV
+		mDevice.Get()->CreateRenderTargetView(mPhongOutputTexture.Get(), nullptr, mRtvHandle_PhongOutput.cpuHandle);
+
+		// Create SRV
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		mDevice.Get()->CreateShaderResourceView(mPhongOutputTexture.Get(), &srvDesc, mSrvHandle_PhongOutput.cpuHandle);
+
+		mPhongOutputTexture.Get()->SetName(L"Phong Output Texture");
+	}
 }
 
 void Renderer::CreateLightBuffer()
@@ -1616,11 +1744,11 @@ void Renderer::AllocateHandles()
 	mSrvHandle_DlssOutput = mSrvHeap.Allocate();
 
 	// GBuffer RTVs and SRVs
-	mRtvHandle_GBufferAlbedo = mGBufferRtvHeap.Allocate();
-	mRtvHandle_GBufferNormal = mGBufferRtvHeap.Allocate();
-	mRtvHandle_GBufferMaterial = mGBufferRtvHeap.Allocate();
-	mRtvHandle_GBufferEmissive = mGBufferRtvHeap.Allocate();
-	mRtvHandle_GBufferVelocity = mGBufferRtvHeap.Allocate();
+	mRtvHandle_GBufferAlbedo = mRtvHeap.Allocate();
+	mRtvHandle_GBufferNormal = mRtvHeap.Allocate();
+	mRtvHandle_GBufferMaterial = mRtvHeap.Allocate();
+	mRtvHandle_GBufferEmissive = mRtvHeap.Allocate();
+	mRtvHandle_GBufferVelocity = mRtvHeap.Allocate();
 
 	mSrvHandle_GBufferAlbedo = mSrvHeap.Allocate();
 	mSrvHandle_GBufferNormal = mSrvHeap.Allocate();
@@ -1632,7 +1760,7 @@ void Renderer::AllocateHandles()
 	// Composite UAV, RTV, SRV
 	mUavHandle_CompositeOutput = mSrvHeap.Allocate();
 	mSrvHandle_CompositeOutput = mSrvHeap.Allocate();
-	mRtvHandle_CompositeOutput = mGBufferRtvHeap.Allocate();
+	mRtvHandle_CompositeOutput = mRtvHeap.Allocate();
 
 	// Light Buffer SRV
 	mSrvHandle_LightBuffer = mSrvHeap.Allocate();
@@ -1647,11 +1775,19 @@ void Renderer::AllocateHandles()
 	mSrvHandle_Specular = mSrvHeap.Allocate();
 	mSrvHandle_Albedo = mSrvHeap.Allocate();
 	mSrvHandle_AlbedoSpecular = mSrvHeap.Allocate();
+
+	// Phong
+	mRtvHandle_PhongOutput = mRtvHeap.Allocate();
+	mSrvHandle_PhongOutput = mSrvHeap.Allocate();
 }
 
 void Renderer::InitializeDepthBuffer()
 {
+	mNativeDepthBuffer.Initialize(mDevice.Get(), mWidth, mHeight);
+
+	// DLSS
 	mDepthBuffer.Initialize(mDevice.Get(), mRenderWidth, mRenderHeight);
+
 	D3D12_SHADER_RESOURCE_VIEW_DESC depthSrv = {};
 	depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
 	depthSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -1724,10 +1860,14 @@ void Renderer::InitializePipelineState()
 	HLSLShader transparentPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/TransparentPixelShader.hlsl", L"ps_6_0");
 	HLSLShader compositeShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/CompositeCS.hlsl", L"cs_6_0");
 
+	HLSLShader phongVS = mShaderCompiler.CompileFromFile(L"Source/Shaders/PhongVS.hlsl", L"vs_6_0");
+	HLSLShader phongPS = mShaderCompiler.CompileFromFile(L"Source/Shaders/PhongPS.hlsl", L"ps_6_0");
+
 	std::vector<ShaderMacro> maskedDefines = {
 		{ L"ALPHA_TEST", L"1" }
 	};
 	HLSLShader maskedPixelShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredPS.hlsl", L"ps_6_0", maskedDefines);
+	HLSLShader maskedPhongPS = mShaderCompiler.CompileFromFile(L"Source/Shaders/PhongPS.hlsl", L"ps_6_0", maskedDefines);
 
 	constexpr D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 	{
@@ -1808,6 +1948,62 @@ void Renderer::InitializePipelineState()
 		mDevice.Get(),
 		mCompositeRootSignature.Get(),
 		std::move(compositeShader));
+
+
+
+	// =========================================================================================
+	// Phong Pipelines
+	// =========================================================================================
+	// 1. Phong Opaque pipeline state
+	mPipelineStatePhongOpaqueSingle.InitializeForwardOpaque(
+		mDevice.Get(),
+		mMeshRootSignature.Get(),
+		phongVS,
+		phongPS,
+		inputLayoutDesc);
+
+	// 2. Phong Masked pipeline state (like opaque but with clip)
+	mPipelineStatePhongMaskedSingle.InitializeForwardOpaque(
+		mDevice.Get(),
+		mMeshRootSignature.Get(),
+		phongVS,
+		maskedPhongPS,
+		inputLayoutDesc);
+
+	// 3. Phong Transparent pipeline state
+	mPipelineStatePhongTransparentSingle.InitializeForwardTransparent(
+		mDevice.Get(),
+		mMeshRootSignature.Get(),
+		phongVS,
+		phongPS,
+		inputLayoutDesc);
+
+	// 4. Phong Opaque double-sided pipeline state
+	mPipelineStatePhongOpaqueDouble.InitializeForwardOpaque(
+		mDevice.Get(),
+		mMeshRootSignature.Get(),
+		phongVS,
+		phongPS,
+		inputLayoutDesc,
+		true);
+
+	// 5. Phong Masked double-sided pipeline state
+	mPipelineStatePhongMaskedDouble.InitializeForwardOpaque(
+		mDevice.Get(),
+		mMeshRootSignature.Get(),
+		phongVS,
+		std::move(maskedPhongPS),
+		inputLayoutDesc,
+		true);
+
+	// 6. Phong Transparent double-sided pipeline state
+	mPipelineStatePhongTransparentDouble.InitializeForwardTransparent(
+		mDevice.Get(),
+		mMeshRootSignature.Get(),
+		std::move(phongVS),
+		std::move(phongPS),
+		inputLayoutDesc,
+		true);
 }
 
 void Renderer::InitializeTextureLoader()
@@ -1828,14 +2024,36 @@ void Renderer::Update(const Camera& camera)
 
 	if (mSceneLoaded)
 	{
-		RenderHybrid(camera);
+		DescriptorHandle tonemapInputSrv;
+		switch (mCurrentRenderMode)
+		{
+		case RenderMode::ForwardPhong:
+		{
+			RenderPhong(camera);
+			tonemapInputSrv = mSrvHandle_PhongOutput;
+			break;
+		}
+		case RenderMode::Hybrid:
+		{
+			RenderHybrid(camera);
+			tonemapInputSrv = mSrvHandle_DlssOutput;
+			D3D12_RESOURCE_BARRIER barriers[]
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+			};
+			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+			break;
+		}
+		default:
+			throw std::runtime_error("Unsupported render mode in Renderer::Update");
+		}
 		// =========================================================================================
 		// STAGE 6: ToneMapping (if needed)
 		// =========================================================================================
 		{
 			D3D12_RESOURCE_BARRIER barriers[]
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				//CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
 				CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 			};
 			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
@@ -1848,7 +2066,7 @@ void Renderer::Update(const Camera& camera)
 			mCommandList.Get()->SetPipelineState(mPipelineStateTonemap.Get());
 			// Bind Descriptors
 			// Slot 0: SRV (t0)
-			mCommandList.Get()->SetComputeRootDescriptorTable(0, mSrvHandle_DlssOutput.gpuHandle);
+			mCommandList.Get()->SetComputeRootDescriptorTable(0, tonemapInputSrv.gpuHandle);
 			// Slot 1: UAV (u0)
 			mCommandList.Get()->SetComputeRootDescriptorTable(1, mUavHandle_TonemapOutput.gpuHandle);
 			// Dispatch
@@ -1866,10 +2084,6 @@ void Renderer::Update(const Camera& camera)
 				CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
 				// Transition Back Buffer -> Copy Dest
 				CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.GetCurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST),
-				// Transition Depth Buffer back to Common
-				CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_READ, D3D12_RESOURCE_STATE_COMMON),
-				// Transition Emissive G-Buffer back to Common
-				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 			};
 
 			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
@@ -1886,20 +2100,40 @@ void Renderer::Update(const Camera& camera)
 				D3D12_RESOURCE_STATE_RENDER_TARGET);
 			mCommandList.Get()->ResourceBarrier(1, &renderTargetBarrier);
 
-			// Cleanup G-Buffer Transitions (Back to Common)
-			D3D12_RESOURCE_BARRIER cleanup[]
+			D3D12_RESOURCE_BARRIER commonCleanup[] =
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
-				CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				//CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				//CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-				CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON)
 			};
-			mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+			mCommandList.Get()->ResourceBarrier(_countof(commonCleanup), commonCleanup);
+
+			
+			if (mCurrentRenderMode == RenderMode::ForwardPhong)
+			{
+				D3D12_RESOURCE_BARRIER cleanup[]
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(mNativeDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mPhongOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				};
+				mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+			}
+			else
+			{
+				D3D12_RESOURCE_BARRIER cleanup[]
+				{
+					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+			//		CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					//CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					//CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_READ, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				};
+				mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+			}
 		}
 	}
 	else
