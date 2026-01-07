@@ -24,7 +24,13 @@ struct ConstantBufferData
 
 	int numPointLights;
 	int frameCount;
-	int _pad[2];
+
+	int shadowsEnabled;
+	int reflectionsEnabled;
+
+	int maxRecursionDepth;
+	int _pad[3];
+
 	LightData lights[cMaxLights];
 };
 

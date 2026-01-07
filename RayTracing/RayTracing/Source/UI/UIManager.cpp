@@ -3,6 +3,7 @@
 #include "RenderAPI/Camera/CameraManager.h"
 #include "Utils/PerformanceMonitor.h"
 #include "imgui.h"
+#include "config.h"
 
 void UIManager::Initialize(HWND hwnd, CameraManager* cameraManager, PerformanceMonitor* perfMonitor)
 {
@@ -267,6 +268,44 @@ void UIManager::RenderSettingsWindow()
 		activeCamera.SetFarZ(farZ);
 	}
 	
+
+	// -------------------------------------------
+	ImGui::Text("Rendering Quality");
+
+	// 1. Shadows
+	if (mGetShadowsEnabled && mSetShadowsEnabled)
+	{
+		bool shadows = mGetShadowsEnabled();
+		if (ImGui::Checkbox("Enable Shadows", &shadows))
+		{
+			mSetShadowsEnabled(shadows);
+		}
+	}
+
+	// 2. Reflections
+	if (mGetReflectionsEnabled && mSetReflectionsEnabled)
+	{
+		bool reflections = mGetReflectionsEnabled();
+		if (ImGui::Checkbox("Enable Reflections", &reflections))
+		{
+			mSetReflectionsEnabled(reflections);
+		}
+	}
+
+	// 3. Max Recursion Depth (Reflections + Transparency)
+	if (mGetMaxRecursionDepth && mSetMaxRecursionDepth)
+	{
+		int depth = mGetMaxRecursionDepth();
+		if (ImGui::SliderInt("Max Bounces (Refl/Trans)", &depth, 1, Config::cMaxRecursionDepth))
+		{
+			mSetMaxRecursionDepth(depth);
+		}
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Controls max depth for both reflections and transparency.");
+		}
+	}
+	// -------------------------------------------
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();

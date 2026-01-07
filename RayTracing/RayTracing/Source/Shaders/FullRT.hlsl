@@ -26,7 +26,10 @@ cbuffer FrameCB : register(b0)
     int numLights;
     int numPointLights;
     int frameCount;
-    float2 _pad;
+    int shadowsEnabled;
+    int reflectionsEnabled;
+    int maxRecursionDepth;
+    float3 _pad0;
 };
 
 // ===============================================================================================
@@ -344,7 +347,7 @@ void ShadowMiss(inout ShadowPayload payload)
 }
 
 // 3. CLOSEST HIT
-static const uint MAX_RECURSION_DEPTH = 2; // Keep low for performance
+//static const uint MAX_RECURSION_DEPTH = 2; // Keep low for performance
 
 void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr, bool isTransparent)
 {
@@ -387,85 +390,88 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float bias = 0.001f + distToCamera * 0.002f;
     uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
     
-    // directional lights
-    for (int i = numPointLights; i < numLights; ++i)
+    [branch]
+    if (shadowsEnabled)
     {
-        Light light = gLights[i];
-        
-        float3 L_central = normalize(-light.dirType.xyz);
-        float3 L_shadow = L_central;
-        float dist = 10000.0f;
-        float attenuation = 1.0f;
-
-        float NdotL = max(dot(normal, L_central), 0.0f);
-        
-        if (NdotL > 0.0f)
+    // directional lights
+        for (int i = numPointLights; i < numLights; ++i)
         {
-            RayDesc shadowRay;
-            shadowRay.Origin = worldPos + normal * bias;
-            shadowRay.Direction = L_shadow;
-            shadowRay.TMin = 0.01f;
-            shadowRay.TMax = dist - 0.05f;
+            Light light = gLights[i];
+        
+            float3 L_central = normalize(-light.dirType.xyz);
+            float3 L_shadow = L_central;
+            float dist = 10000.0f;
+            float attenuation = 1.0f;
 
-            ShadowPayload shadowPayload;
-            shadowPayload.isVisible = false;
+            float NdotL = max(dot(normal, L_central), 0.0f);
+        
+            if (NdotL > 0.0f)
+            {
+                RayDesc shadowRay;
+                shadowRay.Origin = worldPos + normal * bias;
+                shadowRay.Direction = L_shadow;
+                shadowRay.TMin = 0.01f;
+                shadowRay.TMax = dist - 0.05f;
+
+                ShadowPayload shadowPayload;
+                shadowPayload.isVisible = false;
             
-            TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
+                TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
                      0xFF, 0, 1, 1, shadowRay, shadowPayload);
 
-            if (shadowPayload.isVisible)
-            {
-                float3 H = normalize(V + L_central);
-                float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
-                float NDF = DistributionGGX(normal, H, roughness);
-                float G = GeometrySmith(normal, V, L_central, roughness);
+                if (shadowPayload.isVisible)
+                {
+                    float3 H = normalize(V + L_central);
+                    float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
+                    float NDF = DistributionGGX(normal, H, roughness);
+                    float G = GeometrySmith(normal, V, L_central, roughness);
 
-                float3 kS = F;
-                float3 kD = (1.0f - kS) * (1.0f - metalness);
+                    float3 kS = F;
+                    float3 kD = (1.0f - kS) * (1.0f - metalness);
 
-                float3 diffuseFactor = kD / PI;
-                float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
+                    float3 diffuseFactor = kD / PI;
+                    float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
-                directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL;
-                directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL;
+                    directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL;
+                    directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL;
+                }
             }
         }
-    }
 
-    if (numPointLights > 0)
-    {
+        if (numPointLights > 0)
+        {
         // CONSTANTS
-        const int M = 8; // Number of candidates to check (higher = stable, lower = fast)
+            const int M = 8; // Number of candidates to check (higher = stable, lower = fast)
         
         // RIS State
-        int selectedLightIndex = -1;
-        float totalWeight = 0.0f;
-        float selectedTargetPdf = 0.0f;
-        float samplePdf = 1.0f / float(numPointLights); // Uniform source PDF (1/N)
+            int selectedLightIndex = -1;
+            float totalWeight = 0.0f;
+            float selectedTargetPdf = 0.0f;
+            float samplePdf = 1.0f / float(numPointLights); // Uniform source PDF (1/N)
         
         // --- RIS LOOP: Pick the best light ---
-        for (int i = 0; i < M; ++i)
-        {
+            for (int i = 0; i < M; ++i)
+            {
             // Pick a random candidate uniformly
-            int candidateIndex = min(int(nextRand(seed) * float(numPointLights)), numPointLights - 1);
-            Light candidate = gLights[candidateIndex];
+                int candidateIndex = min(int(nextRand(seed) * float(numPointLights)), numPointLights - 1);
+                Light candidate = gLights[candidateIndex];
             
             // Calculate target PDF (Importance)
-            float weight = EvaluateLightImportance(candidate, worldPos, normal);
+                float weight = EvaluateLightImportance(candidate, worldPos, normal);
             
             // Streaming Reservoir Sampling update
-            totalWeight += weight;
-            if (nextRand(seed) * totalWeight < weight)
-            {
-                selectedLightIndex = candidateIndex;
-                selectedTargetPdf = weight;
+                totalWeight += weight;
+                if (nextRand(seed) * totalWeight < weight)
+                {
+                    selectedLightIndex = candidateIndex;
+                    selectedTargetPdf = weight;
+                }
             }
-        }
         
         // --- SHADING: Trace shadow ray for the winner ---
-        if (selectedLightIndex != -1 && totalWeight > 0.0f)
-        {
-            Light light = gLights[selectedLightIndex];
+            if (selectedLightIndex != -1 && totalWeight > 0.0f)
+            {
+                Light light = gLights[selectedLightIndex];
             
             // Calculate Monte Carlo Weight
             // W = (1/M) * (TotalWeight / TargetPdf)
@@ -482,169 +488,111 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             // W = (1 / TargetPDF_y) * (1/M) * (TotalWeight / (1/N))
             // W = (TotalWeight * N) / (M * TargetPDF_y)
             
-            float risWeight = (totalWeight * float(numPointLights)) / (float(M) * selectedTargetPdf);
+                float risWeight = (totalWeight * float(numPointLights)) / (float(M) * selectedTargetPdf);
             
             // Perform standard lighting calculation
-            float3 toLight = light.position.xyz - worldPos;
-            float dist = length(toLight);
-            float3 L_central = normalize(toLight);
-            float3 L_shadow = GetConeSample(seed, L_central, radians(5.0f));
-            float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-            float NdotL = max(dot(normal, L_central), 0.0f);
+                float3 toLight = light.position.xyz - worldPos;
+                float dist = length(toLight);
+                float3 L_central = normalize(toLight);
+                float3 L_shadow = GetConeSample(seed, L_central, radians(5.0f));
+                float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+                float NdotL = max(dot(normal, L_central), 0.0f);
 
-            if (NdotL > 0.0f && attenuation > 0.001f)
-            {
-                RayDesc shadowRay;
-                shadowRay.Origin = worldPos + normal * bias;
-                shadowRay.Direction = L_shadow;
-                shadowRay.TMin = 0.01f;
-                shadowRay.TMax = dist - 0.05f;
+                if (NdotL > 0.0f && attenuation > 0.001f)
+                {
+                    RayDesc shadowRay;
+                    shadowRay.Origin = worldPos + normal * bias;
+                    shadowRay.Direction = L_shadow;
+                    shadowRay.TMin = 0.01f;
+                    shadowRay.TMax = dist - 0.05f;
 
-                ShadowPayload shadowPayload;
-                shadowPayload.isVisible = false;
+                    ShadowPayload shadowPayload;
+                    shadowPayload.isVisible = false;
                 
-                TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_CULL_NON_OPAQUE,
+                    TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_CULL_NON_OPAQUE,
                          0xFF, 0, 1, 1, shadowRay, shadowPayload);
 
-                if (shadowPayload.isVisible)
-                {
+                    if (shadowPayload.isVisible)
+                    {
                     // PBR Math
-                    float3 H = normalize(V + L_central);
-                    float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
-                    float NDF = DistributionGGX(normal, H, roughness);
-                    float G = GeometrySmith(normal, V, L_central, roughness);
+                        float3 H = normalize(V + L_central);
+                        float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
+                        float NDF = DistributionGGX(normal, H, roughness);
+                        float G = GeometrySmith(normal, V, L_central, roughness);
 
-                    float3 kS = F;
-                    float3 kD = (1.0f - kS) * (1.0f - metalness);
+                        float3 kS = F;
+                        float3 kD = (1.0f - kS) * (1.0f - metalness);
 
-                    float3 diffuseFactor = kD / PI;
-                    float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
+                        float3 diffuseFactor = kD / PI;
+                        float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
                     // Apply RIS Weight
-                    directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL * risWeight;
-                    directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL * risWeight;
+                        directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL * risWeight;
+                        directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL * risWeight;
+                    }
                 }
             }
         }
+    
     }
-    
-    // One random point light
-    //if (numPointLights > 0)
-    //{
-
-    //    // Pick a random index between [0 ... numPointLights - 1]
-    //    int lightIndex = min(int(nextRand(seed) * float(numPointLights)), numPointLights - 1);
-        
-    //    Light light = gLights[lightIndex];
-        
-    //    // IMPORTANT: We must multiply the result by numPointLights.
-    //    // If we only sample 1 out of N lights, the image will be 1/Nth brightness.
-    //    // Multiplying by N compensates for the lights we skipped (Monte Carlo integration).
-    //    float stochasticWeight = float(numPointLights);
-
-    //    float3 toLight = light.position.xyz - worldPos;
-    //    float dist = length(toLight);
-    //    float3 L_central = normalize(toLight);
-    //    float3 L_shadow = GetConeSample(seed, L_central, radians(5.0f));
-    //    float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-
-    //    float NdotL = max(dot(normal, L_central), 0.0f);
-
-    //    if (NdotL > 0.0f && attenuation > 0.001f)
-    //    {
-    //        RayDesc shadowRay;
-    //        shadowRay.Origin = worldPos + normal * bias;
-    //        shadowRay.Direction = L_shadow;
-    //        shadowRay.TMin = 0.01f;
-    //        shadowRay.TMax = dist - 0.05f;
-
-    //        ShadowPayload shadowPayload;
-    //        shadowPayload.isVisible = false;
+    else
+    {
+        for (int i = 0; i < numPointLights; i++)
+        {
+            Light light = gLights[i];
+            float3 toLight = light.position.xyz - worldPos;
+            float dist = length(toLight);
+            float3 L = normalize(toLight);
+            float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+            float NdotL = max(dot(normal, L), 0.0f);
             
-    //        TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_CULL_NON_OPAQUE,
-    //                 0xFF, 0, 1, 1, shadowRay, shadowPayload);
+            if (NdotL > 0.0f && attenuation > 0.001f)
+            {
+                // PBR Math
+                float3 H = normalize(V + L);
+                float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
+                float NDF = DistributionGGX(normal, H, roughness);
+                float G = GeometrySmith(normal, V, L, roughness);
 
-    //        if (shadowPayload.isVisible)
-    //        {
-    //            float3 H = normalize(V + L_central);
-    //            float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
-    //            float NDF = DistributionGGX(normal, H, roughness);
-    //            float G = GeometrySmith(normal, V, L_central, roughness);
+                float3 kS = F;
+                float3 kD = (1.0f - kS) * (1.0f - metalness);
 
-    //            float3 kS = F;
-    //            float3 kD = (1.0f - kS) * (1.0f - metalness);
+                float3 diffuseFactor = kD / PI;
+                float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
-    //            float3 diffuseFactor = kD / PI;
-    //            float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
-
-    //            // Apply stochastic weight here
-    //            directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL * stochasticWeight;
-    //            directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL * stochasticWeight;
-    //        }
-    //    }
-    //}
-    
-    //for (int i = 0; i < numLights; ++i)
-    //{
-    //    Light light = gLights[i];
-    //    float3 L_central;
-    //    float3 L_shadow;
-    //    float dist = 10000.0f;
-    //    float attenuation = 1.0f;
-
-    //    if (light.dirType.w > 0.5f) // Directional
-    //    {
-    //        L_central = normalize(-light.dirType.xyz);
-    //        L_shadow = L_central;
-    //    }
-    //    else // Point
-    //    {
-    //        float3 toLight = light.position.xyz - worldPos;
-    //        dist = length(toLight);
-    //        L_central = normalize(toLight);
-    //        L_shadow = GetConeSample(seed, L_central, radians(5.0f)); // Soft shadows with 5 degree cone
-    //        attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-    //    }
-
-    //    float NdotL = max(dot(normal, L_central), 0.0f);
-    //    if (NdotL > 0.0f && attenuation > 0.001f)
-    //    {
-    //        RayDesc shadowRay;
-    //        shadowRay.Origin = worldPos + normal * bias;
-    //        shadowRay.Direction = L_shadow;
-    //        shadowRay.TMin = 0.01f;
-    //        shadowRay.TMax = dist - 0.05f;
-
-    //        ShadowPayload shadowPayload;
-    //        shadowPayload.isVisible = false;
-            
-    //        // Miss Shader 1 = ShadowMiss
-    //        TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_CULL_NON_OPAQUE,
-    //                 0xFF, 0, 1, 1, shadowRay, shadowPayload);
-
-    //        if (shadowPayload.isVisible)
-    //        {
-    //            float3 H = normalize(V + L_central);
-    //            float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
-    //            float NDF = DistributionGGX(normal, H, roughness);
-    //            float G = GeometrySmith(normal, V, L_central, roughness);
-
-    //            float3 kS = F;
-    //            float3 kD = (1.0f - kS) * (1.0f - metalness);
-
-    //            // --- KEY CHANGE 1: Diffuse Irradiance only (No Albedo mult) ---
-    //            float3 diffuseFactor = kD / PI;
-    //            float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
-
-    //            directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL;
-    //            directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL;
-    //        }
-    //    }
-    //}
+                    // Apply RIS Weight
+                directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL;
+                directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL;
+            }
+        }
+        
+        for (int i = numPointLights; i < numLights; i++)
+        {
+            Light light = gLights[i];
+        
+            float3 L = normalize(-light.dirType.xyz);
+            float NdotL = max(dot(normal, L), 0.0f);
+        
+            if (NdotL > 0.0f)
+            {
+                float3 H = normalize(V + L);
+                float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
+                float NDF = DistributionGGX(normal, H, roughness);
+                float G = GeometrySmith(normal, V, L, roughness);
+                float3 kS = F;
+                float3 kD = (1.0f - kS) * (1.0f - metalness);
+                float3 diffuseFactor = kD / PI;
+                float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
+                directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * NdotL;
+                directSpecular += specularFactor * light.specularColor.rgb * NdotL;
+            }
+        }
+    }
 
     // --- Recursive Reflection ---
     float3 reflectedColor = float3(0, 0, 0);
-    if (payload.recursionDepth < MAX_RECURSION_DEPTH)
+    [branch]
+    if (reflectionsEnabled && payload.recursionDepth < maxRecursionDepth)
     {
         float2 Xi = float2(nextRand(seed), nextRand(seed));
         float3 H = ImportanceSampleGGX(Xi, normal, roughness);
@@ -677,7 +625,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float3 myFinalColor = (directDiffuseIrradiance * albedo) + directSpecular + emissive + reflectedColor;
 
     // --- Recursive Transparency ---
-    if (isTransparent && payload.recursionDepth < MAX_RECURSION_DEPTH)
+    if (isTransparent && payload.recursionDepth < maxRecursionDepth)
     {
         RayDesc transRay;
         transRay.Origin = worldPos + WorldRayDirection() * 0.001f;

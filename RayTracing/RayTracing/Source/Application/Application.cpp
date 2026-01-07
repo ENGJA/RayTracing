@@ -261,6 +261,20 @@ void Application::OnCreate(HWND hwnd)
 	// Initialize UI with current DLSS mode
 	mUIManager.SetCurrentDLSSMode(static_cast<int>(mRenderer.GetDLSSMode()));
 
+	mUIManager.SetShadowsCallbacks(
+		[this]() { return mRenderer.GetShadowsEnabled(); },
+		[this](bool enabled) { mRenderer.SetShadowsEnabled(enabled); }
+	);
+	mUIManager.SetReflectionsCallbacks(
+		[this]() { return mRenderer.GetReflectionsEnabled(); },
+		[this](bool enabled) { mRenderer.SetReflectionsEnabled(enabled); }
+	);
+	mUIManager.SetMaxRecursionDepthCallbacks(
+		[this]() { return mRenderer.GetMaxRecursionDepth(); },
+		[this](int depth) { mRenderer.SetMaxRecursionDepth(depth); }
+	);
+
+
 	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
 		if (mCurrentState == UIManager::AppState::Scene || mCurrentState == UIManager::AppState::Menu)

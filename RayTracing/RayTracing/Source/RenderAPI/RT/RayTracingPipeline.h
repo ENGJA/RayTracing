@@ -22,7 +22,7 @@ struct RTPipelineSettings
 	// Limits
 	UINT maxPayloadSize = sizeof(float) * 4; // 16 bytes (Color + Depth) or larger
 	UINT maxAttributeSize = sizeof(float) * 2; // Barycentrics
-	UINT maxRecursion = 2;
+	UINT maxRecursion = Config::cMaxRecursionDepth;
 };
 
 
