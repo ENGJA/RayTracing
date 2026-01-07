@@ -460,3 +460,9 @@ void ClosestHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersect
 {
     
 }
+
+[shader("anyhit")]
+void AnyHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+{
+    
+}

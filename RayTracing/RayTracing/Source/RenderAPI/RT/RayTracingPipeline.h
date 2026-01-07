@@ -12,10 +12,12 @@ struct RTPipelineSettings
 	std::wstring missShader = L"Miss";
 	std::wstring shadowMissShader = L"ShadowMiss";
 	std::wstring hitGroup = L"HitGroup";
-	std::wstring hitGroupTransparent = L"HitGroupTransparent";
+	std::wstring hitGroupTransparentSingle = L"HitGroupTransparentSingle";
+	std::wstring hitGroupTransparentDouble = L"HitGroupTransparentDouble";
 	std::wstring closestHit = L"ClosestHit";
 	std::wstring closestHitTransparent = L"ClosestHitTransparent";
 	std::wstring anyHit = L"AnyHit";
+	std::wstring anyHitTransparent = L"AnyHitTransparent";
 
 	// Limits
 	UINT maxPayloadSize = sizeof(float) * 4; // 16 bytes (Color + Depth) or larger

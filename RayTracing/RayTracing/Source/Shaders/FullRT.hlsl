@@ -664,3 +664,40 @@ void AnyHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes a
         IgnoreHit();
     }
 }
+
+[shader("anyhit")]
+void AnyHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+{
+    return;
+    // --- 1. Calculate Alpha (Standard Logic) ---
+    uint triangleIndex = PrimitiveIndex();
+    uint indexOffset = triangleIndex * 3 * 4;
+    uint3 idx = gIndices.Load3(indexOffset);
+    const uint stride = 56;
+    
+    float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
+    float2 uv0 = asfloat(gVertices.Load2(idx.x * stride + 24));
+    float2 uv1 = asfloat(gVertices.Load2(idx.y * stride + 24));
+    float2 uv2 = asfloat(gVertices.Load2(idx.z * stride + 24));
+    float2 uv = uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
+    
+    // Sample alpha
+    float alpha = gAlbedoMap.SampleLevel(gSampler, uv, 0).a * gBaseColorFactor.a;
+
+    // --- 2. SHADOW RAYS: Stochastic Transparency ---
+    // Only apply stochastic logic if this is a shadow ray (checking the flag used in DoShading)
+    if ((RayFlags() & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER))
+    {
+        uint2 pixel = DispatchRaysIndex().xy;
+        // Generate seed based on pixel and frame to get noise
+        uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
+        
+        // If the random number is greater than alpha, let the light pass through (IgnoreHit).
+        // Example: Alpha 0.2 (Glass) -> 80% chance to IgnoreHit (Light passes).
+        // Example: Alpha 0.9 (Dark Glass) -> 10% chance to IgnoreHit.
+        if (nextRand(seed) > alpha)
+        {
+            IgnoreHit();
+        }
+    }
+}
