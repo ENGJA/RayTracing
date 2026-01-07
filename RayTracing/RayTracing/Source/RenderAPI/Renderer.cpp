@@ -700,6 +700,11 @@ void Renderer::UnloadScene()
 		mConstantBufferData.lights[i] = LightData{};
 	}
 
+	mSceneLoaded = false;
+	mTLAS.Reset();
+	mTLAS_Scratch.Reset();
+	mInstanceDescBuffer.Reset();
+
 	wcout << L"Scene unloaded." << endl;
 }
 
@@ -804,7 +809,7 @@ void Renderer::InitializeRayTracing()
 		//D3D12RootSignature globalRootSig;
 		mRtGlobalRootSignature.InitializeHybridRTGlobalRS(mDevice.Get());
 
-		HLSLShader libraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredRT.hlsl", L"lib_6_3", {}, L"");
+		HLSLShader libraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredRT.hlsl", L"lib_6_5", {}, L"");
 
 
 		RTPipelineSettings reflSettings;
@@ -818,7 +823,8 @@ void Renderer::InitializeRayTracing()
 		// --- FULL RAY TRACING PIPELINE SETUP ---
 		mFullRTGlobalRootSignature.InitializeFullRTGlobalRS(mDevice.Get());
 
-		HLSLShader fullRtLibraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/FullRT.hlsl", L"lib_6_3", {}, L"");
+		HLSLShader fullRtLibraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/FullRT.hlsl", L"lib_6_5", {}, L"");
+		//HLSLShader fullRtLibraryShader = mShaderCompiler.LoadFromCso(L"../x64/Debug/FullRT.cso");
 
 		RTPipelineSettings fullRtSettings;
 		fullRtSettings.maxPayloadSize = sizeof(float) * 8; // Color + Depth + HitT
