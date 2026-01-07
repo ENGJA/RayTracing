@@ -191,8 +191,8 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 	case RenderLayer::Blend:
 		if (mesh.mDoubleSided)
 			mTransparentDoubleSidedMeshes.push_back(std::move(gpu));
-		else
-			mTransparentSingleSidedMeshes.push_back(std::move(gpu));
+		//else
+		//	mTransparentSingleSidedMeshes.push_back(std::move(gpu));
 		break;
 	default:
 		break;
@@ -827,7 +827,7 @@ void Renderer::InitializeRayTracing()
 		//HLSLShader fullRtLibraryShader = mShaderCompiler.LoadFromCso(L"../x64/Debug/FullRT.cso");
 
 		RTPipelineSettings fullRtSettings;
-		fullRtSettings.maxPayloadSize = sizeof(float) * 8; // Color + Depth + HitT
+		fullRtSettings.maxPayloadSize = sizeof(float) * 12; // Color + Depth + HitT
 		fullRtSettings.maxRecursion = 3;
 
 		mFullRTPipeline.Initialize(mDevice.Get(), &mFullRTGlobalRootSignature, &localRootSig, fullRtLibraryShader.GetShaderBlob(), fullRtSettings);

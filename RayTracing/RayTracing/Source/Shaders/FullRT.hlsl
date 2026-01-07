@@ -64,6 +64,9 @@ struct RayPayload
     float3 color;
     uint recursionDepth;
     float hitT; // -1.0 if miss
+    
+    float3 dDdx; // Change in ray direction per pixel X
+    float3 dDdy; // Change in ray direction per pixel Y
 };
 
 struct ShadowPayload
@@ -81,7 +84,63 @@ struct VertexAttributes
 // ===============================================================================================
 // --- HELPER FUNCTIONS ---
 // ===============================================================================================
+void ComputeGradients(
+    uint triangleIndex,
+    float3 dDdx, float3 dDdy,
+    float3 D, float t,
+    out float2 dUVdx, out float2 dUVdy)
+{
+    // 1. Fetch raw Triangle Data (Positions & UVs)
+    uint indexOffset = triangleIndex * 3 * 4;
+    uint3 idx = gIndices.Load3(indexOffset);
+    const uint stride = 56;
 
+    float3 p0 = asfloat(gVertices.Load3(idx.x * stride));
+    float3 p1 = asfloat(gVertices.Load3(idx.y * stride));
+    float3 p2 = asfloat(gVertices.Load3(idx.z * stride));
+
+    float2 uv0 = asfloat(gVertices.Load2(idx.x * stride + 24));
+    float2 uv1 = asfloat(gVertices.Load2(idx.y * stride + 24));
+    float2 uv2 = asfloat(gVertices.Load2(idx.z * stride + 24));
+
+    // 2. Compute Surface Derivatives (Edges)
+    float3 dp1 = p1 - p0;
+    float3 dp2 = p2 - p0;
+    float2 du1 = uv1 - uv0;
+    float2 du2 = uv2 - uv0;
+
+    float3 faceNormal = normalize(cross(dp1, dp2));
+    // 3. Project Ray Differentials onto Surface Plane (dP/dx, dP/dy)
+    // Formula: dP = t * dD - D * (dot(N, t*dD) / dot(N, D))
+    float NdotD = dot(faceNormal, D);
+    if (abs(NdotD) < 1e-6f)
+        NdotD = (NdotD >= 0 ? 1e-6f : -1e-6f);
+    float3 dPdx = t * dDdx - D * (dot(faceNormal, t * dDdx) / NdotD);
+    float3 dPdy = t * dDdy - D * (dot(faceNormal, t * dDdy) / NdotD);
+
+    // 4. Solve for UV Gradients
+    // We want k1, k2 such that: dP = k1 * dp1 + k2 * dp2
+    // Then dUV = k1 * du1 + k2 * du2
+    // Using Least Squares / Dot products:
+    float dot11 = dot(dp1, dp1);
+    float dot12 = dot(dp1, dp2);
+    float dot22 = dot(dp2, dp2);
+    float det = dot11 * dot22 - dot12 * dot12;
+
+    float invDet = (abs(det) < 1e-20f) ? 0.0f : 1.0f / det;
+
+    float dot1Pdx = dot(dp1, dPdx);
+    float dot2Pdx = dot(dp2, dPdx);
+    float k1x = (dot22 * dot1Pdx - dot12 * dot2Pdx) * invDet;
+    float k2x = (dot11 * dot2Pdx - dot12 * dot1Pdx) * invDet;
+    dUVdx = k1x * du1 + k2x * du2;
+
+    float dot1Pdy = dot(dp1, dPdy);
+    float dot2Pdy = dot(dp2, dPdy);
+    float k1y = (dot22 * dot1Pdy - dot12 * dot2Pdy) * invDet;
+    float k2y = (dot11 * dot2Pdy - dot12 * dot1Pdy) * invDet;
+    dUVdy = k1y * du1 + k2y * du2;
+}
 // --- Random Number Generator ---
 uint initRand(uint val0, uint val1, uint backoff = 16)
 {
@@ -122,6 +181,20 @@ float3 GetConeSample(inout uint seed, float3 L, float spreadAngle)
     return d.x * tangent + d.y * bitangent + d.z * L;
 }
 
+float2 GetHitUV(uint triangleIndex, float3 bary)
+{
+    uint indexOffset = triangleIndex * 3 * 4;
+    uint3 idx = gIndices.Load3(indexOffset);
+    const uint stride = 56;
+
+    // Fetch UVs (Offset 24 in your layout)
+    float2 uv0 = asfloat(gVertices.Load2(idx.x * stride + 24));
+    float2 uv1 = asfloat(gVertices.Load2(idx.y * stride + 24));
+    float2 uv2 = asfloat(gVertices.Load2(idx.z * stride + 24));
+
+    return uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
+}
+
 // --- Vertex Fetching ---
 VertexAttributes GetHitSurface(uint triangleIndex, float3 bary)
 {
@@ -156,10 +229,10 @@ VertexAttributes GetHitSurface(uint triangleIndex, float3 bary)
     return attr;
 }
 
+
 // --- Normal Mapping ---
-float3 CalculateNormal(float3 N, float4 tangent, float2 uv)
+float3 CalculateNormal(float3 N, float4 tangent, float3 normalSample)
 {
-    float3 normalSample = gNormalMap.SampleLevel(gSampler, uv, 0).rgb;
     float3 tangentNormal = normalSample * 2.0f - 1.0f;
 
     float3 T = normalize(tangent.xyz - dot(tangent.xyz, N) * N);
@@ -204,9 +277,20 @@ void RayGen()
     float2 ndc = uv * 2.0f - 1.0f;
     ndc.y = -ndc.y;
 
-    // Unproject to World
+    // Main Ray
     float4 target = mul(invViewProj, float4(ndc, 1.0f, 1.0f));
     float3 rayDir = normalize(target.xyz / target.w - viewPos);
+    
+    // Helper Rays (Differentials)
+    float2 ndcRight = (uv + float2(1.0f / dim.x, 0)) * 2.0f - 1.0f;
+    ndcRight.y = -ndcRight.y;
+    float4 targetRight = mul(invViewProj, float4(ndcRight, 1.0f, 1.0f));
+    float3 rayDirRight = normalize(targetRight.xyz / targetRight.w - viewPos);
+
+    float2 ndcDown = (uv + float2(0, 1.0f / dim.y)) * 2.0f - 1.0f;
+    ndcDown.y = -ndcDown.y;
+    float4 targetDown = mul(invViewProj, float4(ndcDown, 1.0f, 1.0f));
+    float3 rayDirDown = normalize(targetDown.xyz / targetDown.w - viewPos);
 
     RayDesc ray;
     ray.Origin = viewPos;
@@ -218,6 +302,8 @@ void RayGen()
     payload.color = float3(0, 0, 0);
     payload.recursionDepth = 0;
     payload.hitT = 0.0f;
+    payload.dDdx = rayDirRight - rayDir;
+    payload.dDdy = rayDirDown - rayDir;
 
     // Trace Primary Ray
     TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, payload);
@@ -266,15 +352,28 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     uint triangleIndex = PrimitiveIndex();
     float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
     VertexAttributes vert = GetHitSurface(triangleIndex, bary);
+    
+    float2 dUVdx = 0;
+    float2 dUVdy = 0;
+    if (payload.recursionDepth == 0)
+    {
+        float3 viewDir = WorldRayDirection();
+        float hitT = RayTCurrent();
+        ComputeGradients(triangleIndex, payload.dDdx, payload.dDdy, viewDir, hitT, dUVdx, dUVdy);
+    }
 
     // --- Material Sampling ---
-    float4 albedoSample = gAlbedoMap.SampleLevel(gSampler, vert.uv, 0);
+    float4 albedoSample = gAlbedoMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy);
     float3 albedo = albedoSample.rgb * gBaseColorFactor.rgb;
     float alpha = albedoSample.a * gBaseColorFactor.a;
-    float metalness = gMetalnessMap.SampleLevel(gSampler, vert.uv, 0).b * gMetalnessFactor;
-    float roughness = gMetalnessMap.SampleLevel(gSampler, vert.uv, 0).g * gRoughnessFactor;
-    float3 emissive = gEmissiveMap.SampleLevel(gSampler, vert.uv, 0).rgb * gEmissiveFactor.rgb;
-    float3 normal = CalculateNormal(normalize(vert.normal), vert.tangent, vert.uv);
+    float metalness = gMetalnessMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).b * gMetalnessFactor;
+    float roughness = gMetalnessMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).g * gRoughnessFactor;
+    float3 emissive = gEmissiveMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb * gEmissiveFactor.rgb;
+    float3 normalSample = gNormalMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb;
+    //float3 normalSample = gNormalMap.SampleLevel(gSampler, vert.uv, 0).rgb; // No gradients for normal map to avoid artifacts)
+    float3 normal = CalculateNormal(normalize(vert.normal), vert.tangent, normalSample);
+    
+
     
     float3 worldPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     float3 V = -WorldRayDirection();
@@ -563,6 +662,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             reflPayload.color = float3(0, 0, 0);
             reflPayload.recursionDepth = payload.recursionDepth + 1;
             reflPayload.hitT = 0.0f;
+            reflPayload.dDdx = reflect(payload.dDdx, normal);
+            reflPayload.dDdy = reflect(payload.dDdy, normal);
         
             TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, reflPayload);
         
@@ -641,21 +742,9 @@ void ClosestHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersect
 // 4. ANY HIT (Alpha Testing)
 [shader("anyhit")]
 void AnyHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
-{
-    uint triangleIndex = PrimitiveIndex();
-    
-    // Calculate UV to sample alpha
-    // Note: This duplicates fetch logic, but AnyHit needs to be self-contained or use helper
-    uint indexOffset = triangleIndex * 3 * 4;
-    uint3 idx = gIndices.Load3(indexOffset);
-    const uint stride = 56;
-    
-    float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
-    
-    float2 uv0 = asfloat(gVertices.Load2(idx.x * stride + 24));
-    float2 uv1 = asfloat(gVertices.Load2(idx.y * stride + 24));
-    float2 uv2 = asfloat(gVertices.Load2(idx.z * stride + 24));
-    float2 uv = uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
+{    
+    float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);    
+    float2 uv = GetHitUV(PrimitiveIndex(), bary);
 
     float alpha = gAlbedoMap.SampleLevel(gSampler, uv, 0).a * gBaseColorFactor.a;
     
@@ -667,29 +756,20 @@ void AnyHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes a
 
 [shader("anyhit")]
 void AnyHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
-{
-    return;
-    // --- 1. Calculate Alpha (Standard Logic) ---
-    uint triangleIndex = PrimitiveIndex();
-    uint indexOffset = triangleIndex * 3 * 4;
-    uint3 idx = gIndices.Load3(indexOffset);
-    const uint stride = 56;
-    
-    float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
-    float2 uv0 = asfloat(gVertices.Load2(idx.x * stride + 24));
-    float2 uv1 = asfloat(gVertices.Load2(idx.y * stride + 24));
-    float2 uv2 = asfloat(gVertices.Load2(idx.z * stride + 24));
-    float2 uv = uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
-    
-    // Sample alpha
-    float alpha = gAlbedoMap.SampleLevel(gSampler, uv, 0).a * gBaseColorFactor.a;
-
-    // --- 2. SHADOW RAYS: Stochastic Transparency ---
+{  
+    // --- SHADOW RAYS: Stochastic Transparency ---
     // Only apply stochastic logic if this is a shadow ray (checking the flag used in DoShading)
     if ((RayFlags() & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER))
     {
+        // 1. Calculate Barycentrics & UVs
+        float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
+        float2 uv = GetHitUV(PrimitiveIndex(), bary);
+        
+        // 2. Sample Alpha
+        float alpha = gAlbedoMap.SampleLevel(gSampler, uv, 0).a * gBaseColorFactor.a;
+        
+        // 3. Stochastic Alpha Test
         uint2 pixel = DispatchRaysIndex().xy;
-        // Generate seed based on pixel and frame to get noise
         uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
         
         // If the random number is greater than alpha, let the light pass through (IgnoreHit).
