@@ -168,7 +168,7 @@ void D3D12RootSignature::Initialize(ID3D12Device* pDevice, const D3D12_VERSIONED
 	ASSERT_HR(hr, "Failed to create root signature.");
 }
 
-void D3D12RootSignature::InitializeRTGlobalRS(ID3D12Device* pDevice)
+void D3D12RootSignature::InitializeHybridRTGlobalRS(ID3D12Device* pDevice)
 {
 	// --- 1. Define Ranges ---
 	// Range 1: G-Buffer Inputs (Albedo, Normal, Material, Depth, Emissive) -> t0-t4
@@ -209,5 +209,49 @@ void D3D12RootSignature::InitializeRTGlobalRS(ID3D12Device* pDevice)
 	);
 
 	Initialize(pDevice, rtSigDesc);
+}
+
+void D3D12RootSignature::InitializeFullRTGlobalRS(ID3D12Device* pDevice)
+{
+	// --- 1. Define Ranges ---
+
+		// Range A: Split Outputs for DLSS (Diffuse, Spec, Albedo, AlbedoSpec) -> u0-u3
+		// These are contiguous in your heap.
+	CD3DX12_DESCRIPTOR_RANGE1 splitUavRange;
+	splitUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 4, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+
+	// Range B: Final Color Output -> u4
+	// This allows us to bind mUavHandle_CompositeOutput separately.
+	CD3DX12_DESCRIPTOR_RANGE1 finalUavRange;
+	finalUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+
+	CD3DX12_DESCRIPTOR_RANGE1 gbufferUavRange;
+	gbufferUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 3, 5, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+
+	// --- 2. Define Parameters ---
+	CD3DX12_ROOT_PARAMETER1 params[6]{};
+
+	// Param 0: Constant Buffer (b0)
+	params[0].InitAsConstantBufferView(0);
+
+	// Param 1: Split UAV Table (u0-u3)
+	params[1].InitAsDescriptorTable(1, &splitUavRange);
+
+	// Param 2: Final UAV Table (u4)
+	params[2].InitAsDescriptorTable(1, &finalUavRange);
+
+	// Param 3: G-Buffer UAV Table (u5-u7)
+	params[3].InitAsDescriptorTable(1, &gbufferUavRange);
+
+	// Param 4: TLAS SRV (t5)
+	params[4].InitAsShaderResourceView(5);
+
+	// Param 5: Light Buffer SRV (t6)
+	params[5].InitAsShaderResourceView(6);
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC sigDesc;
+	sigDesc.Init_1_1(_countof(params), params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+	Initialize(pDevice, sigDesc);
 }
 

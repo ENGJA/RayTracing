@@ -367,15 +367,19 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
-    <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
     <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
-    <FxCompile Include="Source\Shaders\PixelShader_Masked.hlsl" />
     <FxCompile Include="Source\Shaders\LightPassCS.hlsl" />
     <FxCompile Include="Source\Shaders\TransparentPixelShader.hlsl" />
-    <FxCompile Include="Source\Shaders\Reflections.hlsl" />
     <FxCompile Include="Source\Shaders\CompositeCS.hlsl" />
     <FxCompile Include="Source\Shaders\ToneMapCS.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredRT.hlsl" />
+    <FxCompile Include="Source\Shaders\FullRT.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredPS_Masked.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredPS.hlsl" />
+    <FxCompile Include="Source\Shaders\PhongPS.hlsl" />
+    <FxCompile Include="Source\Shaders\PhongPS_Masked.hlsl" />
+    <FxCompile Include="Source\Shaders\PhongVS.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredVS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

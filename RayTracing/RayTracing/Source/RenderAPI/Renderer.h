@@ -72,7 +72,8 @@ struct DefaultTextures
 enum class RenderMode
 {
 	Hybrid,
-	ForwardPhong
+	ForwardPhong,
+	RayTraced,
 };
 
 /**
@@ -101,6 +102,15 @@ private:
 	D3D12PipelineState mPipelineStatePhongMaskedSingle;
 	D3D12PipelineState mPipelineStatePhongMaskedDouble;
 	void RenderPhong(const Camera& camera);
+
+
+	// RT
+	RayTracingPipeline mFullRTPipeline;
+	D3D12RootSignature mFullRTGlobalRootSignature;
+	void RenderFullRayTraced(const Camera& camera);
+	DescriptorHandle mUavHandle_GBufferNormal;
+	DescriptorHandle mUavHandle_GBufferMaterial;
+	DescriptorHandle mUavHandle_GBufferEmissive;
 
 
 

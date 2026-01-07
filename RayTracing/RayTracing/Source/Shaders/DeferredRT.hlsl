@@ -297,7 +297,7 @@ void RayGen()
                 
                 // Specular part (kS)
                 float3 numerator = NDF * G * F;
-                float denominator = 4.0 * max(dot(normal, V), 0.0f) * NdotL + 0.0001;
+                float denominator = 4.0 * max(dot(normal, V), 0.0f) * NdotL + 0.001;
                 float3 specular = numerator / denominator;                
                 
                 // Diffuse part (kD)
