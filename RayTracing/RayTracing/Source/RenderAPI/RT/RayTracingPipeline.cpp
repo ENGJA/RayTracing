@@ -31,6 +31,7 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	lib->DefineExport(mSettings.closestHit.c_str());
 	lib->DefineExport(mSettings.closestHitTransparent.c_str());
 	lib->DefineExport(mSettings.anyHit.c_str());
+	lib->DefineExport(mSettings.anyHitTransparent.c_str());
 
 	// B. Hit Groups
 	// Combines ClosestHit and AnyHit into one named group "HitGroup"
@@ -40,11 +41,18 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	hitGroup->SetHitGroupExport(mSettings.hitGroup.c_str());
 	hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
+	// Transparent Single-Sided Hit Group
+	auto hitGroupTransparentDouble = pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+	hitGroupTransparentDouble->SetClosestHitShaderImport(mSettings.closestHitTransparent.c_str());
+	hitGroupTransparentDouble->SetAnyHitShaderImport(mSettings.anyHitTransparent.c_str());
+	hitGroupTransparentDouble->SetHitGroupExport(mSettings.hitGroupTransparentDouble.c_str());
+	hitGroupTransparentDouble->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
-	auto hitGroupTransparent = pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-	hitGroupTransparent->SetClosestHitShaderImport(mSettings.closestHitTransparent.c_str());
-	hitGroupTransparent->SetHitGroupExport(mSettings.hitGroupTransparent.c_str());
-	hitGroupTransparent->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+	// Transparent Double-Sided Hit Group
+	auto hitGroupTransparentSingle = pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+	hitGroupTransparentSingle->SetClosestHitShaderImport(mSettings.closestHitTransparent.c_str());
+	hitGroupTransparentSingle->SetHitGroupExport(mSettings.hitGroupTransparentSingle.c_str());
+	hitGroupTransparentSingle->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
 	// C. Root Signatures
 	// Global: Bound once (Output UAV, TLAS, G-Buffer)
@@ -59,7 +67,8 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	auto rootAssoc = pipelineDesc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
 	rootAssoc->SetSubobjectToAssociate(*localRoot);
 	rootAssoc->AddExport(mSettings.hitGroup.c_str());
-	rootAssoc->AddExport(mSettings.hitGroupTransparent.c_str());
+	rootAssoc->AddExport(mSettings.hitGroupTransparentDouble.c_str());
+	rootAssoc->AddExport(mSettings.hitGroupTransparentSingle.c_str());
 
 	// D. Config
 	auto shaderConfig = pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
@@ -124,12 +133,18 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer
 
 	// 4. Write Hit Groups (Per Mesh)
 	void* opaqueHitGroup = props->GetShaderIdentifier(mSettings.hitGroup.c_str());
-	void* transparentHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparent.c_str());
+	void* transDoubleHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparentDouble.c_str());
+	void* transSingleHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparentSingle.c_str());
 
 	int listIndex = 0;
 	for (const auto& meshSpan : meshes)
 	{
-		void* currentHitGroupInfo = (listIndex >= 4) ? transparentHitGroup : opaqueHitGroup;
+		void* currentHitGroupInfo = opaqueHitGroup;
+		if (listIndex == 4)
+			currentHitGroupInfo = transSingleHitGroup;
+		else if (listIndex == 5)
+			currentHitGroupInfo = transDoubleHitGroup;
+
 		for (const auto& mesh : meshSpan)
 		{
 			uint8_t* pDataStart = pData;
