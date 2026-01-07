@@ -42,4 +42,5 @@ public:
 	*/
 	void Initialize(ID3D12Device* pDevice, const D3D12_RESOURCE_DESC& resourceDesc, const D3D12_HEAP_PROPERTIES& heapProps);
 
+	void Reset() { mResource.Reset(); }
 };

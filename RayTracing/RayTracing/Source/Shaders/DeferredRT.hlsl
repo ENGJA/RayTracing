@@ -453,3 +453,10 @@ void ShadowMiss(inout ShadowPayload payload)
 {
     payload.isVisible = true;
 }
+
+
+[shader("closesthit")]
+void ClosestHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+{
+    
+}
