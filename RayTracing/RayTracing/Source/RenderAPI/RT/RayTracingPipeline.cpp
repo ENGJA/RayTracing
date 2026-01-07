@@ -57,8 +57,11 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	auto shaderConfig = pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
 	shaderConfig->Config(mSettings.maxPayloadSize, mSettings.maxAttributeSize);
 
-	auto pipelineConfig = pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-	pipelineConfig->Config(mSettings.maxRecursion);
+
+	UINT maxRecursion = mSettings.maxRecursion + 2;
+	auto pipelineConfig = pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG1_SUBOBJECT>();
+	pipelineConfig->Config(maxRecursion, D3D12_RAYTRACING_PIPELINE_FLAG_SKIP_PROCEDURAL_PRIMITIVES);
+
 
 	// Create
 	HRESULT hr = pDevice->CreateStateObject(pipelineDesc, IID_PPV_ARGS(&mStateObject));
