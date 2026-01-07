@@ -22,17 +22,20 @@ StructuredBuffer<Light> gLights : register(t6);
 
 
 
-cbuffer FrameCB : register(b0)
+cbuffer CBData : register(b0)
 {
     float4x4 vpMatrix : packoffset(c0);
-    float4x4 invViewProj : packoffset(c4); // For reconstructing world position
-    
+    float4x4 invViewProj : packoffset(c4);
     float3 viewPos : packoffset(c8);
     int numLights : packoffset(c8.w);
     int numPointLights : packoffset(c9.x);
     
     int frameCount : packoffset(c9.y);
-    float2 _pad : packoffset(c9.z);
+    int shadowsEnabled : packoffset(c9.z);
+    int reflectionsEnabled : packoffset(c9.w);
+    int maxRecursionDepth : packoffset(c10.x);
+    float3 _pad0 : packoffset(c10.y);
+    Light lights[25] : packoffset(c11);
 };
 
 // --- LOCAL (Space 1 - From SBT) ---
@@ -49,6 +52,7 @@ SamplerState gSampler : register(s0);
 struct RayPayload
 {
     float4 color;
+    uint recursionDepth;
 };
 
 struct ShadowPayload
@@ -274,21 +278,29 @@ void RayGen()
         float NdotL = max(dot(normal, L_central), 0.0f);
         if (NdotL > 0.0f && attenuation > 0.001f)
         {
-            ShadowPayload shadowPayload;
-            shadowPayload.isVisible = false;
+            bool isVisible = true;
             
-            RayDesc ray;
-            ray.Origin = worldPos + normal * bias;
+            if (shadowsEnabled)
+            {
+            
+                ShadowPayload shadowPayload;
+                shadowPayload.isVisible = false;
+            
+                RayDesc ray;
+                ray.Origin = worldPos + normal * bias;
             //ray.Origin = GetShadowRayOrigin(worldPos, normal);
-            ray.Direction = L_shadow;
-            ray.TMin = 0.01;
-            ray.TMax = dist - 0.05f;
+                ray.Direction = L_shadow;
+                ray.TMin = 0.01;
+                ray.TMax = dist - 0.05f;
             
-            static const uint instanceMask = 0x01;
-            TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
+                static const uint instanceMask = 0x01;
+                TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
                      instanceMask, 0, 1, 1, ray, shadowPayload);
             
-            if (shadowPayload.isVisible)
+                isVisible = shadowPayload.isVisible;
+            }
+            
+            if (isVisible)
             {
                 float3 H = normalize(V + L_central);
                 float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
@@ -315,6 +327,7 @@ void RayGen()
     }
     
     // Reflection Trace
+    if (reflectionsEnabled)
     {
         float2 Xi = float2(nextRand(seed), nextRand(seed));
         float3 H = ImportanceSampleGGX(Xi, normal, roughness);
@@ -328,7 +341,9 @@ void RayGen()
             ray.Direction = R;
             ray.TMin = 0.01f;
             ray.TMax = 1000.0f;
-            RayPayload payload = { float4(0, 0, 0, 0) };
+            RayPayload payload;
+            payload.color = float4(0, 0, 0, 0);
+            payload.recursionDepth = 1;            
         
             TraceRay(gScene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
         
@@ -413,6 +428,38 @@ void ClosestHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttribut
             float3 specular = (NDF * G * F) / (4.0 * max(dot(worldNormal, V), 0.0) * NdotL + 0.001);
 
             Lo += (diffuse + specular) * light.diffuseColor.rgb * attenuation * NdotL;
+        }
+    }
+    
+    if (payload.recursionDepth < maxRecursionDepth)
+    {
+        uint seed = initRand(DispatchRaysIndex().x + frameCount * 17, DispatchRaysIndex().y + frameCount * 31);
+        
+        // Generate reflection direction
+        float2 Xi = float2(nextRand(seed), nextRand(seed));
+        float3 H = ImportanceSampleGGX(Xi, N, roughness); // Use N from Step 3
+        float3 R = normalize(reflect(WorldRayDirection(), H));
+
+        if (dot(N, R) > 0.0f)
+        {
+            RayDesc ray;
+            ray.Origin = hitPos + N * 0.001f; // Bias
+            ray.Direction = R;
+            ray.TMin = 0.01f;
+            ray.TMax = 1000.0f;
+
+            // Create new payload for the next bounce
+            RayPayload nextPayload;
+            nextPayload.color = float4(0, 0, 0, 0);
+            nextPayload.recursionDepth = payload.recursionDepth + 1;
+
+            // RECURSIVE CALL
+            TraceRay(gScene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, nextPayload);
+
+            // Add the reflected color to our local result
+            // Scaled by Fresnel (F) calculated in your PBR section
+            float3 F = FresnelSchlick(max(dot(N, -WorldRayDirection()), 0.0f), F0);
+            Lo += nextPayload.color.rgb * F;
         }
     }
 

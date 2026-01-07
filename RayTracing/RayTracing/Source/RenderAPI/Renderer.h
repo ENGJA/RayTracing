@@ -87,6 +87,9 @@ private:
 	DXGISwapChain mSwapChain; ///< Swap chain with back buffers.
 	D3D12CommandList mCommandList; ///< Graphics command list and per-frame allocators.
 
+	bool mShadowsEnabled = true;
+	bool mReflectionsEnabled = true;
+	int mMaxRecursionDepth = 2; // Default
 
 	RenderMode mCurrentRenderMode = RenderMode::ForwardPhong;
 
@@ -497,5 +500,12 @@ public:
 
 	void SetRenderMode(RenderMode mode) { mCurrentRenderMode = mode; }
 	RenderMode GetRenderMode() const { return mCurrentRenderMode; }
+
+	void SetShadowsEnabled(bool enabled) { mShadowsEnabled = enabled; }
+	bool GetShadowsEnabled() const { return mShadowsEnabled; }
+	void SetReflectionsEnabled(bool enabled) { mReflectionsEnabled = enabled; }
+	bool GetReflectionsEnabled() const { return mReflectionsEnabled; }
+	void SetMaxRecursionDepth(int depth) { mMaxRecursionDepth = std::clamp(depth, 1, 3); }
+	int GetMaxRecursionDepth() const { return mMaxRecursionDepth; }
 };
 

@@ -813,8 +813,7 @@ void Renderer::InitializeRayTracing()
 
 
 		RTPipelineSettings reflSettings;
-		reflSettings.maxPayloadSize = sizeof(float) * 4; // Color only
-		reflSettings.maxRecursion = 1;
+		reflSettings.maxPayloadSize = sizeof(float) * 8; // Color + Depth
 		// 3. Initialize Pipeline
 		mReflectionsPipeline.Initialize(mDevice.Get(), &mRtGlobalRootSignature, &localRootSig, libraryShader.GetShaderBlob(), reflSettings);
 	}
@@ -828,8 +827,6 @@ void Renderer::InitializeRayTracing()
 
 		RTPipelineSettings fullRtSettings;
 		fullRtSettings.maxPayloadSize = sizeof(float) * 12; // Color + Depth + HitT
-		fullRtSettings.maxRecursion = 3;
-
 		mFullRTPipeline.Initialize(mDevice.Get(), &mFullRTGlobalRootSignature, &localRootSig, fullRtLibraryShader.GetShaderBlob(), fullRtSettings);
 	}
 	// 4. Build Shader Binding Table (SBT)
@@ -890,6 +887,10 @@ void Renderer::RenderHybrid(const Camera& camera)
 		mConstantBufferData.InvVpMatrix = invViewProj;
 		mConstantBufferData.viewPos = cameraPos;
 		mConstantBufferData.frameCount = mFrameCount;
+
+		mConstantBufferData.shadowsEnabled = mShadowsEnabled ? 1 : 0;
+		mConstantBufferData.reflectionsEnabled = mReflectionsEnabled ? 1 : 0;
+		mConstantBufferData.maxRecursionDepth = mMaxRecursionDepth;
 
 		UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
 		size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes
@@ -1232,6 +1233,10 @@ void Renderer::RenderFullRayTraced(const Camera& camera)
 		mConstantBufferData.InvVpMatrix = invViewProj;
 		mConstantBufferData.viewPos = cameraPos;
 		mConstantBufferData.frameCount = mFrameCount;
+
+		mConstantBufferData.shadowsEnabled = mShadowsEnabled ? 1 : 0;
+		mConstantBufferData.reflectionsEnabled = mReflectionsEnabled ? 1 : 0;
+		mConstantBufferData.maxRecursionDepth = mMaxRecursionDepth;
 
 		UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
 		size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes

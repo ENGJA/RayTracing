@@ -25,6 +25,15 @@ public:
 	using ExitToMainMenuCallback = std::function<void()>;
 	using SetDLSSModeCallback = std::function<void(int)>;
 
+	using SetShadowsEnabledCallback = std::function<void(bool)>;
+	using GetShadowsEnabledCallback = std::function<bool()>;
+
+	using SetReflectionsEnabledCallback = std::function<void(bool)>;
+	using GetReflectionsEnabledCallback = std::function<bool()>;
+
+	using SetMaxRecursionDepthCallback = std::function<void(int)>;
+	using GetMaxRecursionDepthCallback = std::function<int()>;
+
 	/**
 	 * @brief Application states for UI rendering.
 	 */
@@ -127,6 +136,25 @@ public:
 	 */
 	void ClearWarning() { mShowWarning = false; mWarningMessage.clear(); }
 
+
+	void SetShadowsCallbacks(GetShadowsEnabledCallback get, SetShadowsEnabledCallback set)
+	{
+		mGetShadowsEnabled = get;
+		mSetShadowsEnabled = set;
+	}
+
+	void SetReflectionsCallbacks(GetReflectionsEnabledCallback get, SetReflectionsEnabledCallback set)
+	{
+		mGetReflectionsEnabled = get;
+		mSetReflectionsEnabled = set;
+	}
+
+	void SetMaxRecursionDepthCallbacks(GetMaxRecursionDepthCallback get, SetMaxRecursionDepthCallback set)
+	{
+		mGetMaxRecursionDepth = get;
+		mSetMaxRecursionDepth = set;
+	}
+
 private:
 	// Rendering methods
 	void RenderLoadingMenu();
@@ -169,6 +197,15 @@ private:
 	ExitCallback mExitCallback;
 	ExitToMainMenuCallback mExitToMainMenuCallback;
 	SetDLSSModeCallback mSetDLSSModeCallback;
+
+	GetShadowsEnabledCallback mGetShadowsEnabled;
+	SetShadowsEnabledCallback mSetShadowsEnabled;
+
+	GetReflectionsEnabledCallback mGetReflectionsEnabled;
+	SetReflectionsEnabledCallback mSetReflectionsEnabled;
+
+	GetMaxRecursionDepthCallback mGetMaxRecursionDepth;
+	SetMaxRecursionDepthCallback mSetMaxRecursionDepth;
 
 	int mCurrentDLSSMode = 0;
 };
