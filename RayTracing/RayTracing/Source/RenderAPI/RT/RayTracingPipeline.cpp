@@ -29,6 +29,7 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	lib->DefineExport(mSettings.missShader.c_str());
 	lib->DefineExport(mSettings.shadowMissShader.c_str());
 	lib->DefineExport(mSettings.closestHit.c_str());
+	lib->DefineExport(mSettings.closestHitTransparent.c_str());
 	lib->DefineExport(mSettings.anyHit.c_str());
 
 	// B. Hit Groups
@@ -38,6 +39,12 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	hitGroup->SetAnyHitShaderImport(mSettings.anyHit.c_str());
 	hitGroup->SetHitGroupExport(mSettings.hitGroup.c_str());
 	hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+
+
+	auto hitGroupTransparent = pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+	hitGroupTransparent->SetClosestHitShaderImport(mSettings.closestHitTransparent.c_str());
+	hitGroupTransparent->SetHitGroupExport(mSettings.hitGroupTransparent.c_str());
+	hitGroupTransparent->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
 	// C. Root Signatures
 	// Global: Bound once (Output UAV, TLAS, G-Buffer)
@@ -52,6 +59,7 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	auto rootAssoc = pipelineDesc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
 	rootAssoc->SetSubobjectToAssociate(*localRoot);
 	rootAssoc->AddExport(mSettings.hitGroup.c_str());
+	rootAssoc->AddExport(mSettings.hitGroupTransparent.c_str());
 
 	// D. Config
 	auto shaderConfig = pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
@@ -115,15 +123,19 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer
 	pData += mMissSectionSize / 2;
 
 	// 4. Write Hit Groups (Per Mesh)
-	void* hitGroupId = props->GetShaderIdentifier(mSettings.hitGroup.c_str());
+	void* opaqueHitGroup = props->GetShaderIdentifier(mSettings.hitGroup.c_str());
+	void* transparentHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparent.c_str());
+
+	int listIndex = 0;
 	for (const auto& meshSpan : meshes)
 	{
+		void* currentHitGroupInfo = (listIndex >= 4) ? transparentHitGroup : opaqueHitGroup;
 		for (const auto& mesh : meshSpan)
 		{
 			uint8_t* pDataStart = pData;
 
 			// A. Copy Shader ID for "HitGroup"
-			memcpy(pData, hitGroupId, shaderIDSize);
+			memcpy(pData, currentHitGroupInfo, shaderIDSize);
 			pData += shaderIDSize;
 
 			// B. Copy Root Argument: The GPU Pointer to the Index Buffer
@@ -148,6 +160,7 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer
 
 			pData = pDataStart + recordSize; // Advance to next record (considering alignment)
 		}
+		listIndex++;
 	}
 
 	mSBTStorage.Get()->Unmap(0, nullptr);
