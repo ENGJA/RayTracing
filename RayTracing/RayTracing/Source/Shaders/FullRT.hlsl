@@ -71,6 +71,11 @@ struct RayPayload
     
     float3 dDdx; // Change in ray direction per pixel X
     float3 dDdy; // Change in ray direction per pixel Y
+    
+    float4 blendAlbedo;
+    float3 blendDiffuse;
+    float3 blendF0;
+    float2 blendMaterial;
 };
 
 struct ShadowPayload
@@ -308,6 +313,10 @@ void RayGen()
     payload.hitT = 0.0f;
     payload.dDdx = rayDirRight - rayDir;
     payload.dDdy = rayDirDown - rayDir;
+    payload.blendAlbedo = float4(0, 0, 0, 0);
+    payload.blendDiffuse = float3(0, 0, 0);
+    payload.blendF0 = float3(0, 0, 0);
+    payload.blendMaterial = float2(0, 0);
 
     // Trace Primary Ray
     TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, payload);
@@ -355,6 +364,10 @@ void Miss(inout RayPayload payload)
 
     payload.color = sky; // Sky is diffuse for now    
     payload.hitT = -1.0f;
+    payload.blendAlbedo = float4(sky, 1.0f);
+    payload.blendDiffuse = float3(0, 0, 0);
+    payload.blendF0 = float3(0, 0, 0);
+    payload.blendMaterial = float2(0, 0);
 }
 
 [shader("miss")]
@@ -641,6 +654,10 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     // Combined = (Irradiance * Albedo) + Specular + Emissive + Reflections
     float3 myFinalColor = (directDiffuseIrradiance * albedo) + directSpecular + emissive + reflectedColor;
 
+    float4 myAlbedo = float4(albedo, alpha);
+    float3 myDiffuse = directDiffuseIrradiance;
+    float3 myF0 = F0;
+    float2 myMaterial = float2(roughness, metalness);
     // --- Recursive Transparency ---
     if (isTransparent && payload.recursionDepth < maxRecursionDepth)
     {
@@ -654,16 +671,31 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         transPayload.color = float3(0, 0, 0);
         transPayload.recursionDepth = payload.recursionDepth + 1;
         transPayload.hitT = 0.0f;
+        transPayload.blendAlbedo = float4(0, 0, 0, 0);
+        transPayload.blendDiffuse = float3(0, 0, 0);
+        transPayload.blendF0 = float3(0, 0, 0);
+        transPayload.blendMaterial = float2(0, 0);
 
         TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, transRay, transPayload);
 
         // Blend with background
         myFinalColor = lerp(transPayload.color, myFinalColor, alpha);
+        myAlbedo = lerp(transPayload.blendAlbedo, myAlbedo, alpha);
+        myDiffuse = lerp(transPayload.blendDiffuse, myDiffuse, alpha);
+        myF0 = lerp(transPayload.blendF0, myF0, alpha);        
+        myMaterial = lerp(transPayload.blendMaterial, myMaterial, alpha);
+    }
+    else if (!isTransparent)
+    {
+        myAlbedo.a = 1.0f;
     }
 
     // --- Output to Payload (Pass up the stack) ---
     payload.color = myFinalColor;
     payload.hitT = RayTCurrent();
+    payload.blendAlbedo = myAlbedo;
+    payload.blendDiffuse = myDiffuse;
+    payload.blendMaterial = myMaterial;
 
     // --- Write Split Buffers (Only for Primary Ray) ---
     if (payload.recursionDepth == 0)
@@ -671,20 +703,23 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         uint2 pixel = DispatchRaysIndex().xy;
         
         // Write Demodulated Diffuse (Irradiance)
-        gOutDiffuse[pixel] = float4(directDiffuseIrradiance, 1.0f);
+        //gOutDiffuse[pixel] = float4(directDiffuseIrradiance, 1.0f);
+        gOutDiffuse[pixel] = float4(myDiffuse, 1.0f);
         
         // Write Specular (Direct + Reflection)
         // Note: Reflections are technically 'Indirect Specular', often stored in same buffer or separate depending on denoiser.
         // For standard composition: Specular = DirectSpec + Reflections
         gOutSpecular[pixel] = float4(directSpecular + reflectedColor, 1.0f);
         
-        gOutAlbedo[pixel] = float4(albedo, alpha);
-        gOutAlbedoSpecular[pixel] = float4(F0, 1.0f);
+        //gOutAlbedo[pixel] = float4(albedo, alpha);
+        gOutAlbedo[pixel] = myAlbedo;
+        gOutAlbedoSpecular[pixel] = float4(myF0, 1.0f);
         
         gOutNormal[pixel] = float4(normal, 0.0f);
         gOutEmissive[pixel] = float4(emissive, 1.0f);
         //    Matches DeferredRT.hlsl packing: x=Roughness, y=Metalness
-        gOutMaterial[pixel] = float2(roughness, metalness);
+        //gOutMaterial[pixel] = float2(roughness, metalness);
+        gOutMaterial[pixel] = myMaterial;
     }
 }
 
