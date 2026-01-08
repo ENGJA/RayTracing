@@ -519,7 +519,7 @@ public:
 	bool GetShadowsEnabled() const { return mShadowsEnabled; }
 	void SetReflectionsEnabled(bool enabled) { mReflectionsEnabled = enabled; }
 	bool GetReflectionsEnabled() const { return mReflectionsEnabled; }
-	void SetMaxRecursionDepth(int depth) { mMaxRecursionDepth = std::clamp(depth, 1, 3); }
+	void SetMaxRecursionDepth(UINT depth) { mMaxRecursionDepth = std::clamp(depth, 1u, Config::cMaxRecursionDepth); }
 	int GetMaxRecursionDepth() const { return mMaxRecursionDepth; }
 
 
