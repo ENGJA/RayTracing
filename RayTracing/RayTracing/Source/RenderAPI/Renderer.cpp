@@ -451,11 +451,40 @@ void Renderer::SetDLSSMode(sl::DLSSMode mode)
 	if (mDLSSMode == mode)
 		return;
 
+	mCommandQueue.Flush();
+
+	if (mDLSSRREnabled)
+	{
+		slFreeResources(sl::kFeatureDLSS_RR, mSlViewport);
+		mDLSSRREnabled = false;
+	}
+
 	mDLSSMode = mode;
-	wcout << "DLSS Mode changed to: " << static_cast<int>(mode) << endl;
+	std::cout << "DLSS Mode changed to: " << static_cast<int>(mode) << endl;
+
+
+	if (mDLSSMode != sl::DLSSMode::eOff)
+	{
+		// If turning on (or switching quality), InitializeDLSSRR will:
+		// - Calculate the optimal mRenderWidth / mRenderHeight based on the mode
+		// - Set mDLSSRREnabled = true
+		// - Allocate specific DLSS resources
+		InitializeDLSSRR();
+	}
+	else
+	{
+		mRenderWidth = mWidth;
+		mRenderHeight = mHeight;
+	}
+	InitializeDepthBuffer();
+	InitializeGBufferResources();
+	InitializeCompositeResources();
+	InitializeReflectionResources();
+	InitializeTonemapResources();
+	std::cout << "Render resolution updated to: " << mRenderWidth << "x" << mRenderHeight << endl;
 
 	// TODO: change after DLSS reinit fix
-	OnResize(mWidth, mHeight);
+	//OnResize(mWidth, mHeight);
 
 	//if (mDLSSRREnabled)
 	//{
@@ -1129,8 +1158,18 @@ void Renderer::RenderHybrid(const Camera& camera)
 		}
 		else
 		{
-			// not implemented
-			throw std::logic_error("Not implemented");
+			D3D12_RESOURCE_BARRIER barriers[] =
+			{
+				// Transition Composite Output: UAV -> SRV (Input for Tonemapping)
+				CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+
+				// Cleanup Reflection Inputs (mirroring DLSS path cleanup)
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+			};
+			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 		}
 	}
 
@@ -1388,8 +1427,26 @@ void Renderer::RenderFullRayTraced(const Camera& camera)
 	}
 	else
 	{
-		// not implemented
-		throw std::logic_error("Not implemented");
+D3D12_RESOURCE_BARRIER barriers[] =
+        {
+            // Transition Composite Output: UAV -> SRV
+            CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+
+            // Cleanup Inputs
+            CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoSpecularTex.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+            
+            // Cleanup G-Buffer/Depth (mirroring DLSS path)
+            CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+            CD3DX12_RESOURCE_BARRIER::Transition(mRTDepthTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON)
+        };
+        mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);    
 	}
 }
 
@@ -2484,22 +2541,33 @@ void Renderer::Update(const Camera& camera)
 		{
 			RenderHybrid(camera);
 			tonemapInputSrv = mSrvHandle_DlssOutput;
-			D3D12_RESOURCE_BARRIER barriers[]
+			if (mDLSSRREnabled)
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-			};
-			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+				tonemapInputSrv = mSrvHandle_DlssOutput;
+				// Transition DLSS Output for reading
+				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+				mCommandList.Get()->ResourceBarrier(1, &barrier);
+			}
+			else
+			{
+				// If DLSS is off, RenderHybrid prepared CompositeTexture as SRV
+				tonemapInputSrv = mSrvHandle_CompositeOutput;
+			}
 			break;
 		}
 		case RenderMode::RayTraced:
 		{
 			RenderFullRayTraced(camera);
-			tonemapInputSrv = mSrvHandle_DlssOutput;
-			D3D12_RESOURCE_BARRIER barriers[]
+			if (mDLSSRREnabled)
 			{
-				CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-			};
-			mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
+				tonemapInputSrv = mSrvHandle_DlssOutput;
+				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+				mCommandList.Get()->ResourceBarrier(1, &barrier);
+			}
+			else
+			{
+				tonemapInputSrv = mSrvHandle_CompositeOutput;
+			}
 			break;
 		}
 		}
@@ -2577,32 +2645,69 @@ void Renderer::Update(const Camera& camera)
 			}
 			case RenderMode::Hybrid:
 			{
-				D3D12_RESOURCE_BARRIER cleanup[]
+				std::vector<D3D12_RESOURCE_BARRIER> cleanup =
 				{
 					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-					//		CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
-							CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-							//CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-							//CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-							CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-							CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_READ, D3D12_RESOURCE_STATE_COMMON),
-							CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_READ, D3D12_RESOURCE_STATE_COMMON),
+					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),			
 				};
-				mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+
+				if (mDLSSRREnabled)
+				{
+					// DLSS was enabled: Cleanup DLSS Output
+					cleanup.push_back(CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+					// Note: CompositeTexture was already moved to COMMON inside RenderHybrid's DLSS block
+				}
+				else
+				{
+					// DLSS was disabled: CompositeTexture was used as ToneMap input, so it is still in SRV state
+					cleanup.push_back(CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+				}
+
+				//D3D12_RESOURCE_BARRIER cleanup[]
+				//{
+				//	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferAlbedo.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//	//		CD3DX12_RESOURCE_BARRIER::Transition(mTonemapOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//			CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//			//CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//			//CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//			CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//			CD3DX12_RESOURCE_BARRIER::Transition(mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_DEPTH_READ, D3D12_RESOURCE_STATE_COMMON),
+				//			CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//};
+				mCommandList.Get()->ResourceBarrier(static_cast<UINT>(cleanup.size()), cleanup.data());
 				break;
 			}
 			case RenderMode::RayTraced:
 			{
-				D3D12_RESOURCE_BARRIER cleanup[]
+				std::vector<D3D12_RESOURCE_BARRIER> cleanup =
 				{
 					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 					CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 				};
-				mCommandList.Get()->ResourceBarrier(_countof(cleanup), cleanup);
+
+				if (mDLSSRREnabled)
+				{
+					cleanup.push_back(CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+				}
+				else
+				{
+					cleanup.push_back(CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+				}
+
+				//D3D12_RESOURCE_BARRIER cleanup[]
+				//{
+				//	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//	CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				//};
+				mCommandList.Get()->ResourceBarrier(static_cast<UINT>(cleanup.size()), cleanup.data());
 				break;
 			}
 			}
