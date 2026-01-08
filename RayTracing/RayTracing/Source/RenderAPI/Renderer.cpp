@@ -840,7 +840,7 @@ void Renderer::InitializeRayTracing()
 		//HLSLShader fullRtLibraryShader = mShaderCompiler.LoadFromCso(L"../x64/Debug/FullRT.cso");
 
 		RTPipelineSettings fullRtSettings;
-		fullRtSettings.maxPayloadSize = sizeof(float) * 12; // Color + Depth + HitT
+		fullRtSettings.maxPayloadSize = sizeof(float) * 23; 
 		mFullRTPipeline.Initialize(mDevice.Get(), &mFullRTGlobalRootSignature, &localRootSig, fullRtLibraryShader.GetShaderBlob(), fullRtSettings);
 	}
 	// 4. Build Shader Binding Table (SBT)
