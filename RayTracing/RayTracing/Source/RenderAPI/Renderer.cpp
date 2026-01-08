@@ -1766,13 +1766,9 @@ void Renderer::SetSunDirection(float x, float y, float z)
 
 	if (mSunIndex >= 0)
 	{
-		LightData& sun = mStaticLights.back();
+		LightData& sun = mStaticLights[mSunIndex];
 		if (sun.dirType.w > 0.5f) // Directional light
-		{
-			sun.dirType.x = mSunDirection.x;
-			sun.dirType.y = mSunDirection.y;
-			sun.dirType.z = mSunDirection.z;
-		}
+			sun.dirType = { x, y, z, 1.0f };
 
 		UploadLightsToGPU();
 	}
