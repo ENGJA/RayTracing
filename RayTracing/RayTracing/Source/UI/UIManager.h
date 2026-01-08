@@ -31,8 +31,8 @@ public:
 	using SetReflectionsEnabledCallback = std::function<void(bool)>;
 	using GetReflectionsEnabledCallback = std::function<bool()>;
 
-	using SetMaxRecursionDepthCallback = std::function<void(int)>;
-	using GetMaxRecursionDepthCallback = std::function<int()>;
+	using SetMaxRecursionDepthCallback = std::function<void(UINT)>;
+	using GetMaxRecursionDepthCallback = std::function<UINT()>;
 
 	using SetSunDirectionCallback = std::function<void(float, float, float)>;
 	using GetSunDirectionCallback = std::function<DirectX::XMFLOAT3()>;
