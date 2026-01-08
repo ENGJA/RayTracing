@@ -1913,6 +1913,9 @@ void Renderer::UpdateCameraJitter()
 	float jitterX = halton(jitterIndex, 2) - 0.5f;
 	float jitterY = halton(jitterIndex, 3) - 0.5f;
 
+	mJitterPixels.x = jitterX;
+	mJitterPixels.y = jitterY;
+
 	mJitter.x = jitterX / static_cast<float>(mRenderWidth);
 	mJitter.y = jitterY / static_cast<float>(mRenderHeight);
 }
@@ -1945,7 +1948,7 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 	DirectX::XMMATRIX prevClipToClip = DirectX::XMMatrixInverse(nullptr, clipToPrevClip);
 	slConstants.prevClipToClip = XMMatrixToSLFloat4x4(prevClipToClip);
 
-	slConstants.jitterOffset = sl::float2(mJitter.x, mJitter.y);
+	slConstants.jitterOffset = sl::float2(mJitterPixels.x, mJitterPixels.y);
 
 	slConstants.mvecScale = sl::float2(1.0f / static_cast<float>(mRenderWidth), 1.0f / static_cast<float>(mRenderHeight));
 

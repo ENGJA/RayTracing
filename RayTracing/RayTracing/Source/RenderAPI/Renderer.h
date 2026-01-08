@@ -272,6 +272,7 @@ private:
 	uint32_t mRenderHeight = 0;
 
 	DirectX::XMFLOAT2 mJitter = { 0.0f, 0.0f };
+	DirectX::XMFLOAT2 mJitterPixels = { 0.0f, 0.0f };
 
 	bool mDLSSRREnabled = false;
 	bool mStreamlineInitialized = false;
