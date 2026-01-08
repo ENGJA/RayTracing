@@ -292,6 +292,8 @@ private:
 
 	void AllocateHandles();
 	void InitializeDepthBuffer();
+	void InitializeRayTracingPipelines();
+	void BuildRayTracingAccelerationStructures();
 
 public:
 	void SetDLSSMode(sl::DLSSMode mode);
