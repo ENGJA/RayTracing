@@ -4,17 +4,16 @@
 // --- GLOBAL RESOURCES (Space 0) ---
 // ===============================================================================================
 
-// Output UAVs (Matches DeferredRT for DLSS)
-RWTexture2D<float4> gOutDiffuse : register(u0); // Diffuse Radiance
-RWTexture2D<float4> gOutSpecular : register(u1); // Specular Radiance
-RWTexture2D<float4> gOutAlbedo : register(u2); // Base Color (Albedo)
-RWTexture2D<float4> gOutAlbedoSpecular : register(u3); // Specular Albedo (F0)
-RWTexture2D<float4> gOutColor : register(u4); // FINAL Merged Output (No CompositeCS needed)
+// Group A: Outputs
+RWTexture2D<float4> gOutColor : register(u0); // Final Color
+RWTexture2D<float4> gOutAlbedo : register(u1); // Base Color
+RWTexture2D<float4> gOutAlbedoSpecular : register(u2); // F0
 
-RWTexture2D<float4> gOutNormal : register(u5); // World Space Normals
-RWTexture2D<float4> gOutEmissive : register(u6); // Emissive
-RWTexture2D<float2> gOutMaterial : register(u7); // Roughness/Metalness (matches G-Buffer format)
-RWTexture2D<float> gOutDepth : register(u8);    // depth
+// Group B: G-Buffer Data (Shifted down from u5)
+RWTexture2D<float4> gOutNormal : register(u3);
+RWTexture2D<float4> gOutEmissive : register(u4);
+RWTexture2D<float2> gOutMaterial : register(u5);
+RWTexture2D<float> gOutDepth : register(u6);
 
 RaytracingAccelerationStructure gScene : register(t5);
 StructuredBuffer<Light> gLights : register(t6);
@@ -341,8 +340,8 @@ void RayGen()
         // === MISS CASE ===
         // Note: Albedo and F0 are written inside ClosestHit for the primary ray.
         // If it was a miss, we clear them here to be safe.
-        gOutDiffuse[pixel] = float4(0, 0, 0, 0);
-        gOutSpecular[pixel] = float4(0, 0, 0, 0);
+        //gOutDiffuse[pixel] = float4(0, 0, 0, 0);
+        //gOutSpecular[pixel] = float4(0, 0, 0, 0);
         gOutAlbedo[pixel] = float4(0, 0, 0, 0);
         gOutAlbedoSpecular[pixel] = float4(0, 0, 0, 0);
         gOutNormal[pixel] = float4(0, 0, 0, 0);
@@ -704,12 +703,12 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         
         // Write Demodulated Diffuse (Irradiance)
         //gOutDiffuse[pixel] = float4(directDiffuseIrradiance, 1.0f);
-        gOutDiffuse[pixel] = float4(myDiffuse, 1.0f);
+        //gOutDiffuse[pixel] = float4(myDiffuse, 1.0f);
         
         // Write Specular (Direct + Reflection)
         // Note: Reflections are technically 'Indirect Specular', often stored in same buffer or separate depending on denoiser.
         // For standard composition: Specular = DirectSpec + Reflections
-        gOutSpecular[pixel] = float4(directSpecular + reflectedColor, 1.0f);
+        //gOutSpecular[pixel] = float4(directSpecular + reflectedColor, 1.0f);
         
         //gOutAlbedo[pixel] = float4(albedo, alpha);
         gOutAlbedo[pixel] = myAlbedo;
