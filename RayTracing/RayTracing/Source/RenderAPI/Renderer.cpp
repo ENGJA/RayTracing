@@ -240,6 +240,7 @@ void Renderer::BuildMeshGpuData()
 void Renderer::CollectStaticLights()
 {
 	mStaticLights.clear();
+	mSunIndex = -1;
 	vector<LightData> dirLights;
 	for (const auto& modelPtr : mModels)
 	{
@@ -261,36 +262,49 @@ void Renderer::CollectStaticLights()
 		}
 	}
 
-	int pointLightCount = static_cast<int>(mStaticLights.size());
 	// Append directional lights at the end
 	mStaticLights.insert(mStaticLights.end(), dirLights.begin(), dirLights.end());
 
 	if (mStaticLights.size() < cMaxLights)
 	{
+		mSunIndex = static_cast<int>(mStaticLights.size()); // Capture index
 		LightData sunLight{};
-		sunLight.dirType = DirectX::XMFLOAT4(0.2f, -1.0f, 0.2f, 1.0f); // directional flag
+		sunLight.dirType = DirectX::XMFLOAT4(mSunDirection.x, mSunDirection.y, mSunDirection.z, 1.0f); // directional flag
+
+		DirectX::XMFLOAT3 finalColor = mSunEnabled ? mSunColor : DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
 		sunLight.diffuseColor = DirectX::XMFLOAT4(1.0f, 1.0f, 0.9f, 1.0f);
 		sunLight.specularColor = DirectX::XMFLOAT4(1.0f, 1.0f, 0.9f, 1.0f);
 		mStaticLights.push_back(sunLight);
 	}
 
-	// Copy static lights once into CPU-side constant buffer data so Update doesn't have to re-create them.
-	int staticCount = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
-	memcpy(mConstantBufferData.lights, mStaticLights.data(), staticCount * sizeof(LightData));
-	mConstantBufferData.numLights = staticCount;
+	UploadLightsToGPU();
+}
+
+void Renderer::UploadLightsToGPU()
+{
+	int totalLights = static_cast<int>(std::min<size_t>(mStaticLights.size(), cMaxLights));
+	int pointLightCount = 0;
+	for (int i = 0; i < totalLights; ++i)
+	{
+		// dirType.w: 0 = Point, 1 = Directional
+		if (mStaticLights[i].dirType.w < 0.5f)
+			pointLightCount++;
+		else
+			break;
+	}
+
+	memcpy(mConstantBufferData.lights, mStaticLights.data(), totalLights * sizeof(LightData));
+	mConstantBufferData.numLights = totalLights;
 	mConstantBufferData.numPointLights = pointLightCount;
 
+	void* pData;
+	D3D12_RANGE readRange = { 0, 0 }; // We do not intend to read from this resource on the CPU.
 
-	{
-		void* pData;
-		D3D12_RANGE readRange = { 0, 0 }; // We do not intend to read from this resource on the CPU.
+	HRESULT hr = mGlobalLightBuffer.Get()->Map(0, &readRange, &pData);
+	ASSERT_HR(hr, "Failed to map constant buffer for light update.");
 
-		HRESULT hr = mGlobalLightBuffer.Get()->Map(0, &readRange, &pData);
-		ASSERT_HR(hr, "Failed to map constant buffer for light update.");
-
-		memcpy(pData, mStaticLights.data(), mStaticLights.size() * sizeof(LightData));
-		mGlobalLightBuffer.Get()->Unmap(0, nullptr);
-	}
+	memcpy(pData, mStaticLights.data(), mStaticLights.size() * sizeof(LightData));
+	mGlobalLightBuffer.Get()->Unmap(0, nullptr);
 }
 
 void Renderer::CreateTextureView(ID3D12Resource* resource, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE handle, UINT mipLevels)
@@ -1717,6 +1731,51 @@ void Renderer::InitializeStreamline()
 
 	mStreamlineInitialized = true;
 	std::cout << "Streamline initialized successfully." << std::endl;
+}
+
+void Renderer::SetSunColor(float r, float g, float b)
+{
+	mSunColor = { r, g, b };
+
+	if (mSunIndex >= 0)
+	{
+		mStaticLights[mSunIndex].diffuseColor = { r, g, b, 1.0f };
+		mStaticLights[mSunIndex].specularColor = { r, g, b, 1.0f };
+		UploadLightsToGPU();
+	}
+}
+
+void Renderer::SetSunEnabled(bool enabled)
+{
+	mSunEnabled = enabled;
+	if (mSunIndex >= 0)
+	{
+		DirectX::XMFLOAT3 c = mSunEnabled ? mSunColor : DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+
+		mStaticLights[mSunIndex].diffuseColor = { c.x, c.y, c.z, 1.0f };
+		mStaticLights[mSunIndex].specularColor = { c.x, c.y, c.z, 1.0f };
+		UploadLightsToGPU();
+	}
+}
+
+void Renderer::SetSunDirection(float x, float y, float z)
+{
+	DirectX::XMVECTOR vDir = DirectX::XMVectorSet(x, y, z, 0.0f);
+	vDir = DirectX::XMVector3Normalize(vDir);
+	DirectX::XMStoreFloat3(&mSunDirection, vDir);
+
+	if (mSunIndex >= 0)
+	{
+		LightData& sun = mStaticLights.back();
+		if (sun.dirType.w > 0.5f) // Directional light
+		{
+			sun.dirType.x = mSunDirection.x;
+			sun.dirType.y = mSunDirection.y;
+			sun.dirType.z = mSunDirection.z;
+		}
+
+		UploadLightsToGPU();
+	}
 }
 
 void Renderer::InitializeDLSSRR()

@@ -91,6 +91,12 @@ private:
 	bool mReflectionsEnabled = true;
 	int mMaxRecursionDepth = 2; // Default
 
+	DirectX::XMFLOAT3 mSunDirection = { 0.2f, -1.0f, 0.2f };
+	DirectX::XMFLOAT3 mSunColor = { 1.0f, 1.0f, 0.9f }; // Default sun color
+	bool mSunEnabled = true;                            // Default state
+	int mSunIndex = -1;                                 // Track sun's index in mStaticLights
+
+
 	RenderMode mCurrentRenderMode = RenderMode::ForwardPhong;
 
 	// Phong 
@@ -337,6 +343,8 @@ public:
 	*/
 	void CollectStaticLights();
 
+	void UploadLightsToGPU();
+
 	/**
 	* @brief Creates a shader resource view for a texture resource.
 	* @param resource Texture resource.
@@ -399,6 +407,7 @@ public:
 	void SetAllResourcesNames();
 
 	void RenderHybrid(const Camera& camera);
+
 public:
 	/**
 	 * @brief Creates device/swap chain and initializes resources.
@@ -507,5 +516,15 @@ public:
 	bool GetReflectionsEnabled() const { return mReflectionsEnabled; }
 	void SetMaxRecursionDepth(int depth) { mMaxRecursionDepth = std::clamp(depth, 1, 3); }
 	int GetMaxRecursionDepth() const { return mMaxRecursionDepth; }
+
+
+	void SetSunColor(float r, float g, float b);
+	DirectX::XMFLOAT3 GetSunColor() const { return mSunColor; }
+
+	void SetSunEnabled(bool enabled);
+	bool GetSunEnabled() const { return mSunEnabled; }
+
+	void SetSunDirection(float x, float y, float z);
+	DirectX::XMFLOAT3 GetSunDirection() const { return mSunDirection; }
 };
 
