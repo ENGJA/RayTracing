@@ -14,6 +14,7 @@ RWTexture2D<float4> gOutColor : register(u4); // FINAL Merged Output (No Composi
 RWTexture2D<float4> gOutNormal : register(u5); // World Space Normals
 RWTexture2D<float4> gOutEmissive : register(u6); // Emissive
 RWTexture2D<float2> gOutMaterial : register(u7); // Roughness/Metalness (matches G-Buffer format)
+RWTexture2D<float> gOutDepth : register(u8);    // depth
 
 RaytracingAccelerationStructure gScene : register(t5);
 StructuredBuffer<Light> gLights : register(t6);
@@ -313,10 +314,24 @@ void RayGen()
 
     gOutColor[pixel] = float4(payload.color, 1.0f);
     
-    // Note: Albedo and F0 are written inside ClosestHit for the primary ray.
-    // If it was a miss, we clear them here to be safe.
-    if (payload.hitT < 0.0f)
+    float depth = 1.0f;
+    if (payload.hitT >= 0.0f)
     {
+        // === HIT CASE ===
+        // 1. Reconstruct World Position
+        float3 hitWorldPos = ray.Origin + ray.Direction * payload.hitT;
+
+        // 2. Project to Clip Space
+        float4 clipPos = mul(vpMatrix, float4(hitWorldPos, 1.0f));
+
+        // 3. Calculate Depth
+        depth = clipPos.z / clipPos.w;
+    }
+    else
+    {
+        // === MISS CASE ===
+        // Note: Albedo and F0 are written inside ClosestHit for the primary ray.
+        // If it was a miss, we clear them here to be safe.
         gOutDiffuse[pixel] = float4(0, 0, 0, 0);
         gOutSpecular[pixel] = float4(0, 0, 0, 0);
         gOutAlbedo[pixel] = float4(0, 0, 0, 0);
@@ -325,6 +340,8 @@ void RayGen()
         gOutEmissive[pixel] = float4(0, 0, 0, 0);
         gOutMaterial[pixel] = float2(0, 0);
     }
+    
+    gOutDepth[pixel] = depth;
 }
 
 // 2. MISS SHADERS
