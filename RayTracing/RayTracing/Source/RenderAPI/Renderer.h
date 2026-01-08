@@ -116,7 +116,7 @@ private:
 	// RT
 	RayTracingPipeline mFullRTPipeline;
 	D3D12RootSignature mFullRTGlobalRootSignature;
-	void RenderFullRayTraced(const Camera& camera);
+	void RenderFullRayTraced(const Camera& camera, size_t cbOffset);
 	DescriptorHandle mUavHandle_GBufferNormal;
 	DescriptorHandle mUavHandle_GBufferMaterial;
 	DescriptorHandle mUavHandle_GBufferEmissive;
@@ -198,8 +198,8 @@ private:
 
 	D3D12Resource mGlobalLightBuffer; ///< Structured buffer for global lights.
 
-	D3D12Resource mOutDiffuseTex;
-	D3D12Resource mOutSpecularTex;
+	//D3D12Resource mOutDiffuseTex;
+	//D3D12Resource mOutSpecularTex;
 
 
 	// --- Descriptor Indices (Saved during initialization) ---
@@ -235,10 +235,10 @@ private:
 
 	RayTracingPipeline mReflectionsPipeline;
 
-	DescriptorHandle mUavHandle_Diffuse;
-	DescriptorHandle mUavHandle_Specular;
-	DescriptorHandle mSrvHandle_Diffuse;
-	DescriptorHandle mSrvHandle_Specular;
+	//DescriptorHandle mUavHandle_Diffuse;
+	//DescriptorHandle mUavHandle_Specular;
+	//DescriptorHandle mSrvHandle_Diffuse;
+	//DescriptorHandle mSrvHandle_Specular;
 
 	D3D12RootSignature mCompositeRootSignature;
 	D3D12PipelineState mPipelineStateComposite;
@@ -296,6 +296,7 @@ private:
 	void InitializeRayTracingPipelines();
 	void BuildRayTracingAccelerationStructures();
 
+	void ToneMap(D3D12_GPU_DESCRIPTOR_HANDLE srcSrvHandle, ID3D12Resource* srcResource);
 public:
 	void SetDLSSMode(sl::DLSSMode mode);
 	sl::DLSSMode GetDLSSMode() const { return mDLSSMode; }
@@ -412,7 +413,7 @@ public:
 
 	void SetAllResourcesNames();
 
-	void RenderHybrid(const Camera& camera);
+	void RenderHybrid(const Camera& camera, size_t cbOffset);
 
 public:
 	/**
@@ -442,6 +443,8 @@ public:
 	 * @param cameraForward Camera forward direction.
 	 */
 	void Update(const Camera& camera);
+
+	void CopyTonemapToSwapChain();
 
 	/**
 	 * @brief Loads a scene from an already-loaded Model (for async loading).
