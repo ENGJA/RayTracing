@@ -400,6 +400,8 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 	mRayTracingBuilder.Initialize(mDevice.Get(), mCommandList.Get(), &mCommandQueue);
 
+	InitializeRayTracingPipelines();
+
 	// set viewport and scissor rect
 	mViewport.TopLeftX = 0.0f;
 	mViewport.TopLeftY = 0.0f;
@@ -430,7 +432,11 @@ void Renderer::Initialize(HWND hwnd, UINT width, UINT height)
 
 
 	// For debugging: recompile shaders on 'G' key press
-	InputManager::Instance.RegisterKeyPressedCallback('G', std::bind(&Renderer::InitializePipelineState, this));
+	InputManager::Instance.RegisterKeyPressedCallback('G',
+		[this]() {
+			this->InitializePipelineState();
+			this->InitializeRayTracingPipelines();
+		});
 	InputManager::Instance.RegisterKeyPressedCallback('H', std::bind(&Renderer::SetRenderMode, this, RenderMode::Hybrid));
 	InputManager::Instance.RegisterKeyPressedCallback('P', std::bind(&Renderer::SetRenderMode, this, RenderMode::ForwardPhong));
 	InputManager::Instance.RegisterKeyPressedCallback('R', std::bind(&Renderer::SetRenderMode, this, RenderMode::RayTraced));
@@ -662,7 +668,7 @@ bool Renderer::LoadMultipleScenes(std::vector<std::unique_ptr<Model>> models)
 	try
 	{
 		std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
-		InitializeRayTracing();
+		BuildRayTracingAccelerationStructures();
 		std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
 		std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
 		wcout << "Ray tracing structures built in " << rtElapsedSeconds.count() << " seconds." << endl;
@@ -1112,8 +1118,12 @@ void Renderer::RenderHybrid(const Camera& camera)
 				//					CD3DX12_RESOURCE_BARRIER::Transition(mComputeOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET),
 				//					CD3DX12_RESOURCE_BARRIER::Transition(mDLSSOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
 									// Transitions for next frame (inputs back to common/UAV if needed? usually handled at start of frame)
-									CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-									CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutDiffuseTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoSpecularTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+				CD3DX12_RESOURCE_BARRIER::Transition(mCompositeOutputTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+
 			};
 			mCommandList.Get()->ResourceBarrier(_countof(restoreBarriers), restoreBarriers);
 		}
@@ -2101,6 +2111,136 @@ void Renderer::InitializeDepthBuffer()
 	mDevice.Get()->CreateShaderResourceView(mDepthBuffer.GetResource(), &depthSrv, mSrvHandle_Depth.cpuHandle);
 }
 
+void Renderer::InitializeRayTracingPipelines()
+{
+	CD3DX12_ROOT_PARAMETER1 localParams[4]{};
+
+	// Param 0: Index buffer (t0)
+	localParams[0].InitAsShaderResourceView(0, 1);
+
+	// Param 1: Vertex buffer (t1)
+	localParams[1].InitAsShaderResourceView(1, 1);
+
+	// Param 2: Texture table (t2)
+	CD3DX12_DESCRIPTOR_RANGE1 texRange{};
+	texRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 2, 1); // t0-t4 space1
+	localParams[2].InitAsDescriptorTable(1, &texRange);
+
+	localParams[3].InitAsConstants(sizeof(MeshMaterialData) / 4, 0, 1);
+
+	CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_ANISOTROPIC); // s0
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC localDesc{};
+	localDesc.Init_1_1(4, localParams, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+
+	D3D12RootSignature localRootSig;
+	localRootSig.Initialize(mDevice.Get(), localDesc);
+	{
+		//D3D12RootSignature globalRootSig;
+		mRtGlobalRootSignature.InitializeHybridRTGlobalRS(mDevice.Get());
+
+		HLSLShader libraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/DeferredRT.hlsl", L"lib_6_5", {}, L"");
+
+
+		RTPipelineSettings reflSettings;
+		reflSettings.maxPayloadSize = sizeof(float) * 8; // Color + Depth
+		// 3. Initialize Pipeline
+		mReflectionsPipeline.Initialize(mDevice.Get(), &mRtGlobalRootSignature, &localRootSig, libraryShader.GetShaderBlob(), reflSettings);
+	}
+
+	{
+		// --- FULL RAY TRACING PIPELINE SETUP ---
+		mFullRTGlobalRootSignature.InitializeFullRTGlobalRS(mDevice.Get());
+
+		HLSLShader fullRtLibraryShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/FullRT.hlsl", L"lib_6_5", {}, L"");
+		//HLSLShader fullRtLibraryShader = mShaderCompiler.LoadFromCso(L"../x64/Debug/FullRT.cso");
+
+		RTPipelineSettings fullRtSettings;
+		fullRtSettings.maxPayloadSize = sizeof(float) * 23;
+		mFullRTPipeline.Initialize(mDevice.Get(), &mFullRTGlobalRootSignature, &localRootSig, fullRtLibraryShader.GetShaderBlob(), fullRtSettings);
+	}
+
+	if (mSceneLoaded)
+	{
+		// 4. Build Shader Binding Table (SBT)
+		std::initializer_list<std::span<const MeshGpuData>> allMeshes =
+		{
+			mOpaqueSingleSidedMeshes,
+			mOpaqueDoubleSidedMeshes,
+			mMaskedSingleSidedMeshes,
+			mMaskedDoubleSidedMeshes,
+			mTransparentSingleSidedMeshes,
+			mTransparentDoubleSidedMeshes
+		};
+		mReflectionsPipeline.BuildSBT(mDevice.Get(), allMeshes);
+		mFullRTPipeline.BuildSBT(mDevice.Get(), allMeshes);
+	}
+}
+
+void Renderer::BuildRayTracingAccelerationStructures()
+{
+	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
+
+	// 1. Build BLAS for all mesh lists
+	mRayTracingBuilder.BuildAllBLAS(
+		mOpaqueSingleSidedMeshes,
+		mOpaqueDoubleSidedMeshes,
+		mMaskedSingleSidedMeshes,
+		mMaskedDoubleSidedMeshes,
+		mTransparentSingleSidedMeshes,
+		mTransparentDoubleSidedMeshes);
+
+	// 2. Allocate TLAS instance desc buffer
+	UINT totalMeshes = static_cast<UINT>(
+		mOpaqueSingleSidedMeshes.size() +
+		mOpaqueDoubleSidedMeshes.size() +
+		mMaskedSingleSidedMeshes.size() +
+		mMaskedDoubleSidedMeshes.size() +
+		mTransparentSingleSidedMeshes.size() +
+		mTransparentDoubleSidedMeshes.size());
+
+	UINT64 instanceDescSize = sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * totalMeshes;
+	mInstanceDescBuffer.Initialize(
+		mDevice.Get(),
+		instanceDescSize,
+		D3D12_HEAP_TYPE_UPLOAD,
+		D3D12_RESOURCE_STATE_GENERIC_READ);
+
+	// 3. Build TLAS
+	mRayTracingBuilder.BuildTLAS(
+		mOpaqueSingleSidedMeshes,
+		mOpaqueDoubleSidedMeshes,
+		mMaskedSingleSidedMeshes,
+		mMaskedDoubleSidedMeshes,
+		mTransparentSingleSidedMeshes,
+		mTransparentDoubleSidedMeshes,
+		mTLAS,
+		mTLAS_Scratch,
+		mInstanceDescBuffer);
+
+	// 4. Execute command list
+	mCommandList.Get()->Close();
+	ID3D12CommandList* lists[] = { mCommandList.Get() };
+	mCommandQueue.ExecuteCommandLists(1, lists);
+	mCommandQueue.Flush();
+
+	// 5. Clear temporary BLAS resources
+	mRayTracingBuilder.ClearScratchResources();
+
+	std::initializer_list<std::span<const MeshGpuData>> allMeshes =
+	{
+		mOpaqueSingleSidedMeshes,
+		mOpaqueDoubleSidedMeshes,
+		mMaskedSingleSidedMeshes,
+		mMaskedDoubleSidedMeshes,
+		mTransparentSingleSidedMeshes,
+		mTransparentDoubleSidedMeshes
+	};
+
+	mReflectionsPipeline.BuildSBT(mDevice.Get(), allMeshes);
+	mFullRTPipeline.BuildSBT(mDevice.Get(), allMeshes);
+}
+
 void Renderer::InitializeTonemapPipeline()
 {
 	HLSLShader tonemapShader = mShaderCompiler.CompileFromFile(L"Source/Shaders/TonemapCS.hlsl", L"cs_6_0");
@@ -2774,7 +2914,7 @@ bool Renderer::AddExtensionScenes(std::vector<std::unique_ptr<Model>> models)
 	try
 	{
 		std::chrono::steady_clock::time_point rtBuildStartTime = std::chrono::steady_clock::now();
-		InitializeRayTracing();
+		BuildRayTracingAccelerationStructures();
 		std::chrono::steady_clock::time_point rtBuildEndTime = std::chrono::steady_clock::now();
 		std::chrono::duration<double> rtElapsedSeconds = rtBuildEndTime - rtBuildStartTime;
 		wcout << "Ray tracing structures rebuilt in " << rtElapsedSeconds.count() << " seconds." << endl;
