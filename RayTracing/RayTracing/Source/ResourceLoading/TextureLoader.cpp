@@ -34,7 +34,7 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 {
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
-	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(img.width, img.height, mipLevels);
+	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(img.width, img.height, mipLevels, sRGB);
 	
 	// Calculate required memory
 	UINT64 textureSize = 0;
@@ -49,7 +49,8 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	GPUTexture gpuTex{};
 	gpuTex.width = img.width;
 	gpuTex.height = img.height;
-	gpuTex.format = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : desc.Format;
+	// For sRGB textures, store the SRGB format (not TYPELESS) for creating SRV later
+	gpuTex.format = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 	gpuTex.mipLevels = mipLevels;
 	
 	try
@@ -69,7 +70,13 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	UINT numRows = 0;
 	UINT64 rowSize = 0;
 	UINT64 totalBytes = 0;
-	mDevice->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, &numRows, &rowSize, &totalBytes);
+	
+	// GetCopyableFootprints doesn't work with TYPELESS formats, use UNORM instead
+	D3D12_RESOURCE_DESC descForFootprint = desc;
+	if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS)
+		descForFootprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	
+	mDevice->GetCopyableFootprints(&descForFootprint, 0, 1, 0, &footprint, &numRows, &rowSize, &totalBytes);
 
 
 	// Allocate upload heap space and copy data
@@ -106,7 +113,12 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
-	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, executeQueue);
+	// For mipmap generation, use UNORM format (compute shaders can't write to sRGB or TYPELESS)
+	DXGI_FORMAT mipmapFormat = (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) 
+		? DXGI_FORMAT_R8G8B8A8_UNORM 
+		: desc.Format;
+	
+	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, mipmapFormat, executeQueue);
 
 	return gpuTex;
 }
@@ -133,7 +145,7 @@ GPUTexture TextureLoader::CreateTextureFromDDSPath(const std::wstring& path, Dir
 
 GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
 {
-	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(1, 1, 1);
+	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(1, 1, 1, false); // Not sRGB for dummy textures
 
 	desc.Alignment = D3D12_SMALL_RESOURCE_PLACEMENT_ALIGNMENT;
 
@@ -179,10 +191,13 @@ GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
 	return gpuTex;
 }
 
-D3D12_RESOURCE_DESC TextureLoader::CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels)
+D3D12_RESOURCE_DESC TextureLoader::CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels, bool sRGB)
 {
+	// For sRGB textures, use TYPELESS format to allow both UNORM (UAV) and SRGB (SRV) views
+	DXGI_FORMAT format = sRGB ? DXGI_FORMAT_R8G8B8A8_TYPELESS : DXGI_FORMAT_R8G8B8A8_UNORM;
+	
 	return CD3DX12_RESOURCE_DESC::Tex2D(
-		DXGI_FORMAT_R8G8B8A8_UNORM,
+		format,
 		width,
 		height,
 		1, // array size

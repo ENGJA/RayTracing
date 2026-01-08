@@ -108,8 +108,8 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
 					if (isDDS)
 					{
 						loadState.gpuTexture = mTextureLoader.CreateTextureFromDDSPath(wstring(fullPath.begin(), fullPath.end()), ddsBatch);
-						//if (isSRGB)
-							//loadState.gpuTexture.format = MakeSRGB(loadState.gpuTexture.format);
+						if (isSRGB)
+							loadState.gpuTexture.format = MakeSRGB(loadState.gpuTexture.format);
 					}
 					else
 					{

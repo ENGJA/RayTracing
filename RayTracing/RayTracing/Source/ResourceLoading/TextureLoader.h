@@ -86,8 +86,10 @@ private:
 	* @brief Creates a 2D texture resource description.
 	* @param width Texture width.
 	* @param height Texture height.
+	* @param mipLevels Number of mip levels.
+	* @param sRGB Whether to create an sRGB format texture.
 	*/
-	static D3D12_RESOURCE_DESC CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels);
+	static D3D12_RESOURCE_DESC CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels, bool sRGB = false);
 
 
 };
