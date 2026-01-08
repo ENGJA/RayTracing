@@ -306,6 +306,44 @@ void UIManager::RenderSettingsWindow()
 		}
 	}
 	// -------------------------------------------
+
+	ImGui::Text("Lighting");
+
+	if (mGetSunEnabled && mSetSunEnabled)
+	{
+		bool enabled = mGetSunEnabled();
+		if (ImGui::Checkbox("Sun Enabled", &enabled))
+		{
+			mSetSunEnabled(enabled);
+		}
+	}
+
+	// 2. Sun Direction Slider (from previous step)
+	if (mGetSunDirection && mSetSunDirection)
+	{
+		DirectX::XMFLOAT3 sunDir = mGetSunDirection();
+		float dir[3] = { sunDir.x, sunDir.y, sunDir.z };
+		if (ImGui::SliderFloat3("Sun Direction", dir, -1.0f, 1.0f))
+		{
+			mSetSunDirection(dir[0], dir[1], dir[2]);
+		}
+	}
+
+	// 3. Sun Color Picker
+	if (mGetSunColor && mSetSunColor)
+	{
+		DirectX::XMFLOAT3 color = mGetSunColor();
+		float col[3] = { color.x, color.y, color.z };
+
+		// ColorEdit3 lets you pick color comfortably
+		if (ImGui::ColorEdit3("Sun Color", col))
+		{
+			mSetSunColor(col[0], col[1], col[2]);
+		}
+	}
+
+
+	// -------------------------------------------
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();

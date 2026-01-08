@@ -34,6 +34,15 @@ public:
 	using SetMaxRecursionDepthCallback = std::function<void(int)>;
 	using GetMaxRecursionDepthCallback = std::function<int()>;
 
+	using SetSunDirectionCallback = std::function<void(float, float, float)>;
+	using GetSunDirectionCallback = std::function<DirectX::XMFLOAT3()>;
+
+	using SetSunColorCallback = std::function<void(float, float, float)>;
+	using GetSunColorCallback = std::function<DirectX::XMFLOAT3()>;
+	using SetSunEnabledCallback = std::function<void(bool)>;
+	using GetSunEnabledCallback = std::function<bool()>;
+
+
 	/**
 	 * @brief Application states for UI rendering.
 	 */
@@ -155,6 +164,24 @@ public:
 		mSetMaxRecursionDepth = set;
 	}
 
+	void SetSunDirectionCallbacks(GetSunDirectionCallback get, SetSunDirectionCallback set)
+	{
+		mGetSunDirection = get;
+		mSetSunDirection = set;
+	}
+
+	void SetSunColorCallbacks(GetSunColorCallback get, SetSunColorCallback set)
+	{
+		mGetSunColor = get;
+		mSetSunColor = set;
+	}
+
+	void SetSunEnabledCallbacks(GetSunEnabledCallback get, SetSunEnabledCallback set)
+	{
+		mGetSunEnabled = get;
+		mSetSunEnabled = set;
+	}
+
 private:
 	// Rendering methods
 	void RenderLoadingMenu();
@@ -206,6 +233,14 @@ private:
 
 	GetMaxRecursionDepthCallback mGetMaxRecursionDepth;
 	SetMaxRecursionDepthCallback mSetMaxRecursionDepth;
+
+	GetSunDirectionCallback mGetSunDirection;
+	SetSunDirectionCallback mSetSunDirection;
+
+	GetSunColorCallback mGetSunColor;
+	SetSunColorCallback mSetSunColor;
+	GetSunEnabledCallback mGetSunEnabled;
+	SetSunEnabledCallback mSetSunEnabled;
 
 	int mCurrentDLSSMode = 0;
 };

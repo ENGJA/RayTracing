@@ -274,6 +274,21 @@ void Application::OnCreate(HWND hwnd)
 		[this](int depth) { mRenderer.SetMaxRecursionDepth(depth); }
 	);
 
+	mUIManager.SetSunDirectionCallbacks(
+		[this]() { return mRenderer.GetSunDirection(); },
+		[this](float x, float y, float z) { mRenderer.SetSunDirection(x, y, z); }
+	);
+
+	mUIManager.SetSunColorCallbacks(
+		[this]() { return mRenderer.GetSunColor(); },
+		[this](float r, float g, float b) { mRenderer.SetSunColor(r, g, b); }
+	);
+
+	mUIManager.SetSunEnabledCallbacks(
+		[this]() { return mRenderer.GetSunEnabled(); },
+		[this](bool enabled) { mRenderer.SetSunEnabled(enabled); }
+	);
+
 
 	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
