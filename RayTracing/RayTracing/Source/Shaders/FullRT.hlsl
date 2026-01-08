@@ -446,7 +446,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                 ShadowPayload shadowPayload;
                 shadowPayload.isVisible = false;
             
-                TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
+                TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
                      0xFF, 0, 1, 1, shadowRay, shadowPayload);
 
                 if (shadowPayload.isVisible)
@@ -539,7 +539,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                     ShadowPayload shadowPayload;
                     shadowPayload.isVisible = false;
                 
-                    TraceRay(gScene, RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_CULL_NON_OPAQUE,
+                    TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
                          0xFF, 0, 1, 1, shadowRay, shadowPayload);
 
                     if (shadowPayload.isVisible)
