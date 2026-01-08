@@ -1285,6 +1285,7 @@ void Renderer::RenderFullRayTraced(const Camera& camera)
 		CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 	CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+	CD3DX12_RESOURCE_BARRIER::Transition(mRTDepthTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 	};
 	mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 
@@ -1328,6 +1329,7 @@ void Renderer::RenderFullRayTraced(const Camera& camera)
 			CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
 			CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
 			CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(mRTDepthTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
 		};
 		mCommandList.Get()->ResourceBarrier(_countof(barriers), barriers);
 		float nearZ = camera.GetNearZ();
@@ -1354,6 +1356,7 @@ void Renderer::RenderFullRayTraced(const Camera& camera)
 			CD3DX12_RESOURCE_BARRIER::Transition(mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 			CD3DX12_RESOURCE_BARRIER::Transition(mGBufferMaterial.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
 			CD3DX12_RESOURCE_BARRIER::Transition(mGBufferEmission.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+			CD3DX12_RESOURCE_BARRIER::Transition(mRTDepthTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON)
 		};
 		mCommandList.Get()->ResourceBarrier(_countof(restoreBarriers), restoreBarriers);
 	}
@@ -1422,6 +1425,13 @@ void Renderer::InitializeGBufferResources()
 		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
 	);
 
+	auto depthDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+		DXGI_FORMAT_R32_FLOAT,
+		mRenderWidth, mRenderHeight,
+		1, 1, 1, 0,
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	);
+
 
 
 	// Clear Values...
@@ -1462,6 +1472,13 @@ void Renderer::InitializeGBufferResources()
 		D3D12_HEAP_TYPE_DEFAULT,
 		D3D12_RESOURCE_STATE_COMMON,
 		&clearVelocity);
+
+	mRTDepthTexture.Initialize(
+		mDevice.Get(),
+		depthDesc,
+		D3D12_HEAP_TYPE_DEFAULT,
+		D3D12_RESOURCE_STATE_COMMON
+	);
 
 	// 3. Create RTVs using the Wrapper
 	// Allocate 3 slots
@@ -1523,6 +1540,15 @@ void Renderer::InitializeGBufferResources()
 		nullptr,
 		&uavDesc,
 		mUavHandle_GBufferEmissive.cpuHandle
+	);
+
+	// RT Depth
+	uavDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	mDevice.Get()->CreateUnorderedAccessView(
+		mRTDepthTexture.Get(),
+		nullptr,
+		&uavDesc,
+		mUavHandle_RTDepth.cpuHandle
 	);
 }
 
@@ -1926,8 +1952,11 @@ void Renderer::EvaluateDLSSRR(const DirectX::XMMATRIX& view,
 		return;
 	}
 
+	ID3D12Resource* depthForDLSS = (mCurrentRenderMode == RenderMode::RayTraced)
+		? mRTDepthTexture.Get()
+		: mDepthBuffer.GetResource();
 	// Create Resource objects on the heap (ResourceTag expects pointers)
-	sl::Resource depthResource(sl::ResourceType::eTex2d, mDepthBuffer.GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	sl::Resource depthResource(sl::ResourceType::eTex2d, depthForDLSS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource mvecResource(sl::ResourceType::eTex2d, mGBufferVelocity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource albedoResource(sl::ResourceType::eTex2d, mOutAlbedoTex.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	sl::Resource normalResource(sl::ResourceType::eTex2d, mGBufferNormal.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -2014,6 +2043,7 @@ void Renderer::AllocateHandles()
 	mUavHandle_GBufferNormal = mSrvHeap.Allocate();
 	mUavHandle_GBufferEmissive = mSrvHeap.Allocate();
 	mUavHandle_GBufferMaterial = mSrvHeap.Allocate();
+	mUavHandle_RTDepth = mSrvHeap.Allocate();
 
 	// Composite UAV, RTV, SRV
 	mUavHandle_CompositeOutput = mSrvHeap.Allocate();

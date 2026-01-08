@@ -121,6 +121,9 @@ private:
 	DescriptorHandle mUavHandle_GBufferMaterial;
 	DescriptorHandle mUavHandle_GBufferEmissive;
 
+	D3D12Resource mRTDepthTexture;
+	DescriptorHandle mUavHandle_RTDepth;
+
 
 
 
