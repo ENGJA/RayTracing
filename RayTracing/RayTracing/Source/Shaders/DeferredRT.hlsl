@@ -246,7 +246,7 @@ void RayGen()
     diffuseTotal += float3(0.05, 0.05, 0.05); // ambient
     
     float distToCamera = length(viewPos - worldPos);
-    float bias = 0.001f + distToCamera * 0.002f;
+    float bias = 0.001f + distToCamera * 0.01f;
     
     uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
     // Direct Lighting
