@@ -38,9 +38,10 @@ public:
 	* @brief Creates a GPU texture from decoded image data.
 	* @param img Decoded image data.
 	* @param executeQueue Function to execute the command queue when needed.
+	* @param sRGB Whether to treat the texture as sRGB (linearize on fetch).
 	* @return Created GPU texture with resource and SRV.
 	*/
-	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue);
+	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue, bool sRGB = false);
 
 	/**
 	 * @brief Queues a DDS texture load into the provided upload batch.

@@ -45,6 +45,19 @@ static int TextureTypeToSlot(TextureType type)
 	return static_cast<int>(type);
 }
 
+static DXGI_FORMAT MakeSRGB(DXGI_FORMAT format)
+{
+	switch (format)
+	{
+	case DXGI_FORMAT_R8G8B8A8_UNORM: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	case DXGI_FORMAT_BC1_UNORM: return DXGI_FORMAT_BC1_UNORM_SRGB;
+	case DXGI_FORMAT_BC2_UNORM: return DXGI_FORMAT_BC2_UNORM_SRGB;
+	case DXGI_FORMAT_BC3_UNORM: return DXGI_FORMAT_BC3_UNORM_SRGB;
+	case DXGI_FORMAT_BC7_UNORM: return DXGI_FORMAT_BC7_UNORM_SRGB;
+	default: return format;
+	}
+}
+
 void Renderer::DispatchTextureDecoding()
 {
 	for (const auto& modelPtr : mModels)
@@ -90,17 +103,20 @@ void Renderer::CreateMaterial(const Mesh& mesh, const string& directory, MeshGpu
 
 				if (!loadState.gpuTexture.resource.Get())
 				{
+					bool isSRGB = (slotIndex == 0 || slotIndex == 4); // Albedo or Emissive
 					bool isDDS = fullPath.ends_with(".dds") || fullPath.ends_with(".DDS");
 					if (isDDS)
 					{
 						loadState.gpuTexture = mTextureLoader.CreateTextureFromDDSPath(wstring(fullPath.begin(), fullPath.end()), ddsBatch);
+						//if (isSRGB)
+							//loadState.gpuTexture.format = MakeSRGB(loadState.gpuTexture.format);
 					}
 					else
 					{
 						if (loadState.decodeFuture.valid())
 							loadState.decodedImage = loadState.decodeFuture.get();
 
-						loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch);
+						loadState.gpuTexture = mTextureLoader.CreateTextureFromDecodedImage(loadState.decodedImage, executeBatch, isSRGB);
 						loadState.decodedImage = {};
 					}
 				}

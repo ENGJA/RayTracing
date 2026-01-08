@@ -30,7 +30,7 @@ static UINT CalculateMipLevels(UINT width, UINT height)
 }
 
 
-GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue)
+GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue, bool sRGB)
 {
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
@@ -49,7 +49,7 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	GPUTexture gpuTex{};
 	gpuTex.width = img.width;
 	gpuTex.height = img.height;
-	gpuTex.format = desc.Format;
+	gpuTex.format = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : desc.Format;
 	gpuTex.mipLevels = mipLevels;
 	
 	try
