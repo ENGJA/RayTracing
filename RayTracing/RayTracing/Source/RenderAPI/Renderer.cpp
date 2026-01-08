@@ -191,8 +191,8 @@ void Renderer::UploadSingleMesh(const Mesh& mesh, const string& directory, const
 	case RenderLayer::Blend:
 		if (mesh.mDoubleSided)
 			mTransparentDoubleSidedMeshes.push_back(std::move(gpu));
-		//else
-		//	mTransparentSingleSidedMeshes.push_back(std::move(gpu));
+		else
+			mTransparentSingleSidedMeshes.push_back(std::move(gpu));
 		break;
 	default:
 		break;
