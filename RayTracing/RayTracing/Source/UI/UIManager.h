@@ -31,8 +31,10 @@ public:
 	using SetReflectionsEnabledCallback = std::function<void(bool)>;
 	using GetReflectionsEnabledCallback = std::function<bool()>;
 
-	using SetMaxRecursionDepthCallback = std::function<void(UINT)>;
-	using GetMaxRecursionDepthCallback = std::function<UINT()>;
+	using SetMaxReflectionDepthCallback = std::function<void(UINT)>;
+	using GetMaxReflectionDepthCallback = std::function<UINT()>;
+	using SetMaxTransmissionDepthCallback = std::function<void(UINT)>;
+	using GetMaxTransmissionDepthCallback = std::function<UINT()>;
 
 	using SetSunDirectionCallback = std::function<void(float, float, float)>;
 	using GetSunDirectionCallback = std::function<DirectX::XMFLOAT3()>;
@@ -164,11 +166,18 @@ public:
 		mSetReflectionsEnabled = set;
 	}
 
-	void SetMaxRecursionDepthCallbacks(GetMaxRecursionDepthCallback get, SetMaxRecursionDepthCallback set)
+	void SetMaxReflectionDepthCallbacks(GetMaxReflectionDepthCallback get, SetMaxReflectionDepthCallback set)
 	{
 		mGetMaxRecursionDepth = get;
 		mSetMaxRecursionDepth = set;
 	}
+
+	void SetMaxTransmissionDepthCallbacks(GetMaxTransmissionDepthCallback get, SetMaxTransmissionDepthCallback set)
+	{
+		mGetMaxTransmissionDepth = get;
+		mSetMaxTransmissionDepth = set;
+	}
+
 
 	void SetSunDirectionCallbacks(GetSunDirectionCallback get, SetSunDirectionCallback set)
 	{
@@ -250,8 +259,11 @@ private:
 	GetReflectionsEnabledCallback mGetReflectionsEnabled;
 	SetReflectionsEnabledCallback mSetReflectionsEnabled;
 
-	GetMaxRecursionDepthCallback mGetMaxRecursionDepth;
-	SetMaxRecursionDepthCallback mSetMaxRecursionDepth;
+	GetMaxReflectionDepthCallback mGetMaxRecursionDepth;
+	SetMaxReflectionDepthCallback mSetMaxRecursionDepth;
+
+	GetMaxTransmissionDepthCallback mGetMaxTransmissionDepth;
+	SetMaxTransmissionDepthCallback mSetMaxTransmissionDepth;
 
 	GetSunDirectionCallback mGetSunDirection;
 	SetSunDirectionCallback mSetSunDirection;

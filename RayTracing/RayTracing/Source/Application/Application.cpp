@@ -269,10 +269,16 @@ void Application::OnCreate(HWND hwnd)
 		[this]() { return mRenderer.GetReflectionsEnabled(); },
 		[this](bool enabled) { mRenderer.SetReflectionsEnabled(enabled); }
 	);
-	mUIManager.SetMaxRecursionDepthCallbacks(
-		[this]() { return mRenderer.GetMaxRecursionDepth(); },
-		[this](int depth) { mRenderer.SetMaxRecursionDepth(depth); }
+	mUIManager.SetMaxReflectionDepthCallbacks(
+		[this]() { return mRenderer.GetMaxReflectionDepth(); },
+		[this](UINT depth) { mRenderer.SetMaxReflectionDepth(depth); }
 	);
+
+	mUIManager.SetMaxTransmissionDepthCallbacks(
+		[this]() { return mRenderer.GetMaxTransmissionDepth(); },
+		[this](UINT depth) { mRenderer.SetMaxTransmissionDepth(depth); }
+	);
+
 
 	mUIManager.SetSunDirectionCallbacks(
 		[this]() { return mRenderer.GetSunDirection(); },

@@ -32,10 +32,10 @@ cbuffer FrameCB : register(b0)
     int frameCount;
     int shadowsEnabled;
     int reflectionsEnabled;
-    int maxRecursionDepth;
+    int maxReflectionDepth;
+    int maxTransparentDepth;
     int risCandidates;
     int shadowRays;
-    float _pad0;
 };
 
 // ===============================================================================================
@@ -71,7 +71,8 @@ SamplerState gSampler : register(s0);
 struct RayPayload
 {
     float3 color;
-    uint recursionDepth;
+    uint reflectionDepth;
+    uint transparentDepth;
     float hitT; // -1.0 if miss
     
     float3 dDdx; // Change in ray direction per pixel X
@@ -314,7 +315,8 @@ void RayGen()
 
     RayPayload payload;
     payload.color = float3(0, 0, 0);
-    payload.recursionDepth = 0;
+    payload.reflectionDepth = 0;
+    payload.transparentDepth = 0;
     payload.hitT = 0.0f;
     payload.dDdx = rayDirRight - rayDir;
     payload.dDdy = rayDirDown - rayDir;
@@ -393,7 +395,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     
     float2 dUVdx = 0;
     float2 dUVdy = 0;
-    if (payload.recursionDepth == 0)
+    if (payload.reflectionDepth == 0 && payload.transparentDepth == 0)
     {
         float3 viewDir = WorldRayDirection();
         float hitT = RayTCurrent();
@@ -626,7 +628,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     // --- Recursive Reflection ---
     float3 reflectedColor = float3(0, 0, 0);
     [branch]
-    if (reflectionsEnabled && payload.recursionDepth < maxRecursionDepth)
+    if (reflectionsEnabled && payload.reflectionDepth < maxReflectionDepth)
     {
         float2 Xi = float2(nextRand(seed), nextRand(seed));
         float3 H = ImportanceSampleGGX(Xi, normal, roughness);
@@ -642,7 +644,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             ray.TMax = 1000.0f;
             RayPayload reflPayload;
             reflPayload.color = float3(0, 0, 0);
-            reflPayload.recursionDepth = payload.recursionDepth + 1;
+            reflPayload.reflectionDepth = payload.reflectionDepth + 1;
+            reflPayload.transparentDepth = payload.transparentDepth;
             reflPayload.hitT = 0.0f;
             reflPayload.dDdx = reflect(payload.dDdx, normal);
             reflPayload.dDdy = reflect(payload.dDdy, normal);
@@ -663,7 +666,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float3 myF0 = F0;
     float2 myMaterial = float2(roughness, metalness);
     // --- Recursive Transparency ---
-    if (isTransparent && payload.recursionDepth < maxRecursionDepth)
+    if (isTransparent && payload.transparentDepth < maxTransparentDepth)
     {
         RayDesc transRay;
         transRay.Origin = worldPos + WorldRayDirection() * 0.001f;
@@ -673,7 +676,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
 
         RayPayload transPayload;
         transPayload.color = float3(0, 0, 0);
-        transPayload.recursionDepth = payload.recursionDepth + 1;
+        transPayload.transparentDepth = payload.transparentDepth + 1;
+        transPayload.reflectionDepth = payload.reflectionDepth;
         transPayload.hitT = 0.0f;
         transPayload.blendAlbedo = float4(0, 0, 0, 0);
         transPayload.blendDiffuse = float3(0, 0, 0);
@@ -702,7 +706,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     payload.blendMaterial = myMaterial;
 
     // --- Write Split Buffers (Only for Primary Ray) ---
-    if (payload.recursionDepth == 0)
+    if (payload.reflectionDepth == 0 && payload.transparentDepth == 0)
     {
         uint2 pixel = DispatchRaysIndex().xy;
         

@@ -272,7 +272,7 @@ void UIManager::RenderSettingsWindow()
 	// -------------------------------------------
 	ImGui::Text("Rendering Quality");
 
-	// 1. Shadows
+	// Shadows
 	if (mGetShadowsEnabled && mSetShadowsEnabled)
 	{
 		bool shadows = mGetShadowsEnabled();
@@ -282,7 +282,7 @@ void UIManager::RenderSettingsWindow()
 		}
 	}
 
-	// 2. Reflections
+	// Reflections
 	if (mGetReflectionsEnabled && mSetReflectionsEnabled)
 	{
 		bool reflections = mGetReflectionsEnabled();
@@ -292,17 +292,28 @@ void UIManager::RenderSettingsWindow()
 		}
 	}
 
-	// 3. Max Recursion Depth (Reflections + Transparency)
+	// Reflection Depth
 	if (mGetMaxRecursionDepth && mSetMaxRecursionDepth)
 	{
 		int depth = mGetMaxRecursionDepth();
-		if (ImGui::SliderInt("Max Bounces (Refl/Trans)", &depth, 1, Config::cMaxRecursionDepth))
+		// Update label to be specific
+		if (ImGui::SliderInt("Max Reflection Bounces", &depth, 1, Config::cMaxReflectionDepth))
 		{
 			mSetMaxRecursionDepth(depth);
 		}
+	}
+
+	// Transmission Depth
+	if (mGetMaxTransmissionDepth && mSetMaxTransmissionDepth)
+	{
+		int transDepth = mGetMaxTransmissionDepth();
+		if (ImGui::SliderInt("Max Transparency Bounces", &transDepth, 0, Config::cMaxTransmitionDepth))
+		{
+			mSetMaxTransmissionDepth(transDepth);
+		}
 		if (ImGui::IsItemHovered())
 		{
-			ImGui::SetTooltip("Controls max depth for both reflections and transparency.");
+			ImGui::SetTooltip("Controls layers of glass/leaves. Cheap to increase.");
 		}
 	}
 

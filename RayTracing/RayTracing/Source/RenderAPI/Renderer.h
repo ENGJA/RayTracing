@@ -89,7 +89,8 @@ private:
 
 	bool mShadowsEnabled = true;
 	bool mReflectionsEnabled = true;
-	int mMaxRecursionDepth = 2; // Default
+	int mMaxReflectionDepth = 2; // Default
+	int mMaxTransmissionDepth = 2;
 
 	DirectX::XMFLOAT3 mSunDirection = { 0.2f, -1.0f, 0.2f };
 	DirectX::XMFLOAT3 mSunColor = { 1.0f, 1.0f, 0.9f }; // Default sun color
@@ -525,8 +526,10 @@ public:
 	bool GetShadowsEnabled() const { return mShadowsEnabled; }
 	void SetReflectionsEnabled(bool enabled) { mReflectionsEnabled = enabled; }
 	bool GetReflectionsEnabled() const { return mReflectionsEnabled; }
-	void SetMaxRecursionDepth(UINT depth) { mMaxRecursionDepth = std::clamp(depth, 1u, Config::cMaxRecursionDepth); }
-	int GetMaxRecursionDepth() const { return mMaxRecursionDepth; }
+	void SetMaxReflectionDepth(UINT depth) { mMaxReflectionDepth = std::clamp(depth, 1u, Config::cMaxReflectionDepth); }
+	UINT GetMaxReflectionDepth() const { return mMaxReflectionDepth; }
+	void SetMaxTransmissionDepth(UINT depth) { mMaxTransmissionDepth = std::clamp(depth, 0u, Config::cMaxTransmitionDepth); }
+	UINT GetMaxTransmissionDepth() const { return mMaxTransmissionDepth; }
 
 
 	void SetSunColor(float r, float g, float b);
