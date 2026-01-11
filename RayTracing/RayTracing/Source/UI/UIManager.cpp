@@ -327,13 +327,13 @@ void UIManager::RenderSettingsWindow()
 		UINT risMax = std::min(numLights, Config::cMaxRISCandidates);
 		UINT shadowMax = std::min(numLights, Config::cMaxRISCandidates);
         
-        if (ImGui::SliderInt("Candidates (Math)", &currentM, 1, risMax))
+        if (ImGui::SliderInt("Candidates (Math)", &currentM, 0, risMax))
         {
             mSetRISCandidates(currentM);
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many lights to check mathematically per pixel.");
         
-		if (ImGui::SliderInt("Shadow Rays (Trace)", &currentR, 1, shadowMax))
+		if (ImGui::SliderInt("Shadow Rays (Trace)", &currentR, 0, shadowMax))
         {
             mSetShadowRays(currentR);
         }

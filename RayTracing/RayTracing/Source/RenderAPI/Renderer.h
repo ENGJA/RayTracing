@@ -89,8 +89,8 @@ private:
 
 	bool mShadowsEnabled = true;
 	bool mReflectionsEnabled = true;
-	int mMaxReflectionDepth = 2; // Default
-	int mMaxTransmissionDepth = 2;
+	int mMaxReflectionDepth = 1; // Default
+	int mMaxTransmissionDepth = 3;
 
 	DirectX::XMFLOAT3 mSunDirection = { 0.2f, -1.0f, 0.2f };
 	DirectX::XMFLOAT3 mSunColor = { 1.0f, 1.0f, 0.9f }; // Default sun color
@@ -541,13 +541,13 @@ public:
 	void SetSunDirection(float x, float y, float z);
 	DirectX::XMFLOAT3 GetSunDirection() const { return mSunDirection; }
 
-	void SetRISCandidates(UINT n) { mRISCandidates = std::clamp(n, 1u, Config::cMaxRISCandidates); }
+	void SetRISCandidates(UINT n) { mRISCandidates = std::clamp(n, 0u, Config::cMaxRISCandidates); }
 	UINT GetRISCandidates() const { return mRISCandidates; }
 
 	// Helper for UI slider range
 	UINT GetNumPointLights() const { return mConstantBufferData.numPointLights; }
 
-	void SetShadowRays(UINT n) { mPointShadowRays = std::clamp(n, 1u, Config::cMaxPointShadowRays); }
+	void SetShadowRays(UINT n) { mPointShadowRays = std::clamp(n, 0u, Config::cMaxPointShadowRays); }
 	UINT GetShadowRays() const { return mPointShadowRays; }
 };
 

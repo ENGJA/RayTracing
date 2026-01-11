@@ -1173,6 +1173,24 @@ void Renderer::RenderFullRayTraced(const Camera& camera, size_t cbOffset)
 	ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
 	mCommandList.Get()->SetDescriptorHeaps(_countof(heaps), heaps);
 
+	{
+		D3D12_RESOURCE_BARRIER clearBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			mGBufferVelocity.Get(),
+			D3D12_RESOURCE_STATE_COMMON,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		mCommandList.Get()->ResourceBarrier(1, &clearBarrier);
+
+		float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		mCommandList.Get()->ClearRenderTargetView(mRtvHandle_GBufferVelocity.cpuHandle, clearColor, 0, nullptr);
+
+		// Transition to READ state so it is ready for DLSS (Update loop expects this)
+		D3D12_RESOURCE_BARRIER readyBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			mGBufferVelocity.Get(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		mCommandList.Get()->ResourceBarrier(1, &readyBarrier);
+	}
+
 	D3D12_RESOURCE_BARRIER barriers[] = {
 		CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoTex.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 		CD3DX12_RESOURCE_BARRIER::Transition(mOutAlbedoSpecularTex.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
@@ -2320,15 +2338,26 @@ void Renderer::Update(const Camera& camera)
 			auto cameraPos = camera.GetPosition();
 			auto cameraFwd = camera.GetForward();
 
-			auto jitterMatrix = DirectX::XMMatrixTranslation(mJitter.x * 2.0f, -mJitter.y * 2.0f, 0.0f);
-			auto jitteredProj = proj * jitterMatrix;
-			auto jitteredViewProj = view * jitteredProj;
-			auto invJitteredViewProj = DirectX::XMMatrixInverse(nullptr, jitteredViewProj);
+
 
 			size_t cbOffset;
 			{
-				mConstantBufferData.vpMatrix = jitteredViewProj;
-				mConstantBufferData.InvVpMatrix = invJitteredViewProj;
+				if (mDLSSRREnabled)
+				{
+					auto jitterMatrix = DirectX::XMMatrixTranslation(mJitter.x * 2.0f, -mJitter.y * 2.0f, 0.0f);
+					auto jitteredProj = proj * jitterMatrix;
+					auto jitteredViewProj = view * jitteredProj;
+					auto invJitteredViewProj = DirectX::XMMatrixInverse(nullptr, jitteredViewProj);
+					mConstantBufferData.vpMatrix = jitteredViewProj;
+					mConstantBufferData.InvVpMatrix = invJitteredViewProj;
+				}
+				else
+				{
+					auto viewProj = view * proj;
+					auto invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
+					mConstantBufferData.vpMatrix = viewProj;
+					mConstantBufferData.InvVpMatrix = invViewProj;
+				}
 				mConstantBufferData.viewPos = cameraPos;
 				mConstantBufferData.frameCount = mFrameCount;
 
