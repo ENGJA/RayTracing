@@ -306,6 +306,29 @@ void UIManager::RenderSettingsWindow()
 			ImGui::SetTooltip("Controls max depth for both reflections and transparency.");
 		}
 	}
+
+
+	if (mGetRISCandidates && mSetRISCandidates && mGetNumPointLights && mGetShadowRays && mSetShadowRays)
+    {
+        UINT numLights = mGetNumPointLights();
+        int currentM = mGetRISCandidates();
+        int currentR = mGetShadowRays();
+
+		UINT risMax = std::min(numLights, Config::cMaxRISCandidates);
+		UINT shadowMax = std::min(numLights, Config::cMaxRISCandidates);
+        
+        if (ImGui::SliderInt("Candidates (Math)", &currentM, 1, risMax))
+        {
+            mSetRISCandidates(currentM);
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many lights to check mathematically per pixel.");
+        
+		if (ImGui::SliderInt("Shadow Rays (Trace)", &currentR, 1, shadowMax))
+        {
+            mSetShadowRays(currentR);
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many shadow rays to trace per pixel.\nHigher = Less Noise, Lower FPS.");
+    }
 	// -------------------------------------------
 
 	ImGui::Text("Lighting");
@@ -354,13 +377,14 @@ void UIManager::RenderSettingsWindow()
 	// DLSS Modes mapping to sl::DLSSMode enum values (excluding Ultra Quality)
 	// Ordered from lowest to highest quality
 	const char* dlssModes[] = {
-		"Ultra Performance",  // sl::DLSSMode::eUltraPerformance = 4
+		"Off",				  // sl::DLSSMode::eOff = 0
+		"Ultra Performance",  // 4
 		"Max Performance",    // 1
 		"Balanced",           // 2
 		"Max Quality",        // 3
 		"DLAA"                // 6
 	};
-	const int dlssModeValues[] = { 4, 1, 2, 3, 6 };
+	const int dlssModeValues[] = { 0, 4, 1, 2, 3, 6 };
 
 	// Find UI index corresponding to current mode value
 	int uiModeIndex = 0;
