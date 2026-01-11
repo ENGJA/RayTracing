@@ -1,8 +1,8 @@
 #include "PBR.hlsli"
 
-static const float kConst = 1.0f;
-static const float kLinear = 0.5f;
-static const float kQuadratic = 0.2f;
+static const float kConst = 1.0f; // Prevents singularity at d=0
+static const float kLinear = 0.0f; // No artificial dampening
+static const float kQuadratic = 1.0f; // Physical Inverse Square Law
 
 // ===============================================================================================
 // --- GLOBAL RESOURCES (Space 0) ---
@@ -468,8 +468,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                     float3 diffuseFactor = kD / PI;
                     float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
-                    directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * light.diffuseColor.a * NdotL;
-                    directSpecular += specularFactor * light.specularColor.rgb * light.diffuseColor.a * NdotL;
+                    directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * NdotL;
+                    directSpecular += specularFactor * light.specularColor.rgb * NdotL;
                 }
             }
         }
@@ -561,8 +561,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                             float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
                     // Apply RIS Weight
-                            accumDiffuse += diffuseFactor * light.diffuseColor.rgb * light.diffuseColor.a * attenuation * NdotL * risWeight;
-                            accumSpecular += specularFactor * light.specularColor.rgb * light.diffuseColor.a * attenuation * NdotL * risWeight;
+                            accumDiffuse += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL * risWeight;
+                            accumSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL * risWeight;
                         }
                     }
                 }
