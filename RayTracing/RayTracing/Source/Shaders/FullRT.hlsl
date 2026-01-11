@@ -1,5 +1,9 @@
 #include "PBR.hlsli"
 
+static const float kConst = 1.0f;
+static const float kLinear = 0.5f;
+static const float kQuadratic = 0.2f;
+
 // ===============================================================================================
 // --- GLOBAL RESOURCES (Space 0) ---
 // ===============================================================================================
@@ -263,7 +267,7 @@ float EvaluateLightImportance(Light light, float3 worldPos, float3 normal)
     float NdotL = max(dot(normal, L), 0.0f);
     
     // Attenuation (Inverse Square Law)
-    float att = 1.0f / (1.0f + 0.1f * dist + 0.01f * distSq);
+    float att = 1.0f / (kConst + kLinear * dist + kQuadratic * distSq);
     
     // Importance = Color Luminance * Attenuation * Angle
     // (Luminance = dot(color, float3(0.2126, 0.7152, 0.0722)))
@@ -431,8 +435,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         
             float3 L_central = normalize(-light.dirType.xyz);
             float3 L_shadow = L_central;
-            float dist = 10000.0f;
-            float attenuation = 1.0f;
+            float dist = 10000.0f;            
 
             float NdotL = max(dot(normal, L_central), 0.0f);
         
@@ -463,8 +466,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                     float3 diffuseFactor = kD / PI;
                     float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
-                    directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL;
-                    directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL;
+                    directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * light.diffuseColor.a * NdotL;
+                    directSpecular += specularFactor * light.specularColor.rgb * light.diffuseColor.a * NdotL;
                 }
             }
         }
@@ -482,7 +485,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                 int selectedLightIndex = -1;
                 float totalWeight = 0.0f;
                 float selectedTargetPdf = 0.0f;
-                float samplePdf = 1.0f / float(numPointLights); // Uniform source PDF (1/N)
+
         
         // --- RIS LOOP: Pick the best light ---
             [loop]
@@ -524,7 +527,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                     float dist = length(toLight);
                     float3 L_central = normalize(toLight);
                     float3 L_shadow = GetConeSample(seed, L_central, radians(5.0f));
-                    float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+                    float attenuation = 1.0f / (kConst + kLinear * dist + kQuadratic * dist * dist);
                     float NdotL = max(dot(normal, L_central), 0.0f);
 
                     if (NdotL > 0.0f && attenuation > 0.001f)
@@ -556,8 +559,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                             float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
                     // Apply RIS Weight
-                            accumDiffuse += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL * risWeight;
-                            accumSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL * risWeight;
+                            accumDiffuse += diffuseFactor * light.diffuseColor.rgb * light.diffuseColor.a * attenuation * NdotL * risWeight;
+                            accumSpecular += specularFactor * light.specularColor.rgb * light.diffuseColor.a * attenuation * NdotL * risWeight;
                         }
                     }
                 }
@@ -574,7 +577,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             float3 toLight = light.position.xyz - worldPos;
             float dist = length(toLight);
             float3 L = normalize(toLight);
-            float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+            float attenuation = 1.0f / (kConst + kLinear * dist + kQuadratic * dist * dist);
             float NdotL = max(dot(normal, L), 0.0f);
             
             if (NdotL > 0.0f && attenuation > 0.001f)
