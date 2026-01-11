@@ -3,10 +3,9 @@
 
 // --- GLOBAL (Space 0) ---
 RaytracingAccelerationStructure gScene : register(t5);
-RWTexture2D<float4> gOutDiffuse : register(u0);
-RWTexture2D<float4> gOutSpecular : register(u1);
-RWTexture2D<float4> gOutAlbedo : register(u2);
-RWTexture2D<float4> gOutAlbedoSpecular : register(u3);
+RWTexture2D<float4> gOutColor : register(u0); // FINAL Merged Output (No CompositeCS needed)
+RWTexture2D<float4> gOutAlbedo : register(u1);
+RWTexture2D<float4> gOutAlbedoSpecular : register(u2);
 
 //RWTexture2D<float4> gOutNormal : register(u2);
 //RWTexture2D<float4> gOutAlbedo : register(u3);
@@ -144,7 +143,7 @@ float3 GetConeSample(inout uint seed, float3 L, float spreadAngle)
 float3 GetWorldPosition(uint2 pixel)
 {
     float width, height;
-    gOutSpecular.GetDimensions(width, height);
+    gOutColor.GetDimensions(width, height);
     float2 uv = (pixel + 0.5) / float2(width, height);
     float z = gDepth.Load(uint3(pixel, 0));
 
@@ -221,8 +220,8 @@ void RayGen()
         float t = 0.5 * (rayDir.y + 1.0);
         float3 sky = lerp(float3(0.3, 0.3, 0.3), float3(0.5, 0.7, 1.0), t);
         
-        gOutDiffuse[pixel] = float4(1, 1, 1, 1); 
-        gOutSpecular[pixel] = float4(0, 0, 0, 0);
+        //gOutDiffuse[pixel] = float4(1, 1, 1, 1); 
+        //gOutSpecular[pixel] = float4(0, 0, 0, 0);
         gOutAlbedo[pixel] = float4(sky, 1.0);
         gOutAlbedoSpecular[pixel] = float4(0, 0, 0, 0);
         //gOutAlbedo[pixel] = float4(0, 0, 0, 0); // Sky has no albedo
@@ -352,8 +351,12 @@ void RayGen()
         }
     }
     
-    gOutDiffuse[pixel] = float4(diffuseTotal, 1.0);
-    gOutSpecular[pixel] = float4(specularTotal, 1.0);
+    float3 emissive = gEmissive.Load(uint3(pixel, 0)).rgb;
+    float3 finalColor = (diffuseTotal * albedo) + specularTotal + emissive;
+    gOutColor[pixel] = float4(finalColor, 1.0);
+    
+    //gOutDiffuse[pixel] = float4(diffuseTotal, 1.0);
+    //gOutSpecular[pixel] = float4(specularTotal, 1.0);
     gOutAlbedo[pixel] = float4(albedo, 1.0);
     gOutAlbedoSpecular[pixel] = float4(F0, 1.0);
     //gOutAlbedo[pixel] = float4(albedo, 1.0);
