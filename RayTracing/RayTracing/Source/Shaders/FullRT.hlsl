@@ -510,13 +510,6 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                     Light light = gLights[selectedLightIndex];
             
             // Calculate Monte Carlo Weight
-            // W = (1/M) * (TotalWeight / TargetPdf)
-            // Note: In RIS, the weight simplifies to (TotalWeight / (M * TargetPdf)) * SourcePdf?
-            // Actually for simple RIS where source is uniform 1/N:
-            // Weight = (TotalWeight / M) * (1 / TargetPdf) is WRONG for 1-sample.
-            
-            // Correct Estimator for 1-sample RIS from uniform source:
-            // Contribution = LightShader * (TotalImportance / (M * SourcePdf)) ? No.
             
             // Standard RIS Weight formula:
             // W = (1 / TargetPDF_y) * (1/M) * Sum(TargetPDF_xi / SourcePDF_xi)

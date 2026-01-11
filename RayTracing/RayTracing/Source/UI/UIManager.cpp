@@ -314,7 +314,7 @@ void UIManager::RenderSettingsWindow()
         int currentR = mGetShadowRays();
 
 		UINT risMax = std::min(numLights, Config::cMaxRISCandidates);
-		UINT shadowMax = Config::cMaxPointShadowRays;
+		UINT shadowMax = std::min(numLights, Config::cMaxRISCandidates);
         
         if (ImGui::SliderInt("Candidates (Math)", &currentM, 1, risMax))
         {
