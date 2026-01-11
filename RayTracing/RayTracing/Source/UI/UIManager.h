@@ -42,6 +42,12 @@ public:
 	using SetSunEnabledCallback = std::function<void(bool)>;
 	using GetSunEnabledCallback = std::function<bool()>;
 
+	using SetRISCandidatesCallback = std::function<void(UINT)>;
+	using GetRISCandidatesCallback = std::function<UINT()>;
+	using GetNumPointLightsCallback = std::function<UINT()>;
+
+	using SetShadowRaysCallback = std::function<void(UINT)>;
+	using GetShadowRaysCallback = std::function<UINT()>;
 
 	/**
 	 * @brief Application states for UI rendering.
@@ -182,6 +188,19 @@ public:
 		mSetSunEnabled = set;
 	}
 
+	void SetRISCandidatesCallbacks(GetRISCandidatesCallback get, SetRISCandidatesCallback set, GetNumPointLightsCallback getCount)
+	{
+		mGetRISCandidates = get;
+		mSetRISCandidates = set;
+		mGetNumPointLights = getCount;
+	}
+
+	void SetShadowRaysCallbacks(GetShadowRaysCallback get, SetShadowRaysCallback set)
+	{
+		mGetShadowRays = get;
+		mSetShadowRays = set;
+	}
+
 private:
 	// Rendering methods
 	void RenderLoadingMenu();
@@ -241,6 +260,13 @@ private:
 	SetSunColorCallback mSetSunColor;
 	GetSunEnabledCallback mGetSunEnabled;
 	SetSunEnabledCallback mSetSunEnabled;
+
+	GetRISCandidatesCallback mGetRISCandidates;
+	SetRISCandidatesCallback mSetRISCandidates;
+	GetNumPointLightsCallback mGetNumPointLights;
+
+	GetShadowRaysCallback mGetShadowRays;
+	SetShadowRaysCallback mSetShadowRays;
 
 	int mCurrentDLSSMode = 0;
 };

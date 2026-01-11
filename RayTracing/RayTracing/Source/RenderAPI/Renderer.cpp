@@ -2332,6 +2332,8 @@ void Renderer::Update(const Camera& camera)
 				mConstantBufferData.shadowsEnabled = mShadowsEnabled ? 1 : 0;
 				mConstantBufferData.reflectionsEnabled = mReflectionsEnabled ? 1 : 0;
 				mConstantBufferData.maxRecursionDepth = mMaxRecursionDepth;
+				mConstantBufferData.risCandidates = mRISCandidates;
+				mConstantBufferData.shadowRays = mPointShadowRays;
 
 				UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
 				size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes

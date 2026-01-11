@@ -123,6 +123,8 @@ private:
 
 	D3D12Resource mRTDepthTexture;
 	DescriptorHandle mUavHandle_RTDepth;
+	UINT mRISCandidates = 8;
+	UINT mPointShadowRays = 1;
 
 
 
@@ -535,5 +537,14 @@ public:
 
 	void SetSunDirection(float x, float y, float z);
 	DirectX::XMFLOAT3 GetSunDirection() const { return mSunDirection; }
+
+	void SetRISCandidates(UINT n) { mRISCandidates = std::clamp(n, 1u, Config::cMaxRISCandidates); }
+	UINT GetRISCandidates() const { return mRISCandidates; }
+
+	// Helper for UI slider range
+	UINT GetNumPointLights() const { return mConstantBufferData.numPointLights; }
+
+	void SetShadowRays(UINT n) { mPointShadowRays = std::clamp(n, 1u, Config::cMaxPointShadowRays); }
+	UINT GetShadowRays() const { return mPointShadowRays; }
 };
 

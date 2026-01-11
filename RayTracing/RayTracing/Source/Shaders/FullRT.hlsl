@@ -29,7 +29,9 @@ cbuffer FrameCB : register(b0)
     int shadowsEnabled;
     int reflectionsEnabled;
     int maxRecursionDepth;
-    float3 _pad0;
+    int risCandidates;
+    int shadowRays;
+    float _pad0;
 };
 
 // ===============================================================================================
@@ -469,38 +471,43 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
 
         if (numPointLights > 0)
         {
-        // CONSTANTS
-            const int M = 8; // Number of candidates to check (higher = stable, lower = fast)
+            float3 accumDiffuse = float3(0, 0, 0);
+            float3 accumSpecular = float3(0, 0, 0);
+            
+            for (int lightPass = 0; lightPass < shadowRays; ++lightPass)
+            {
+                // --- RIS Sampling for Point Lights ---
         
         // RIS State
-            int selectedLightIndex = -1;
-            float totalWeight = 0.0f;
-            float selectedTargetPdf = 0.0f;
-            float samplePdf = 1.0f / float(numPointLights); // Uniform source PDF (1/N)
+                int selectedLightIndex = -1;
+                float totalWeight = 0.0f;
+                float selectedTargetPdf = 0.0f;
+                float samplePdf = 1.0f / float(numPointLights); // Uniform source PDF (1/N)
         
         // --- RIS LOOP: Pick the best light ---
-            for (int i = 0; i < M; ++i)
-            {
+            [loop]
+                for (int i = 0; i < risCandidates; ++i)
+                {
             // Pick a random candidate uniformly
-                int candidateIndex = min(int(nextRand(seed) * float(numPointLights)), numPointLights - 1);
-                Light candidate = gLights[candidateIndex];
+                    int candidateIndex = min(int(nextRand(seed) * float(numPointLights)), numPointLights - 1);
+                    Light candidate = gLights[candidateIndex];
             
             // Calculate target PDF (Importance)
-                float weight = EvaluateLightImportance(candidate, worldPos, normal);
+                    float weight = EvaluateLightImportance(candidate, worldPos, normal);
             
             // Streaming Reservoir Sampling update
-                totalWeight += weight;
-                if (nextRand(seed) * totalWeight < weight)
-                {
-                    selectedLightIndex = candidateIndex;
-                    selectedTargetPdf = weight;
+                    totalWeight += weight;
+                    if (nextRand(seed) * totalWeight < weight)
+                    {
+                        selectedLightIndex = candidateIndex;
+                        selectedTargetPdf = weight;
+                    }
                 }
-            }
         
         // --- SHADING: Trace shadow ray for the winner ---
-            if (selectedLightIndex != -1 && totalWeight > 0.0f)
-            {
-                Light light = gLights[selectedLightIndex];
+                if (selectedLightIndex != -1 && totalWeight > 0.0f)
+                {
+                    Light light = gLights[selectedLightIndex];
             
             // Calculate Monte Carlo Weight
             // W = (1/M) * (TotalWeight / TargetPdf)
@@ -517,52 +524,54 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             // W = (1 / TargetPDF_y) * (1/M) * (TotalWeight / (1/N))
             // W = (TotalWeight * N) / (M * TargetPDF_y)
             
-                float risWeight = (totalWeight * float(numPointLights)) / (float(M) * selectedTargetPdf);
+                    float risWeight = (totalWeight * float(numPointLights)) / (float(risCandidates) * selectedTargetPdf);
             
             // Perform standard lighting calculation
-                float3 toLight = light.position.xyz - worldPos;
-                float dist = length(toLight);
-                float3 L_central = normalize(toLight);
-                float3 L_shadow = GetConeSample(seed, L_central, radians(5.0f));
-                float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
-                float NdotL = max(dot(normal, L_central), 0.0f);
+                    float3 toLight = light.position.xyz - worldPos;
+                    float dist = length(toLight);
+                    float3 L_central = normalize(toLight);
+                    float3 L_shadow = GetConeSample(seed, L_central, radians(5.0f));
+                    float attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+                    float NdotL = max(dot(normal, L_central), 0.0f);
 
-                if (NdotL > 0.0f && attenuation > 0.001f)
-                {
-                    RayDesc shadowRay;
-                    shadowRay.Origin = worldPos + normal * bias;
-                    shadowRay.Direction = L_shadow;
-                    shadowRay.TMin = 0.01f;
-                    shadowRay.TMax = dist - 0.05f;
+                    if (NdotL > 0.0f && attenuation > 0.001f)
+                    {
+                        RayDesc shadowRay;
+                        shadowRay.Origin = worldPos + normal * bias;
+                        shadowRay.Direction = L_shadow;
+                        shadowRay.TMin = 0.01f;
+                        shadowRay.TMax = dist - 0.05f;
 
-                    ShadowPayload shadowPayload;
-                    shadowPayload.isVisible = false;
+                        ShadowPayload shadowPayload;
+                        shadowPayload.isVisible = false;
                 
-                    TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
+                        TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
                          0xFF, 0, 1, 1, shadowRay, shadowPayload);
 
-                    if (shadowPayload.isVisible)
-                    {
+                        if (shadowPayload.isVisible)
+                        {
                     // PBR Math
-                        float3 H = normalize(V + L_central);
-                        float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
-                        float NDF = DistributionGGX(normal, H, roughness);
-                        float G = GeometrySmith(normal, V, L_central, roughness);
+                            float3 H = normalize(V + L_central);
+                            float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
+                            float NDF = DistributionGGX(normal, H, roughness);
+                            float G = GeometrySmith(normal, V, L_central, roughness);
 
-                        float3 kS = F;
-                        float3 kD = (1.0f - kS) * (1.0f - metalness);
+                            float3 kS = F;
+                            float3 kD = (1.0f - kS) * (1.0f - metalness);
 
-                        float3 diffuseFactor = kD / PI;
-                        float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
+                            float3 diffuseFactor = kD / PI;
+                            float3 specularFactor = (NDF * G * F) / (4.0f * max(dot(normal, V), 0.0f) * NdotL + 0.001f);
 
                     // Apply RIS Weight
-                        directDiffuseIrradiance += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL * risWeight;
-                        directSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL * risWeight;
+                            accumDiffuse += diffuseFactor * light.diffuseColor.rgb * attenuation * NdotL * risWeight;
+                            accumSpecular += specularFactor * light.specularColor.rgb * attenuation * NdotL * risWeight;
+                        }
                     }
                 }
             }
-        }
-    
+            directDiffuseIrradiance += accumDiffuse / float(shadowRays);
+            directSpecular += accumSpecular / float(shadowRays);
+        }    
     }
     else
     {
