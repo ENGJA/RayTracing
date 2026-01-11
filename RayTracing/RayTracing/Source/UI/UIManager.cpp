@@ -2,6 +2,7 @@
 #include "UIManager.h"
 #include "RenderAPI/Camera/CameraManager.h"
 #include "Utils/PerformanceMonitor.h"
+#include "ResourceLoading/Model.h"
 #include "imgui.h"
 #include "config.h"
 
@@ -616,7 +617,7 @@ void UIManager::RenderMultiSceneSelectionWindow()
 {
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
 	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(650, 500), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(650, 550), ImGuiCond_Appearing);
 
 	std::string windowTitle = mIsExtensionMode ? "Add Extension Scene(s)" : "Scene Selection";
 	if (!ImGui::Begin(windowTitle.c_str(), &mShowMultiSceneSelectionWindow, ImGuiWindowFlags_NoCollapse))
@@ -645,7 +646,7 @@ void UIManager::RenderMultiSceneSelectionWindow()
 
 	// Display list of selected files with delete buttons
 	ImGui::Text("Selected Files (%zu):", mSelectedScenePaths.size());
-	ImGui::BeginChild("FileList", ImVec2(0, -110), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+	ImGui::BeginChild("FileList", ImVec2(0, -160), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 	
 	if (mSelectedScenePaths.empty())
 	{
@@ -713,6 +714,25 @@ void UIManager::RenderMultiSceneSelectionWindow()
 	
 	ImGui::EndChild();
 
+	ImGui::Spacing();
+	
+	// Loading options section
+	ImGui::Separator();
+	ImGui::Text("Loading Options:");
+	ImGui::Spacing();
+	
+	// Checkbox for loading double-sided materials without textures
+	if (ImGui::Checkbox("Load double-sided materials without textures", &Model::sLoadDoubleSidedWithoutTextures))
+	{
+		// Value is automatically updated by ImGui
+	}
+	if (ImGui::IsItemHovered())
+	{
+		ImGui::SetTooltip("When enabled, loads all double-sided materials even if they have no textures.\nWhen disabled (default), skips double-sided materials without textures.");
+	}
+	
+	ImGui::Spacing();
+	ImGui::Separator();
 	ImGui::Spacing();
 	
 	// Info text
