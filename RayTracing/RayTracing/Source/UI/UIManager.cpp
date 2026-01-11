@@ -305,6 +305,29 @@ void UIManager::RenderSettingsWindow()
 			ImGui::SetTooltip("Controls max depth for both reflections and transparency.");
 		}
 	}
+
+
+	if (mGetRISCandidates && mSetRISCandidates && mGetNumPointLights && mGetShadowRays && mSetShadowRays)
+    {
+        UINT numLights = mGetNumPointLights();
+        int currentM = mGetRISCandidates();
+        int currentR = mGetShadowRays();
+
+		UINT risMax = std::min(numLights, Config::cMaxRISCandidates);
+		UINT shadowMax = Config::cMaxPointShadowRays;
+        
+        if (ImGui::SliderInt("Candidates (Math)", &currentM, 1, risMax))
+        {
+            mSetRISCandidates(currentM);
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many lights to check mathematically per pixel.");
+        
+		if (ImGui::SliderInt("Shadow Rays (Trace)", &currentR, 1, shadowMax))
+        {
+            mSetShadowRays(currentR);
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many shadow rays to trace per pixel.\nHigher = Less Noise, Lower FPS.");
+    }
 	// -------------------------------------------
 
 	ImGui::Text("Lighting");

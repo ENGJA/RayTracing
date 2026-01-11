@@ -289,6 +289,17 @@ void Application::OnCreate(HWND hwnd)
 		[this](bool enabled) { mRenderer.SetSunEnabled(enabled); }
 	);
 
+	mUIManager.SetRISCandidatesCallbacks(
+		[this]() { return mRenderer.GetRISCandidates(); },
+		[this](UINT n) { mRenderer.SetRISCandidates(n); },
+		[this]() { return mRenderer.GetNumPointLights(); }
+	);
+
+	mUIManager.SetShadowRaysCallbacks(
+		[this]() { return mRenderer.GetShadowRays(); },
+		[this](UINT n) { mRenderer.SetShadowRays(n); }
+	);
+
 
 	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
