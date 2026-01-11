@@ -2313,19 +2313,20 @@ void Renderer::Update(const Camera& camera)
 			auto invView = DirectX::XMMatrixInverse(nullptr, view);
 			auto proj = camera.GetProjMatrix();
 			auto invProj = DirectX::XMMatrixInverse(nullptr, proj);
-			auto viewProj = view * proj;
-			auto invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
+			//auto viewProj = view * proj;
+			//auto invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
 			auto cameraPos = camera.GetPosition();
 			auto cameraFwd = camera.GetForward();
 
 			auto jitterMatrix = DirectX::XMMatrixTranslation(mJitter.x * 2.0f, -mJitter.y * 2.0f, 0.0f);
 			auto jitteredProj = proj * jitterMatrix;
 			auto jitteredViewProj = view * jitteredProj;
+			auto invJitteredViewProj = DirectX::XMMatrixInverse(nullptr, jitteredViewProj);
 
 			size_t cbOffset;
 			{
 				mConstantBufferData.vpMatrix = jitteredViewProj;
-				mConstantBufferData.InvVpMatrix = invViewProj;
+				mConstantBufferData.InvVpMatrix = invJitteredViewProj;
 				mConstantBufferData.viewPos = cameraPos;
 				mConstantBufferData.frameCount = mFrameCount;
 
