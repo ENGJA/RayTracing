@@ -9,7 +9,8 @@
 #include "ResourceLoading/ImageDecoder.h"
 using std::string, std::vector, std::cerr, std::endl;
 
-
+// Define static member
+bool Model::sLoadDoubleSidedWithoutTextures = false;
 
 AlphaProperties Model::GetAlphaProperties(const aiMaterial* material)
 {
@@ -177,11 +178,15 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 			mat->Get(AI_MATKEY_TWOSIDED, twoSided);
 			if (twoSided)
 			{
-				bool hasTexture = false;
-				if (mat->GetTextureCount(aiTextureType_BASE_COLOR) == 0 &&
-					mat->GetTextureCount(aiTextureType_DIFFUSE) == 0)
+				// Skip double-sided materials without textures only if configuration is disabled
+				if (!sLoadDoubleSidedWithoutTextures)
 				{
-					continue;
+					bool hasTexture = false;
+					if (mat->GetTextureCount(aiTextureType_BASE_COLOR) == 0 &&
+						mat->GetTextureCount(aiTextureType_DIFFUSE) == 0)
+					{
+						continue;
+					}
 				}
 			}
 		}
