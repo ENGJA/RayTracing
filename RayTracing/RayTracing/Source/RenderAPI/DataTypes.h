@@ -28,10 +28,10 @@ struct ConstantBufferData
 	int shadowsEnabled;
 	int reflectionsEnabled;
 
-	int maxRecursionDepth;
+	int maxReflectionDepth;
+	int maxTransmissionDepth;
 	int risCandidates;
 	int shadowRays;
-	int _pad;
 
 	LightData lights[cMaxLights];
 };

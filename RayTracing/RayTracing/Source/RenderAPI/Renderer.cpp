@@ -891,7 +891,8 @@ void Renderer::InitializeRayTracing()
 		//HLSLShader fullRtLibraryShader = mShaderCompiler.LoadFromCso(L"../x64/Debug/FullRT.cso");
 
 		RTPipelineSettings fullRtSettings;
-		fullRtSettings.maxPayloadSize = sizeof(float) * 23;
+		fullRtSettings.maxPayloadSize = sizeof(float) * 25;
+		fullRtSettings.maxRecursion = std::max(Config::cMaxReflectionDepth, Config::cMaxReflectionDepth);
 		mFullRTPipeline.Initialize(mDevice.Get(), &mFullRTGlobalRootSignature, &localRootSig, fullRtLibraryShader.GetShaderBlob(), fullRtSettings);
 	}
 	// 4. Build Shader Binding Table (SBT)
@@ -1966,7 +1967,8 @@ void Renderer::InitializeRayTracingPipelines()
 		//HLSLShader fullRtLibraryShader = mShaderCompiler.LoadFromCso(L"../x64/Debug/FullRT.cso");
 
 		RTPipelineSettings fullRtSettings;
-		fullRtSettings.maxPayloadSize = sizeof(float) * 23;
+		fullRtSettings.maxPayloadSize = sizeof(float) * 24;
+		fullRtSettings.maxRecursion = Config::cMaxReflectionDepth + Config::cMaxTransmitionDepth;
 		mFullRTPipeline.Initialize(mDevice.Get(), &mFullRTGlobalRootSignature, &localRootSig, fullRtLibraryShader.GetShaderBlob(), fullRtSettings);
 	}
 
@@ -2332,7 +2334,8 @@ void Renderer::Update(const Camera& camera)
 
 				mConstantBufferData.shadowsEnabled = mShadowsEnabled ? 1 : 0;
 				mConstantBufferData.reflectionsEnabled = mReflectionsEnabled ? 1 : 0;
-				mConstantBufferData.maxRecursionDepth = mMaxRecursionDepth;
+				mConstantBufferData.maxReflectionDepth = mMaxReflectionDepth;
+				mConstantBufferData.maxTransmissionDepth = mMaxTransmissionDepth;
 				mConstantBufferData.risCandidates = mRISCandidates;
 				mConstantBufferData.shadowRays = mPointShadowRays;
 
