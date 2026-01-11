@@ -129,8 +129,8 @@ float4 main(PSInput input) : SV_TARGET
             attenuation = saturate(attenuation * 1.0f);
         }
 
-        float3 diffuseLightCol = lights[i].diffuseColor.xyz * lights[i].diffuseColor.w * attenuation;
-        float3 specularLightCol = lights[i].specularColor.xyz * lights[i].specularColor.w * attenuation;
+        float3 diffuseLightCol = lights[i].diffuseColor.xyz * attenuation;
+        float3 specularLightCol = lights[i].specularColor.xyz * attenuation;
 
         float NdotL = saturate(dot(N, L));
         float3 diffuse = NdotL * albedo * diffuseLightCol;

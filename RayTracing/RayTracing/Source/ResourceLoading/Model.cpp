@@ -115,14 +115,14 @@ void Model::loadModel(const string& path)
 		//	0.5f 
 		//);
 
-		ld.diffuseColor = aLight->mColorDiffuse.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
+		ld.diffuseColor = aLight->mColorDiffuse.IsBlack() ? DirectX::XMFLOAT4(5.0f, 5.0f, 5.0f, 1.0f) : DirectX::XMFLOAT4(
 			aLight->mColorDiffuse.r,
 			aLight->mColorDiffuse.g,
 			aLight->mColorDiffuse.b,
 			1.0f 
 		);
 
-		ld.specularColor = aLight->mColorSpecular.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
+		ld.specularColor = aLight->mColorSpecular.IsBlack() ? DirectX::XMFLOAT4(5.0f, 5.0f, 5.0f, 1.0f) : DirectX::XMFLOAT4(
 			aLight->mColorSpecular.r,
 			aLight->mColorSpecular.g,
 			aLight->mColorSpecular.b,
