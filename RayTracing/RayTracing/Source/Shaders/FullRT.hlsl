@@ -26,16 +26,23 @@ cbuffer FrameCB : register(b0)
 {
     float4x4 vpMatrix;
     float4x4 invViewProj;
+    
     float3 viewPos;
     int numLights;
+    
     int numPointLights;
     int frameCount;
     int shadowsEnabled;
     int reflectionsEnabled;
+    
     int maxReflectionDepth;
     int maxTransparentDepth;
     int risCandidates;
     int shadowRays;
+    
+    float nearZ;
+    float farZ;
+    float2 _pad0;
 };
 
 // ===============================================================================================
@@ -310,8 +317,8 @@ void RayGen()
     RayDesc ray;
     ray.Origin = viewPos;
     ray.Direction = rayDir;
-    ray.TMin = 0.001f;
-    ray.TMax = 10000.0f;
+    ray.TMin = nearZ;
+    ray.TMax = farZ;
 
     RayPayload payload;
     payload.color = float3(0, 0, 0);

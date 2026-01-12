@@ -2367,6 +2367,8 @@ void Renderer::Update(const Camera& camera)
 				mConstantBufferData.maxTransmissionDepth = mMaxTransmissionDepth;
 				mConstantBufferData.risCandidates = mRISCandidates;
 				mConstantBufferData.shadowRays = mPointShadowRays;
+				mConstantBufferData.nearZ = camera.GetNearZ();
+				mConstantBufferData.farZ = camera.GetFarZ();
 
 				UINT currentBackBufferIndex = mSwapChain.GetCurrentBackBufferIndex();
 				size_t alignedSize = (sizeof(ConstantBufferData) + 255) & ~255; // Align to 256 bytes
