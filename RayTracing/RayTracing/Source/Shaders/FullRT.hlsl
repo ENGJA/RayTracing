@@ -702,6 +702,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     payload.color = myFinalColor;
     payload.hitT = RayTCurrent();
     payload.blendAlbedo = myAlbedo;
+    payload.blendF0 = myF0;
     payload.blendDiffuse = myDiffuse;
     payload.blendMaterial = myMaterial;
 
