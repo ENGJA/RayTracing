@@ -38,18 +38,27 @@ struct Light
 
 cbuffer CBData : register(b0)
 {
-    float4x4 vpMatrix : packoffset(c0);
-    float4x4 invViewProj : packoffset(c4);
-    float3 viewPos : packoffset(c8);
-    int numLights : packoffset(c8.w);
-    int numPointLights : packoffset(c9.x);
+    float4x4 vpMatrix;
+    float4x4 invViewProj;
     
-    int frameCount : packoffset(c9.y);
-    int shadowsEnabled : packoffset(c9.z);
-    int reflectionsEnabled : packoffset(c9.w);
-    int maxRecursionDepth : packoffset(c10.x);
-    float3 _pad0 : packoffset(c10.y);
-    Light lights[25] : packoffset(c11);
+    float3 viewPos;
+    int numLights;
+    
+    int numPointLights;
+    int frameCount;
+    int shadowsEnabled;
+    int reflectionsEnabled;
+    
+    int maxReflectionDepth;
+    int maxTransparentDepth;
+    int risCandidates;
+    int shadowRays;
+    
+    float nearZ;
+    float farZ;
+    float2 _pad0;
+    
+    Light lights[25];
 };
 
 
