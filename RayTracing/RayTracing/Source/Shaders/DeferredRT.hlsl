@@ -231,6 +231,7 @@ void RayGen()
         
         //gOutDiffuse[pixel] = float4(1, 1, 1, 1); 
         //gOutSpecular[pixel] = float4(0, 0, 0, 0);
+        gOutColor[pixel] = float4(sky, 1.0f);
         gOutAlbedo[pixel] = float4(sky, 1.0);
         gOutAlbedoSpecular[pixel] = float4(0, 0, 0, 0);
         //gOutAlbedo[pixel] = float4(0, 0, 0, 0); // Sky has no albedo
