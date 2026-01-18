@@ -718,6 +718,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         transPayload.transparentDepth = payload.transparentDepth + 1;
         transPayload.reflectionDepth = payload.reflectionDepth;
         transPayload.hitT = 0.0f;
+        transPayload.dDdx = payload.dDdx;
+        transPayload.dDdy = payload.dDdy;
         transPayload.blendAlbedo = float4(0, 0, 0, 0);
         transPayload.blendDiffuse = float3(0, 0, 0);
         transPayload.blendF0 = float3(0, 0, 0);
