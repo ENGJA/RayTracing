@@ -72,6 +72,23 @@ public:
         D3D12Resource& instanceDescsBuffer);
 
 
+    void BuildSingleGlobalBLAS(
+        std::vector<MeshGpuData>& opaqueSingle,
+        std::vector<MeshGpuData>& opaqueDouble,
+        std::vector<MeshGpuData>& maskedSingle,
+        std::vector<MeshGpuData>& maskedDouble,
+        std::vector<MeshGpuData>& transparentSingle,
+        std::vector<MeshGpuData>& transparentDouble,
+        D3D12Resource& outBlasResult);
+
+
+    void BuildSingleGlobalTLAS(
+        const D3D12Resource& unifiedBlas,
+        UINT totalGeomCount,
+        D3D12Resource& tlasResultBuffer,
+        D3D12Resource& tlasScratchBuffer,
+        D3D12Resource& instanceDescsBuffer);
+
     /**
 	* @brief Clears temporary scratch resources used during acceleration structure builds.
     */

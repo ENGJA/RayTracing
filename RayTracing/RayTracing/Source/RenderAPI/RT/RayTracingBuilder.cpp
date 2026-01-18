@@ -12,6 +12,139 @@ void RayTracingBuilder::Initialize(ID3D12Device5* pDevice, ID3D12GraphicsCommand
 	mCmdList = pCmdList;
 	mQueue = pQueue;
 }
+void RayTracingBuilder::BuildSingleGlobalBLAS(
+	std::vector<MeshGpuData>& opaqueSingle,
+	std::vector<MeshGpuData>& opaqueDouble,
+	std::vector<MeshGpuData>& maskedSingle,
+	std::vector<MeshGpuData>& maskedDouble,
+	std::vector<MeshGpuData>& transparentSingle,
+	std::vector<MeshGpuData>& transparentDouble,
+	D3D12Resource& outBlasResult)
+{
+	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> allGeoms;
+
+	// Helper to add a whole bucket to the descriptor list
+	auto AddToGeoms = [&](std::vector<MeshGpuData>& meshes, bool isOpaque) {
+		for (auto& mesh : meshes)
+		{
+			D3D12_RAYTRACING_GEOMETRY_DESC geom = {};
+			geom.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+			// Mark as Opaque to skip AnyHit entirely for performance
+			geom.Flags = isOpaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+
+			geom.Triangles.VertexBuffer.StartAddress = mesh.vb.Get()->GetGPUVirtualAddress();
+			geom.Triangles.VertexBuffer.StrideInBytes = mesh.vbv.StrideInBytes;
+			geom.Triangles.VertexCount = mesh.vbv.SizeInBytes / mesh.vbv.StrideInBytes;
+			geom.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+
+			geom.Triangles.IndexBuffer = mesh.ib.Get()->GetGPUVirtualAddress();
+			geom.Triangles.IndexCount = mesh.ibv.SizeInBytes / (mesh.ibv.Format == DXGI_FORMAT_R16_UINT ? 2 : 4);
+			geom.Triangles.IndexFormat = mesh.ibv.Format;
+
+			allGeoms.push_back(geom);
+		}
+		};
+
+	// Collect all geometries
+	AddToGeoms(opaqueSingle, true);
+	AddToGeoms(opaqueDouble, true);
+	AddToGeoms(maskedSingle, false);
+	AddToGeoms(maskedDouble, false);
+	AddToGeoms(transparentSingle, false);
+	AddToGeoms(transparentDouble, false);
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+	inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+	inputs.NumDescs = (UINT)allGeoms.size();
+	inputs.pGeometryDescs = allGeoms.data();
+	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info;
+	mDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+
+	// Allocate result and scratch
+	auto resultDesc = CD3DX12_RESOURCE_DESC::Buffer(info.ResultDataMaxSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	outBlasResult.Initialize(mDevice, resultDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+
+	D3D12Resource scratch;
+	auto scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(info.ScratchDataSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	scratch.Initialize(mDevice, scratchDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+	buildDesc.Inputs = inputs;
+	buildDesc.DestAccelerationStructureData = outBlasResult.Get()->GetGPUVirtualAddress();
+	buildDesc.ScratchAccelerationStructureData = scratch.Get()->GetGPUVirtualAddress();
+
+	mCmdList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+	D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(outBlasResult.Get());
+	mCmdList->ResourceBarrier(1, &uavBarrier);
+
+	mTempResources.push_back(std::move(scratch)); // Keep scratch alive during build
+}
+
+void RayTracingBuilder::BuildSingleGlobalTLAS(
+	const D3D12Resource& unifiedBlas, // The single BLAS we built
+	UINT totalGeomCount,              // Total number of geometries in that BLAS
+	D3D12Resource& tlasResultBuffer,
+	D3D12Resource& tlasScratchBuffer,
+	D3D12Resource& instanceDescsBuffer)
+{
+	// We only need ONE instance to point to the single BLAS.
+	// However, if you want different masks for different parts, 
+	// you would still need multiple instances with different 'InstanceContributionToHitGroupIndex'.
+	// For a "Single BLAS = Single Instance" approach:
+
+	D3D12_RAYTRACING_INSTANCE_DESC desc = {};
+	desc.Transform[0][0] = desc.Transform[1][1] = desc.Transform[2][2] = 1.0f;
+	desc.InstanceID = 0;
+	desc.InstanceMask = 0xFF; // All rays hit
+	desc.InstanceContributionToHitGroupIndex = 0; // Starts at index 0 in the SBT
+	desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE; // Individual cull flags handled in BLAS
+	desc.AccelerationStructure = unifiedBlas.Get()->GetGPUVirtualAddress();
+
+	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances = { desc };
+
+	// 1. Upload Instances to GPU
+	UINT dataSize = (UINT)instances.size() * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+	void* pData;
+	instanceDescsBuffer.Get()->Map(0, nullptr, &pData);
+	memcpy(pData, instances.data(), dataSize);
+	instanceDescsBuffer.Get()->Unmap(0, nullptr);
+
+	// 2. Setup Inputs and Get Sizes
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+	inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	inputs.NumDescs = (UINT)instances.size();
+	inputs.InstanceDescs = instanceDescsBuffer.Get()->GetGPUVirtualAddress();
+
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info;
+	mDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+
+	{
+		// Allocate the actual TLAS buffer
+		D3D12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(info.ResultDataMaxSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		tlasResultBuffer.Initialize(mDevice, resDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+
+		// Allocate the scratch buffer required for the build
+		D3D12_RESOURCE_DESC scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(info.ScratchDataSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		tlasScratchBuffer.Initialize(mDevice, scratchDesc, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON);
+	}
+
+	// 3. Build & Barrier
+	// (Allocate tlasResultBuffer and tlasScratchBuffer as before)
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+	buildDesc.Inputs = inputs;
+	buildDesc.DestAccelerationStructureData = tlasResultBuffer.Get()->GetGPUVirtualAddress();
+	buildDesc.ScratchAccelerationStructureData = tlasScratchBuffer.Get()->GetGPUVirtualAddress();
+
+	mCmdList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+	D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(tlasResultBuffer.Get());
+	mCmdList->ResourceBarrier(1, &uavBarrier);
+}
 
 void RayTracingBuilder::BuildAllBLAS(
 	std::vector<MeshGpuData>& opaqueSingle,

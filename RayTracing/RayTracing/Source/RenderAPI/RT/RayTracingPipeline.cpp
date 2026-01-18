@@ -88,100 +88,176 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 }
 
 
-
 void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer_list<std::span<const MeshGpuData>>& meshes)
 {
+	// 1. Calculate Total Mesh Count for sizing
 	size_t totalMeshes = 0;
 	for (const auto& meshSpan : meshes)
 		totalMeshes += meshSpan.size();
 
-	// Hit Group Record = [Shader ID (32B)] + [IndexBuffer Ptr (8B)] + [VertexBuffer Ptr (8B)] + [Texture Handle (8B)]
-	UINT shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES; // 32
+	// 2. Define Record Sizes
+	UINT shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 	UINT materialSize = sizeof(MeshMaterialData);
-	UINT recordSize = shaderIDSize + 8 * 3 + materialSize; // ID + 1 GPU Descriptor Handle (64-bit)
-	recordSize = (recordSize + 31) & ~31; // Align to 32 bytes
+	// ID + 3 GPU Addresses (Index, Vertex, Texture) + Material Constants
+	UINT recordSize = (shaderIDSize + 8 * 3 + materialSize + 31) & ~31; // Align to 32 bytes
 
-	mRayGenSectionSize = recordSize;    // 1 RayGen shader
-	mMissSectionSize = recordSize * 2;  // 2 Miss shaders (Color + Shadow)
-	mHitGroupSectionSize = recordSize * static_cast<UINT>(totalMeshes); // 1 HitGroup per mesh
+	mRayGenSectionSize = recordSize;    // 1 RayGen record
+	mMissSectionSize = recordSize * 2;  // 2 Miss records
+	mHitGroupSectionSize = recordSize * static_cast<UINT>(totalMeshes); // Contiguous block
 
-	// Total Size: 1 RayGen + 2 Miss (Color/Shadow) + N HitGroups (one per mesh)
-	UINT sbtSize = mRayGenSectionSize + mMissSectionSize + mHitGroupSectionSize;
-	sbtSize = (sbtSize + 255) & ~255; // Align to 256 bytes
+	UINT sbtSize = (mRayGenSectionSize + mMissSectionSize + mHitGroupSectionSize + 255) & ~255;
 
-	// Create the SBT Buffer
+	// 3. Initialize/Re-initialize SBT Buffer
 	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sbtSize);
 	mSBTStorage.Initialize(pDevice, bufferDesc, heapProps);
 
-	// Map Buffer
+	// 4. Map the buffer to pData (Fixes the undefined error)
 	uint8_t* pData = nullptr;
 	mSBTStorage.Get()->Map(0, nullptr, (void**)&pData);
 
 	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> props;
 	mStateObject.As(&props);
 
-	// 1. Write RayGen
+	// 5. Write RayGen and Miss Shaders
 	memcpy(pData, props->GetShaderIdentifier(mSettings.rayGenShader.c_str()), shaderIDSize);
 	pData += mRayGenSectionSize;
 
-	// 2. Write Miss
 	memcpy(pData, props->GetShaderIdentifier(mSettings.missShader.c_str()), shaderIDSize);
 	pData += mMissSectionSize / 2;
 
-	// 3. Write Shadow Miss
 	memcpy(pData, props->GetShaderIdentifier(mSettings.shadowMissShader.c_str()), shaderIDSize);
 	pData += mMissSectionSize / 2;
 
-	// 4. Write Hit Groups (Per Mesh)
-	void* opaqueHitGroup = props->GetShaderIdentifier(mSettings.hitGroup.c_str());
-	void* transDoubleHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparentDouble.c_str());
-	void* transSingleHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparentSingle.c_str());
+	// 6. Write Hit Groups (Contiguous for Single BLAS)
+	void* opaqueHG = props->GetShaderIdentifier(mSettings.hitGroup.c_str());
+	void* transDoubleHG = props->GetShaderIdentifier(mSettings.hitGroupTransparentDouble.c_str());
+	void* transSingleHG = props->GetShaderIdentifier(mSettings.hitGroupTransparentSingle.c_str());
 
 	int listIndex = 0;
 	for (const auto& meshSpan : meshes)
 	{
-		void* currentHitGroupInfo = opaqueHitGroup;
-		if (listIndex == 4)
-			currentHitGroupInfo = transSingleHitGroup;
-		else if (listIndex == 5)
-			currentHitGroupInfo = transDoubleHitGroup;
+		// Select the shader ID based on the bucket order
+		void* currentHitGroupID = opaqueHG;
+		if (listIndex == 4)      currentHitGroupID = transSingleHG; // Decals (Transparent Single-Sided)
+		else if (listIndex == 5) currentHitGroupID = transDoubleHG; // Glass (Transparent Double-Sided)
 
 		for (const auto& mesh : meshSpan)
 		{
-			uint8_t* pDataStart = pData;
+			uint8_t* pRecordStart = pData;
 
-			// A. Copy Shader ID for "HitGroup"
-			memcpy(pData, currentHitGroupInfo, shaderIDSize);
+			memcpy(pData, currentHitGroupID, shaderIDSize);
 			pData += shaderIDSize;
 
-			// B. Copy Root Argument: The GPU Pointer to the Index Buffer
+			D3D12_GPU_VIRTUAL_ADDRESS ibAddr = mesh.ib.Get()->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS vbAddr = mesh.vb.Get()->GetGPUVirtualAddress();
+			memcpy(pData, &ibAddr, 8); pData += 8;
+			memcpy(pData, &vbAddr, 8); pData += 8;
 
-			// Arg 0: Index Buffer GPU Address (8 bytes)
-			auto indexBufferAddr = mesh.ib.Get()->GetGPUVirtualAddress();
-			memcpy(pData, &indexBufferAddr, sizeof(indexBufferAddr));
-			pData += sizeof(indexBufferAddr);
-
-			// Arg 1: Vertex Buffer GPU Address (8 bytes)
-			auto vertexBufferAddr = mesh.vb.Get()->GetGPUVirtualAddress();
-			memcpy(pData, &vertexBufferAddr, sizeof(vertexBufferAddr));
-			pData += sizeof(vertexBufferAddr);
-
-			// Arg 2: Texture Descriptor Table Handle (8 bytes)
-			auto textureHandle = mesh.materialTable.gpuHandle;
-			memcpy(pData, &textureHandle, sizeof(textureHandle));
-
-			// Arg 3: Material Data (MeshMaterialData)
-			pData += sizeof(textureHandle);
+			memcpy(pData, &mesh.materialTable.gpuHandle, 8); pData += 8;
 			memcpy(pData, &mesh.materialData, sizeof(MeshMaterialData));
 
-			pData = pDataStart + recordSize; // Advance to next record (considering alignment)
+			pData = pRecordStart + recordSize;
 		}
 		listIndex++;
 	}
 
 	mSBTStorage.Get()->Unmap(0, nullptr);
 }
+
+//void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer_list<std::span<const MeshGpuData>>& meshes)
+//{
+//	size_t totalMeshes = 0;
+//	for (const auto& meshSpan : meshes)
+//		totalMeshes += meshSpan.size();
+//
+//	// Hit Group Record = [Shader ID (32B)] + [IndexBuffer Ptr (8B)] + [VertexBuffer Ptr (8B)] + [Texture Handle (8B)]
+//	UINT shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES; // 32
+//	UINT materialSize = sizeof(MeshMaterialData);
+//	UINT recordSize = shaderIDSize + 8 * 3 + materialSize; // ID + 1 GPU Descriptor Handle (64-bit)
+//	recordSize = (recordSize + 31) & ~31; // Align to 32 bytes
+//
+//	mRayGenSectionSize = recordSize;    // 1 RayGen shader
+//	mMissSectionSize = recordSize * 2;  // 2 Miss shaders (Color + Shadow)
+//	mHitGroupSectionSize = recordSize * static_cast<UINT>(totalMeshes); // 1 HitGroup per mesh
+//
+//	// Total Size: 1 RayGen + 2 Miss (Color/Shadow) + N HitGroups (one per mesh)
+//	UINT sbtSize = mRayGenSectionSize + mMissSectionSize + mHitGroupSectionSize;
+//	sbtSize = (sbtSize + 255) & ~255; // Align to 256 bytes
+//
+//	// Create the SBT Buffer
+//	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+//	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sbtSize);
+//	mSBTStorage.Initialize(pDevice, bufferDesc, heapProps);
+//
+//	// Map Buffer
+//	uint8_t* pData = nullptr;
+//	mSBTStorage.Get()->Map(0, nullptr, (void**)&pData);
+//
+//	Microsoft::WRL::ComPtr<ID3D12StateObjectProperties> props;
+//	mStateObject.As(&props);
+//
+//	// 1. Write RayGen
+//	memcpy(pData, props->GetShaderIdentifier(mSettings.rayGenShader.c_str()), shaderIDSize);
+//	pData += mRayGenSectionSize;
+//
+//	// 2. Write Miss
+//	memcpy(pData, props->GetShaderIdentifier(mSettings.missShader.c_str()), shaderIDSize);
+//	pData += mMissSectionSize / 2;
+//
+//	// 3. Write Shadow Miss
+//	memcpy(pData, props->GetShaderIdentifier(mSettings.shadowMissShader.c_str()), shaderIDSize);
+//	pData += mMissSectionSize / 2;
+//
+//	// 4. Write Hit Groups (Per Mesh)
+//	void* opaqueHitGroup = props->GetShaderIdentifier(mSettings.hitGroup.c_str());
+//	void* transDoubleHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparentDouble.c_str());
+//	void* transSingleHitGroup = props->GetShaderIdentifier(mSettings.hitGroupTransparentSingle.c_str());
+//
+//	int listIndex = 0;
+//	for (const auto& meshSpan : meshes)
+//	{
+//		void* currentHitGroupInfo = opaqueHitGroup;
+//		if (listIndex == 4)
+//			currentHitGroupInfo = transSingleHitGroup;
+//		else if (listIndex == 5)
+//			currentHitGroupInfo = transDoubleHitGroup;
+//
+//		for (const auto& mesh : meshSpan)
+//		{
+//			uint8_t* pDataStart = pData;
+//
+//			// A. Copy Shader ID for "HitGroup"
+//			memcpy(pData, currentHitGroupInfo, shaderIDSize);
+//			pData += shaderIDSize;
+//
+//			// B. Copy Root Argument: The GPU Pointer to the Index Buffer
+//
+//			// Arg 0: Index Buffer GPU Address (8 bytes)
+//			auto indexBufferAddr = mesh.ib.Get()->GetGPUVirtualAddress();
+//			memcpy(pData, &indexBufferAddr, sizeof(indexBufferAddr));
+//			pData += sizeof(indexBufferAddr);
+//
+//			// Arg 1: Vertex Buffer GPU Address (8 bytes)
+//			auto vertexBufferAddr = mesh.vb.Get()->GetGPUVirtualAddress();
+//			memcpy(pData, &vertexBufferAddr, sizeof(vertexBufferAddr));
+//			pData += sizeof(vertexBufferAddr);
+//
+//			// Arg 2: Texture Descriptor Table Handle (8 bytes)
+//			auto textureHandle = mesh.materialTable.gpuHandle;
+//			memcpy(pData, &textureHandle, sizeof(textureHandle));
+//
+//			// Arg 3: Material Data (MeshMaterialData)
+//			pData += sizeof(textureHandle);
+//			memcpy(pData, &mesh.materialData, sizeof(MeshMaterialData));
+//
+//			pData = pDataStart + recordSize; // Advance to next record (considering alignment)
+//		}
+//		listIndex++;
+//	}
+//
+//	mSBTStorage.Get()->Unmap(0, nullptr);
+//}
 
 void RayTracingPipeline::Dispatch(ID3D12GraphicsCommandList4* pCmd, UINT width, UINT height)
 {
