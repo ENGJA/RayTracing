@@ -177,10 +177,18 @@ private:
 	std::vector<LightData> mStaticLights; ///< Static lights loaded from models.
 
 	RayTracingBuilder mRayTracingBuilder; ///< Ray tracing acceleration structure builder.
+	D3D12Resource mUnifiedBLAS;
 	D3D12Resource mTLAS;	///< Top-level acceleration structure result.
 	D3D12Resource mTLAS_Scratch;	///< Top-level acceleration structure scratch buffer. May be used during updating, when objects move.
 	D3D12Resource mInstanceDescBuffer;	///< Instance descriptions buffer for TLAS. TBH I don't know if it should be kept around after build.
-
+	UINT GetTotalMeshCount() const
+	{
+		return static_cast<UINT>(
+			mOpaqueSingleSidedMeshes.size() + mOpaqueDoubleSidedMeshes.size() +
+			mMaskedSingleSidedMeshes.size() + mMaskedDoubleSidedMeshes.size() +
+			mTransparentSingleSidedMeshes.size() + mTransparentDoubleSidedMeshes.size()
+			);
+	}
 
 	// ===========================================
 	// G-buffer resources for deferred rendering

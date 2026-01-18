@@ -766,6 +766,7 @@ void Renderer::UnloadScene()
 	}
 
 	mSceneLoaded = false;
+	mUnifiedBLAS.Reset();
 	mTLAS.Reset();
 	mTLAS_Scratch.Reset();
 	mInstanceDescBuffer.Reset();
@@ -2011,14 +2012,23 @@ void Renderer::BuildRayTracingAccelerationStructures()
 {
 	mCommandList.ResetCommandList(mSwapChain.GetCurrentBackBufferIndex());
 
-	// 1. Build BLAS for all mesh lists
-	mRayTracingBuilder.BuildAllBLAS(
+	mRayTracingBuilder.BuildSingleGlobalBLAS(
 		mOpaqueSingleSidedMeshes,
 		mOpaqueDoubleSidedMeshes,
 		mMaskedSingleSidedMeshes,
 		mMaskedDoubleSidedMeshes,
 		mTransparentSingleSidedMeshes,
-		mTransparentDoubleSidedMeshes);
+		mTransparentDoubleSidedMeshes,
+		mUnifiedBLAS);
+
+	//// 1. Build BLAS for all mesh lists
+	//mRayTracingBuilder.BuildAllBLAS(
+	//	mOpaqueSingleSidedMeshes,
+	//	mOpaqueDoubleSidedMeshes,
+	//	mMaskedSingleSidedMeshes,
+	//	mMaskedDoubleSidedMeshes,
+	//	mTransparentSingleSidedMeshes,
+	//	mTransparentDoubleSidedMeshes);
 
 	// 2. Allocate TLAS instance desc buffer
 	UINT totalMeshes = static_cast<UINT>(
@@ -2029,24 +2039,31 @@ void Renderer::BuildRayTracingAccelerationStructures()
 		mTransparentSingleSidedMeshes.size() +
 		mTransparentDoubleSidedMeshes.size());
 
-	UINT64 instanceDescSize = sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * totalMeshes;
+	UINT64 instanceDescSize = sizeof(D3D12_RAYTRACING_INSTANCE_DESC);// *totalMeshes;
 	mInstanceDescBuffer.Initialize(
 		mDevice.Get(),
 		instanceDescSize,
 		D3D12_HEAP_TYPE_UPLOAD,
 		D3D12_RESOURCE_STATE_GENERIC_READ);
 
-	// 3. Build TLAS
-	mRayTracingBuilder.BuildTLAS(
-		mOpaqueSingleSidedMeshes,
-		mOpaqueDoubleSidedMeshes,
-		mMaskedSingleSidedMeshes,
-		mMaskedDoubleSidedMeshes,
-		mTransparentSingleSidedMeshes,
-		mTransparentDoubleSidedMeshes,
+	mRayTracingBuilder.BuildSingleGlobalTLAS(
+		mUnifiedBLAS,
+		GetTotalMeshCount(),
 		mTLAS,
 		mTLAS_Scratch,
-		mInstanceDescBuffer);
+		mInstanceDescBuffer
+	);
+	// 3. Build TLAS
+	//mRayTracingBuilder.BuildTLAS(
+	//	mOpaqueSingleSidedMeshes,
+	//	mOpaqueDoubleSidedMeshes,
+	//	mMaskedSingleSidedMeshes,
+	//	mMaskedDoubleSidedMeshes,
+	//	mTransparentSingleSidedMeshes,
+	//	mTransparentDoubleSidedMeshes,
+	//	mTLAS,
+	//	mTLAS_Scratch,
+	//	mInstanceDescBuffer);
 
 	// 4. Execute command list
 	mCommandList.Get()->Close();
