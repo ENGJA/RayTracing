@@ -32,6 +32,7 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	lib->DefineExport(mSettings.closestHitTransparent.c_str());
 	lib->DefineExport(mSettings.anyHit.c_str());
 	lib->DefineExport(mSettings.anyHitTransparent.c_str());
+	lib->DefineExport(mSettings.anyHitDecal.c_str());
 
 	// B. Hit Groups
 	// Combines ClosestHit and AnyHit into one named group "HitGroup"
@@ -41,16 +42,17 @@ void RayTracingPipeline::Initialize(ID3D12Device5* pDevice, D3D12RootSignature* 
 	hitGroup->SetHitGroupExport(mSettings.hitGroup.c_str());
 	hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
-	// Transparent Single-Sided Hit Group
+	// Transparent Double-Sided Hit Group	
 	auto hitGroupTransparentDouble = pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
 	hitGroupTransparentDouble->SetClosestHitShaderImport(mSettings.closestHitTransparent.c_str());
 	hitGroupTransparentDouble->SetAnyHitShaderImport(mSettings.anyHitTransparent.c_str());
 	hitGroupTransparentDouble->SetHitGroupExport(mSettings.hitGroupTransparentDouble.c_str());
 	hitGroupTransparentDouble->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
-	// Transparent Double-Sided Hit Group
+	// Transparent Single-Sided Hit Group
 	auto hitGroupTransparentSingle = pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-	hitGroupTransparentSingle->SetClosestHitShaderImport(mSettings.closestHitTransparent.c_str());
+	//hitGroupTransparentSingle->SetClosestHitShaderImport(mSettings.closestHitTransparent.c_str());
+	hitGroupTransparentSingle->SetAnyHitShaderImport(mSettings.anyHitDecal.c_str());
 	hitGroupTransparentSingle->SetHitGroupExport(mSettings.hitGroupTransparentSingle.c_str());
 	hitGroupTransparentSingle->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 

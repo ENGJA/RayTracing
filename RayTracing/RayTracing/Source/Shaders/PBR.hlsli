@@ -12,19 +12,41 @@ float DistributionGGX(float3 N, float3 H, float roughness)
     return a2 / (PI * denom * denom + 0.0000001);
 }
 
-float GeometrySchlickGGX(float NdotV, float roughness)
+float GeometrySchlickGGX_Direct(float NdotV, float roughness)
 {
     float r = (roughness + 1.0);
-    float k = (r * r) / 8.0;
+    float k = (r * r) / 8.0; // Analytic Direct Light Formula
     return NdotV / (NdotV * (1.0 - k) + k);
 }
 
-float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+float GeometrySchlickGGX_IBL(float NdotV, float roughness)
+{
+    float a = roughness;
+    float k = (a * a) / 2.0; // IBL / Reflection Formula
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+float GeometrySmith(float3 N, float3 V, float3 L, float roughness, bool isIBL)
 {
     float NdotV = max(dot(N, V), 0.0);
     float NdotL = max(dot(N, L), 0.0);
-    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+    
+    if (isIBL)
+    {
+        return GeometrySchlickGGX_IBL(NdotV, roughness) * GeometrySchlickGGX_IBL(NdotL, roughness);
+    }
+    else
+    {
+        return GeometrySchlickGGX_Direct(NdotV, roughness) * GeometrySchlickGGX_Direct(NdotL, roughness);
+    }
 }
+
+//float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+//{
+//    float NdotV = max(dot(N, V), 0.0);
+//    float NdotL = max(dot(N, L), 0.0);
+//    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+//}
 
 float3 FresnelSchlick(float cosTheta, float3 F0)
 {

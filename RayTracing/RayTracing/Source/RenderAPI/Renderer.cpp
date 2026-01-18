@@ -1985,7 +1985,7 @@ void Renderer::InitializeRayTracingPipelines()
 		//HLSLShader fullRtLibraryShader = mShaderCompiler.LoadFromCso(L"../x64/Debug/FullRT.cso");
 
 		RTPipelineSettings fullRtSettings;
-		fullRtSettings.maxPayloadSize = sizeof(float) * 24;
+		fullRtSettings.maxPayloadSize = sizeof(float) * 25;
 		fullRtSettings.maxRecursion = Config::cMaxReflectionDepth + Config::cMaxTransmitionDepth;
 		mFullRTPipeline.Initialize(mDevice.Get(), &mFullRTGlobalRootSignature, &localRootSig, fullRtLibraryShader.GetShaderBlob(), fullRtSettings);
 	}

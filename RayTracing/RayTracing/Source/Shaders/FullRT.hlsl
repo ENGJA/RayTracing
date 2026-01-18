@@ -89,6 +89,8 @@ struct RayPayload
     float3 blendDiffuse;
     float3 blendF0;
     float2 blendMaterial;
+    
+    float minDecalT;
 };
 
 struct ShadowPayload
@@ -255,6 +257,10 @@ VertexAttributes GetHitSurface(uint triangleIndex, float3 bary)
 // --- Normal Mapping ---
 float3 CalculateNormal(float3 N, float4 tangent, float3 normalSample)
 {
+    if (dot(tangent.xyz, tangent.xyz) < 0.001f)
+    {
+        return N;
+    }
     float3 tangentNormal = normalSample * 2.0f - 1.0f;
 
     float3 T = normalize(tangent.xyz - dot(tangent.xyz, N) * N);
@@ -331,6 +337,7 @@ void RayGen()
     payload.blendDiffuse = float3(0, 0, 0);
     payload.blendF0 = float3(0, 0, 0);
     payload.blendMaterial = float2(0, 0);
+    payload.minDecalT = 1e20f;
 
     // Trace Primary Ray
     TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, payload);
@@ -402,7 +409,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     
     float2 dUVdx = 0;
     float2 dUVdy = 0;
-    if (payload.reflectionDepth == 0 && payload.transparentDepth == 0)
+    //if (payload.reflectionDepth == 0 && payload.transparentDepth == 0)
     {
         float3 viewDir = WorldRayDirection();
         float hitT = RayTCurrent();
@@ -418,9 +425,12 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float3 emissive = gEmissiveMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb * gEmissiveFactor.rgb;
     float3 normalSample = gNormalMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb;
     //float3 normalSample = gNormalMap.SampleLevel(gSampler, vert.uv, 0).rgb; // No gradients for normal map to avoid artifacts)
-    float3 normal = CalculateNormal(normalize(vert.normal), vert.tangent, normalSample);
-    
+    float3 normal = CalculateNormal(normalize(vert.normal), vert.tangent, normalSample);    
 
+    if (payload.minDecalT <= RayTCurrent())
+    {
+        albedo = albedo * (1.0f - payload.blendAlbedo.a) + payload.blendAlbedo.rgb;
+    }
     
     float3 worldPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     float3 V = -WorldRayDirection();
@@ -467,7 +477,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                     float3 H = normalize(V + L_central);
                     float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
                     float NDF = DistributionGGX(normal, H, roughness);
-                    float G = GeometrySmith(normal, V, L_central, roughness);
+                    float G = GeometrySmith(normal, V, L_central, roughness, false);
 
                     float3 kS = F;
                     float3 kD = (1.0f - kS) * (1.0f - metalness);
@@ -559,7 +569,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                             float3 H = normalize(V + L_central);
                             float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
                             float NDF = DistributionGGX(normal, H, roughness);
-                            float G = GeometrySmith(normal, V, L_central, roughness);
+                            float G = GeometrySmith(normal, V, L_central, roughness, false);
 
                             float3 kS = F;
                             float3 kD = (1.0f - kS) * (1.0f - metalness);
@@ -595,7 +605,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                 float3 H = normalize(V + L);
                 float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
                 float NDF = DistributionGGX(normal, H, roughness);
-                float G = GeometrySmith(normal, V, L, roughness);
+                float G = GeometrySmith(normal, V, L, roughness, false);
 
                 float3 kS = F;
                 float3 kD = (1.0f - kS) * (1.0f - metalness);
@@ -621,7 +631,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
                 float3 H = normalize(V + L);
                 float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
                 float NDF = DistributionGGX(normal, H, roughness);
-                float G = GeometrySmith(normal, V, L, roughness);
+                float G = GeometrySmith(normal, V, L, roughness, false);
                 float3 kS = F;
                 float3 kD = (1.0f - kS) * (1.0f - metalness);
                 float3 diffuseFactor = kD / PI;
@@ -641,6 +651,11 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         float3 H = ImportanceSampleGGX(Xi, normal, roughness);
         float3 R = normalize(reflect(-V, H));
         
+        float NdotL = saturate(dot(normal, R));
+        float NdotV = saturate(dot(normal, V));
+        float NdotH = saturate(dot(normal, H));
+        float VdotH = saturate(dot(V, H));
+        
         if (dot(normal, R) > 0.0f)
         {
             RayDesc ray;
@@ -659,8 +674,16 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         
             TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, reflPayload);
         
-            float3 F = FresnelSchlick(max(dot(normal, V), 0.0f), F0);
-            reflectedColor += reflPayload.color * F;
+            float3 F = FresnelSchlick(VdotH, F0); // Note: Use VdotH for microfacet Fresnel
+        
+            // Use the IBL version of GeometrySmith for reflections
+            float G = GeometrySmith(normal, V, R, roughness, true);
+        
+            // Weight derived from canceling PDF terms with BRDF terms
+            // Weight = F * G * VdotH / (NdotV * NdotH)
+            float3 weight = F * G * VdotH / (NdotV * NdotH + 0.00001f);
+
+            reflectedColor += reflPayload.color * weight;
         }
     }
 
@@ -796,4 +819,37 @@ void AnyHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersectionA
             IgnoreHit();
         }
     }
+}
+
+[shader("anyhit")]
+void AnyHitDecal(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+{   
+    //IgnoreHit();
+    //return;
+    if ((RayFlags() & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER))
+    {
+        IgnoreHit();
+        return;
+    }
+    if (payload.blendAlbedo.a >= 1.0f)
+    {
+        IgnoreHit();
+        return;
+    }
+    
+    payload.minDecalT = min(payload.minDecalT, RayTCurrent());
+    
+    float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
+    float2 uv = GetHitUV(PrimitiveIndex(), bary);
+
+    float4 decalSample = gAlbedoMap.SampleLevel(gSampler, uv, 0);
+    float4 decalColor = decalSample * gBaseColorFactor;
+    
+    float visibilityLeft = 1.0f - payload.blendAlbedo.a;
+    float3 newColor = decalColor.rgb * decalColor.a;
+    payload.blendAlbedo.rgb += newColor * visibilityLeft;
+    payload.blendAlbedo.a += decalColor.a * visibilityLeft;
+
+
+    IgnoreHit();
 }

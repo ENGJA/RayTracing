@@ -314,7 +314,7 @@ void RayGen()
                 float3 H = normalize(V + L_central);
                 float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
                 float NDF = DistributionGGX(normal, H, roughness);
-                float G = GeometrySmith(normal, V, L_central, roughness);
+                float G = GeometrySmith(normal, V, L_central, roughness, false);
                 
                 // Specular part (kS)
                 float3 numerator = NDF * G * F;
@@ -431,7 +431,7 @@ void ClosestHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttribut
         {
             float3 H = normalize(V + L);
             float NDF = DistributionGGX(worldNormal, H, roughness);
-            float G = GeometrySmith(worldNormal, V, L, roughness);
+            float G = GeometrySmith(worldNormal, V, L, roughness, false);
             float3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
 
             float3 kS = F;
@@ -523,6 +523,12 @@ void ClosestHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersect
 
 [shader("anyhit")]
 void AnyHitTransparent(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+{
+    
+}
+
+[shader("anyhit")]
+void AnyHitDecal(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
     
 }
