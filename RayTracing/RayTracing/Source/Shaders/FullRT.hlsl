@@ -426,15 +426,19 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float3 normalSample = gNormalMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb;
     //float3 normalSample = gNormalMap.SampleLevel(gSampler, vert.uv, 0).rgb; // No gradients for normal map to avoid artifacts)
     float3 normal = CalculateNormal(normalize(vert.normal), vert.tangent, normalSample);    
+    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
 
     if (payload.minDecalT <= RayTCurrent())
     {
-        albedo = albedo * (1.0f - payload.blendAlbedo.a) + payload.blendAlbedo.rgb;
+        float visibility = 1.0f - payload.blendAlbedo.a;        
+        albedo = albedo * visibility + payload.blendAlbedo.rgb;
+        metalness = metalness * visibility + payload.blendMaterial.y;
+        roughness = roughness * visibility + payload.blendMaterial.x;
+        F0 = F0 * visibility + payload.blendF0;
     }
     
     float3 worldPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     float3 V = -WorldRayDirection();
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
 
     // --- Direct Lighting ---
     float3 directDiffuseIrradiance = float3(0, 0, 0); // Pure Light (No Albedo)
@@ -671,6 +675,11 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             reflPayload.hitT = 0.0f;
             reflPayload.dDdx = reflect(payload.dDdx, normal);
             reflPayload.dDdy = reflect(payload.dDdy, normal);
+            reflPayload.blendAlbedo = float4(0, 0, 0, 0);
+            reflPayload.blendDiffuse = float3(0, 0, 0);
+            reflPayload.blendF0 = float3(0, 0, 0);
+            reflPayload.blendMaterial = float2(0, 0);
+            reflPayload.minDecalT = 1e20f;
         
             TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, ray, reflPayload);
         
@@ -713,6 +722,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         transPayload.blendDiffuse = float3(0, 0, 0);
         transPayload.blendF0 = float3(0, 0, 0);
         transPayload.blendMaterial = float2(0, 0);
+        transPayload.minDecalT = 1e20f;
 
         TraceRay(gScene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xFF, 0, 1, 0, transRay, transPayload);
 
@@ -842,14 +852,20 @@ void AnyHitDecal(inout RayPayload payload, in BuiltInTriangleIntersectionAttribu
     float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
     float2 uv = GetHitUV(PrimitiveIndex(), bary);
 
-    float4 decalSample = gAlbedoMap.SampleLevel(gSampler, uv, 0);
-    float4 decalColor = decalSample * gBaseColorFactor;
-    
-    float visibilityLeft = 1.0f - payload.blendAlbedo.a;
-    float3 newColor = decalColor.rgb * decalColor.a;
-    payload.blendAlbedo.rgb += newColor * visibilityLeft;
-    payload.blendAlbedo.a += decalColor.a * visibilityLeft;
+    float4 decalAlbedo = gAlbedoMap.SampleLevel(gSampler, uv, 0) * gBaseColorFactor;
+    float decalMetal = gMetalnessMap.SampleLevel(gSampler, uv, 0).b * gMetalnessFactor;
+    float decalRough = gMetalnessMap.SampleLevel(gSampler, uv, 0).g * gRoughnessFactor;
+    float3 decalF0 = lerp(float3(0.04, 0.04, 0.04), decalAlbedo.rgb, decalMetal);
 
+    float visibilityLeft = 1.0f - payload.blendAlbedo.a;
+    float weight = decalAlbedo.a * visibilityLeft;
+    
+    payload.blendAlbedo.rgb += decalAlbedo.rgb * weight;
+    payload.blendAlbedo.a += weight;
+    
+    payload.blendF0 += decalF0 * weight;
+    payload.blendMaterial.x += decalRough * weight; // Roughness
+    payload.blendMaterial.y += decalMetal * weight; // Metalness
 
     IgnoreHit();
 }
