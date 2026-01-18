@@ -94,7 +94,7 @@ float4 main(PSInput input) : SV_TARGET
             float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
             float3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
             float NDF = DistributionGGX(N, H, roughness);
-            float G = GeometrySmith(N, V, L, roughness);
+            float G = GeometrySmith(N, V, L, roughness, false);
             
             float3 num = NDF * G * F;
             float denom = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;

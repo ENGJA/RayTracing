@@ -18,6 +18,8 @@ struct RTPipelineSettings
 	std::wstring closestHitTransparent = L"ClosestHitTransparent";
 	std::wstring anyHit = L"AnyHit";
 	std::wstring anyHitTransparent = L"AnyHitTransparent";
+	std::wstring anyHitDecal = L"AnyHitDecal";
+
 
 	// Limits
 	UINT maxPayloadSize = sizeof(float) * 4; // 16 bytes (Color + Depth) or larger

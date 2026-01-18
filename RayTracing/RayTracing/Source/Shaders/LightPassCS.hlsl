@@ -203,7 +203,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             float NDF = DistributionGGX(normal, H, roughness);
             
             // 3. Geometry (G) - Microfacet self-shadowing
-            float G = GeometrySmith(normal, V, L_central, roughness);
+            float G = GeometrySmith(normal, V, L_central, roughness, false);
 
             // 4. Calculate Specular (The shiny reflection of the light source)
             float3 numerator = NDF * G * F;

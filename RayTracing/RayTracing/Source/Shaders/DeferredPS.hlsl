@@ -119,6 +119,10 @@ PSOutput main(PSInput input)
 
 float3 getNormal(PSInput input)
 {
+    if (dot(input.tangentWS, input.tangentWS) < 0.001f)
+    {
+        return normalize(input.normalWS);
+    }
     // Normalize normal and tangent vectors
     float3 N = normalize(input.normalWS);
     float3 T = normalize(input.tangentWS.xyz);      
