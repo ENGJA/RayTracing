@@ -269,6 +269,36 @@ void UIManager::RenderSettingsWindow()
 		activeCamera.SetFarZ(farZ);
 	}
 	
+	ImGui::Spacing();
+	ImGui::Text("Rendering Pipeline");
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	if (mGetRenderMode && mSetRenderMode)
+	{
+		// Matches Renderer.h enum: Phong, RayTracing, Hybrid
+		const char* modes[] = { "Phong", "Ray Tracing", "Hybrid" };
+		int currentMode = mGetRenderMode();
+
+		if (ImGui::Combo("Render Mode", &currentMode, modes, IM_ARRAYSIZE(modes)))
+		{
+			mSetRenderMode(currentMode);
+		}
+
+		// Tooltips describing the modes
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			if (currentMode == 0)
+				ImGui::Text("Phong: Fast rasterization-based rendering with basic lighting.");
+			else if (currentMode == 1)
+				ImGui::Text("Ray Tracing: High-quality rendering using ray tracing techniques.");
+			else if (currentMode == 2)
+				ImGui::Text("Hybrid: Combines rasterization and ray tracing for balanced performance and quality.");
+			ImGui::EndTooltip();
+		}
+	}
+	ImGui::Spacing();
 
 	// -------------------------------------------
 	ImGui::Text("Rendering Quality");

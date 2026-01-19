@@ -306,6 +306,11 @@ void Application::OnCreate(HWND hwnd)
 		[this](UINT n) { mRenderer.SetShadowRays(n); }
 	);
 
+	mUIManager.SetRenderModeCallbacks(
+		[this]() { return static_cast<int>(mRenderer.GetRenderMode()); },
+		[this](int mode) { mRenderer.SetRenderMode(static_cast<RenderMode>(mode)); }
+	);
+
 
 	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
