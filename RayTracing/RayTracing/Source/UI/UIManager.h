@@ -51,6 +51,9 @@ public:
 	using SetShadowRaysCallback = std::function<void(UINT)>;
 	using GetShadowRaysCallback = std::function<UINT()>;
 
+	using SetRenderModeCallback = std::function<void(int)>;
+	using GetRenderModeCallback = std::function<int()>;
+
 	/**
 	 * @brief Application states for UI rendering.
 	 */
@@ -210,6 +213,12 @@ public:
 		mSetShadowRays = set;
 	}
 
+	void SetRenderModeCallbacks(GetRenderModeCallback get, SetRenderModeCallback set)
+	{
+		mGetRenderMode = get;
+		mSetRenderMode = set;
+	}
+
 private:
 	// Rendering methods
 	void RenderLoadingMenu();
@@ -279,6 +288,9 @@ private:
 
 	GetShadowRaysCallback mGetShadowRays;
 	SetShadowRaysCallback mSetShadowRays;
+
+	GetRenderModeCallback mGetRenderMode;
+	SetRenderModeCallback mSetRenderMode;
 
 	int mCurrentDLSSMode = 0;
 };

@@ -71,9 +71,9 @@ struct DefaultTextures
 
 enum class RenderMode
 {
-	Hybrid,
 	ForwardPhong,
 	RayTraced,
+	Hybrid,
 };
 
 /**
