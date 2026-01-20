@@ -46,6 +46,12 @@ struct MeshMaterialData
 	float metalnessFactor = 1.0f;
 	float roughnessFactor = 1.0f;
 	float alphaCutoff = 0.5f;
-	float _pad[1]; // Padding for 16-byte alignment
+	float transmissionFactor = 0.0f;
 	DirectX::XMFLOAT4 emissiveFactor = { 0.0f, 0.0f, 0.0f, 1.0f }; // .w not used, reserved for alignment
+
+	float ior = 1.5f;                   
+	float attenuationDistance = 10000.0f; 
+	float _pad[2];                      
+
+	DirectX::XMFLOAT4 attenuationColor = { 1.0f, 1.0f, 1.0f, 1.0f }; // Color of the volume (medium)
 };

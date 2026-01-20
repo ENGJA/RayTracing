@@ -59,8 +59,14 @@ cbuffer MaterialCB : register(b0, space1)
     float gMetalnessFactor;
     float gRoughnessFactor;
     float gAlphaCutoff;
-    float _Pad0;
+    float gTransmissionFactor; // NEW
+    
     float4 gEmissiveFactor;
+    
+    float gIOR; // NEW
+    float gAttenuationDistance; // NEW
+    float2 _Pad1;
+    float4 gAttenuationColor; // NEW
 };
 
 Texture2D gAlbedoMap : register(t2, space1);
@@ -108,6 +114,20 @@ struct VertexAttributes
 // ===============================================================================================
 // --- HELPER FUNCTIONS ---
 // ===============================================================================================
+// Helper: Apply Beer's Law for Volume Absorption
+float3 ApplyVolumeAttenuation(float3 currentThroughput, float hitDistance, float3 attColor, float attDist)
+{
+    if (attDist >= 10000.0f)
+        return currentThroughput;
+
+    // Beer's Law: transmittance = exp(-sigma * distance)
+    // sigma = -log(attenuationColor) / attenuationDistance
+    float3 sigma = -log(max(attColor, 0.001f)) / max(attDist, 0.001f);
+    float3 transmittance = exp(-sigma * hitDistance);
+
+    return currentThroughput * transmittance;
+}
+
 void ComputeGradients(
     uint triangleIndex,
     float3 dDdx, float3 dDdy,
@@ -421,6 +441,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         float hitT = RayTCurrent();
         ComputeGradients(triangleIndex, payload.dDdx, payload.dDdy, viewDir, hitT, dUVdx, dUVdy);
     }
+    
+    
 
     // --- Material Sampling ---
     float4 albedoSample = gAlbedoMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy);
@@ -432,7 +454,10 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float3 normalSample = gNormalMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb;
     //float3 normalSample = gNormalMap.SampleLevel(gSampler, vert.uv, 0).rgb; // No gradients for normal map to avoid artifacts)
     float3 normal = CalculateNormal(normalize(vert.normal), vert.tangent, normalSample);    
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
+    //float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metalness);
+    float transmission = gTransmissionFactor;
+    float F0_Dielectric = pow((gIOR - 1.0f) / (gIOR + 1.0f), 2.0f);
+    float3 F0 = lerp(float3(F0_Dielectric, F0_Dielectric, F0_Dielectric), albedo, metalness);
 
     if (payload.minDecalT <= RayTCurrent())
     {
@@ -445,6 +470,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     
     float3 worldPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     float3 V = -WorldRayDirection();
+    float NdotV = max(dot(normal, V), 0.0f);
 
     // --- Direct Lighting ---
     float3 directDiffuseIrradiance = float3(0, 0, 0); // Pure Light (No Albedo)
@@ -453,6 +479,8 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float distToCamera = length(viewPos - worldPos);
     float bias = 0.001f + distToCamera * 0.002f;
     uint seed = initRand(pixel.x + frameCount * 17, pixel.y + frameCount * 31);
+    
+    
     
     [branch]
     if (shadowsEnabled)
@@ -651,9 +679,15 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             }
         }
     }
+    
+    float3 reflectedColor = float3(0, 0, 0);
+    float3 transmittedColor = float3(0, 0, 0);
+
+    // Fresnel (Schlick)
+    float3 F = FresnelSchlick(NdotV, F0);
 
     // --- Recursive Reflection ---
-    float3 reflectedColor = float3(0, 0, 0);
+    //float3 reflectedColor = float3(0, 0, 0);
     [branch]
     if (reflectionsEnabled && payload.reflectionDepth < maxReflectionDepth)
     {
@@ -701,17 +735,144 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             reflectedColor += reflPayload.color * weight;
         }
     }
+    
+    if (transmission > 0.0f && payload.transparentDepth < maxTransparentDepth)
+    {
+        // Manage IOR Ratio (eta)
+        float eta = 1.0f / gIOR; // Air -> Glass
+        float3 N_refract = normal;
+        
+        // If we are hitting a backface, we are exiting the medium
+        if (isBackFace)
+        {
+            eta = gIOR; // Glass -> Air
+            //N_refract = -normal; // Flip normal for refraction math
+        }
 
+        // Importance Sample the Refracted Ray based on Roughness
+        float pdf;
+        float2 Xi = float2(nextRand(seed), nextRand(seed));
+        
+        // Use the helper to get microfacet normal H
+        float3 H = ImportanceSampleGGX_Transmission(Xi, N_refract, roughness, gIOR, pdf);
+        
+        // Calculate Refraction Direction using Snell's Law on the microfacet
+        float3 refDir = refract(-V, H, eta);
+        
+        // Check for Total Internal Reflection (refract returns 0,0,0)
+        if (length(refDir) > 0.0f)
+        {
+            RayDesc transRay;
+            transRay.Origin = worldPos - N_refract * bias; // Bias *inwards*
+            transRay.Direction = normalize(refDir);
+            transRay.TMin = 0.001f;
+            transRay.TMax = 1000.0f;
+
+            RayPayload transPayload;
+            transPayload.color = float3(0, 0, 0);
+            transPayload.reflectionDepth = payload.reflectionDepth;
+            transPayload.transparentDepth = payload.transparentDepth + 1;
+            transPayload.hitT = 0.0f; // IMPORTANT: Will be filled by next hit
+            transPayload.dDdx = payload.dDdx;
+            transPayload.dDdy = payload.dDdy;
+            transPayload.blendAlbedo = float4(0, 0, 0, 0);
+            
+            // We usually want double-sided intersection for volume boundaries
+            TraceRay(gScene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, transRay, transPayload);
+            
+            float3 incomingLight = transPayload.color;
+
+            // --- KHR_materials_volume (Beer's Law) ---
+            // Attenuation applies when light travels THROUGH the medium.
+            // If we are currently inside the mesh (isBackFace is True for entry in some conventions, 
+            // but in standard single-sided tracing:
+            // 1. Hit Front Face (Enter) -> Trace Refraction
+            // 2. Hit Back Face (Exit) -> The distance between 1 and 2 is "volume".
+            
+            // Ideally, we apply attenuation if the ray WE JUST TRACED traveled through volume.
+            // If we just entered (Hit Front Face), the ray travels inside.
+            // If we just exited (Hit Back Face), the ray travels outside (air).
+
+            if (!isBackFace) // We are entering, so the ray travels through the object
+            {
+                // Beer's Law: exp(-sigma * distance)
+                // sigma = -log(attenuationColor) / attenuationDistance
+                float3 attColor = max(gAttenuationColor.rgb, 0.0001f);
+                float attDist = max(gAttenuationDistance, 0.0001f);
+                float3 sigma = -log(attColor) / attDist;
+                
+                // transPayload.hitT is the distance the transmission ray traveled before hitting the backface
+                float3 transmittance = exp(-sigma * transPayload.hitT);
+                
+                incomingLight *= transmittance;
+            }
+
+            transmittedColor = incomingLight;
+        }
+        else
+        {
+float3 tirDir = reflect(-V, H); // Reflect view off microfacet H
+            
+            if (length(tirDir) > 0.0f)
+            {
+                RayDesc tirRay;
+                
+                // BIAS CALCULATION:
+                // We are inside (BackFace). 'N_refract' points IN (towards camera).
+                // We want to stay IN. So we push ALONG the normal.
+                // (Contrast with Refraction above where we used minus (-) to push OUT).
+                tirRay.Origin = worldPos + N_refract * bias; 
+                
+                tirRay.Direction = normalize(tirDir);
+                tirRay.TMin = 0.001f;
+                tirRay.TMax = 1000.0f;
+
+                RayPayload transPayload;
+                transPayload.color = float3(0, 0, 0);
+                transPayload.reflectionDepth = payload.reflectionDepth + 1; // Count as a bounce
+                transPayload.transparentDepth = payload.transparentDepth + 1;
+                transPayload.hitT = 0.0f;
+                transPayload.dDdx = payload.dDdx;
+                transPayload.dDdy = payload.dDdy;
+                transPayload.blendAlbedo = float4(0, 0, 0, 0);
+                
+                TraceRay(gScene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, tirRay, transPayload);
+                
+                float3 tirColor = transPayload.color;
+
+                // --- Apply Volume Attenuation (Beer's Law) ---
+                // The TIR ray is traveling through the volume, just like an entering ray.
+                // If we are currently inside (isBackFace), this new ray continues inside.
+                if (isBackFace)
+                {
+                    float3 attColor = max(gAttenuationColor.rgb, 0.0001f);
+                    float attDist = max(gAttenuationDistance, 0.0001f);
+                    float3 sigma = -log(attColor) / attDist;
+                    
+                    // Attenuate based on how far the TIR ray traveled
+                    tirColor *= exp(-sigma * transPayload.hitT);
+                }
+
+                // TIR creates a perfect reflection, so we add it to the transmission lobe
+                transmittedColor = tirColor;
+            }
+        }
+    }
+    
+    float3 diffuseLobe = directDiffuseIrradiance * albedo;
+    float3 finalDiffuseTrans = lerp(diffuseLobe, transmittedColor * albedo, transmission);
+    float3 finalSpecular = directSpecular + reflectedColor;
     // --- Calculate Final Color for this surface ---
     // Combined = (Irradiance * Albedo) + Specular + Emissive + Reflections
-    float3 myFinalColor = (directDiffuseIrradiance * albedo) + directSpecular + emissive + reflectedColor;
+    float3 myFinalColor = finalDiffuseTrans + finalSpecular + emissive;
+    //float3 myFinalColor = (directDiffuseIrradiance * albedo) + directSpecular + emissive + reflectedColor;
 
     float4 myAlbedo = float4(albedo, alpha);
     float3 myDiffuse = directDiffuseIrradiance;
     float3 myF0 = F0;
     float2 myMaterial = float2(roughness, metalness);
     // --- Recursive Transparency ---
-    if (isTransparent && payload.transparentDepth < maxTransparentDepth)
+    if (isTransparent && payload.transparentDepth < maxTransparentDepth && alpha < 1.0f)
     {
         RayDesc transRay;
         transRay.Origin = worldPos + WorldRayDirection() * 0.001f;
