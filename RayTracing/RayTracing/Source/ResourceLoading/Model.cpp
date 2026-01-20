@@ -339,6 +339,31 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 			v = DirectX::XMVectorScale(v, static_cast<float>(f));
 			DirectX::XMStoreFloat4(&matData.emissiveFactor, v);
 		}
+		// 1. Transmission (KHR_materials_transmission)
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_TRANSMISSION_FACTOR, &f))
+		{
+			matData.transmissionFactor = static_cast<float>(f);
+		}
+
+		// 2. Index of Refraction (KHR_materials_ior)
+		// Default glTF IOR is 1.5. If not present, Assimp might return 1.0 or fail.
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_REFRACTI, &f))
+		{
+			matData.ior = static_cast<float>(f);
+		}
+
+		// 3. Volume (KHR_materials_volume)
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_VOLUME_ATTENUATION_DISTANCE, &f))
+		{
+			// glTF allows infinity, handle practically
+			matData.attenuationDistance = (f == 0.0f) ? FLT_MAX : static_cast<float>(f);
+		}
+
+		aiColor4D volColor;
+		if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_VOLUME_ATTENUATION_COLOR, &volColor))
+		{
+			matData.attenuationColor = { volColor.r, volColor.g, volColor.b, 1.0f };
+		}
 	}
 
 	matData.alphaCutoff = alphaProps.alphaCutoff;

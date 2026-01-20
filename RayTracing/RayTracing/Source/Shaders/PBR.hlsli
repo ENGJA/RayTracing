@@ -93,3 +93,29 @@ struct Light
     float4 diffuseColor;
     float4 specularColor;
 };
+
+
+float3 ImportanceSampleGGX_Transmission(float2 Xi, float3 N, float roughness, float ior, out float pdf)
+{
+    float a = roughness * roughness;
+    
+    // 1. Sample Microfacet Normal (H) - Same as Reflection
+    float phi = 2.0 * PI * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    
+    float3 H;
+    H.x = cos(phi) * sinTheta;
+    H.y = sin(phi) * sinTheta;
+    H.z = cosTheta;
+    
+    // Tangent Space to World Space
+    float3 up = abs(N.z) < 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
+    float3 tangent = normalize(cross(up, N));
+    float3 bitangent = cross(N, tangent);
+    float3 H_world = normalize(tangent * H.x + bitangent * H.y + N * H.z);
+    
+    pdf = (2.0 * PI) / (1.0 + (a * a - 1.0) * Xi.y); // Simplified PDF for brevity
+    
+    return H_world;
+}
