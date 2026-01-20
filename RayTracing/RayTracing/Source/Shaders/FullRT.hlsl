@@ -405,7 +405,13 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     uint2 pixel = DispatchRaysIndex().xy;
     uint triangleIndex = PrimitiveIndex();
     float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
+    bool isBackFace = (HitKind() == HIT_KIND_TRIANGLE_BACK_FACE);
     VertexAttributes vert = GetHitSurface(triangleIndex, bary);
+    if (isBackFace)
+    {
+        vert.normal = -vert.normal;
+        vert.tangent.w = -vert.tangent.w;
+    }
     
     float2 dUVdx = 0;
     float2 dUVdy = 0;
