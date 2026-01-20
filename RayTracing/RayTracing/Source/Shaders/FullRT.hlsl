@@ -450,6 +450,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float alpha = albedoSample.a * gBaseColorFactor.a;
     float metalness = gMetalnessMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).b * gMetalnessFactor;
     float roughness = gMetalnessMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).g * gRoughnessFactor;
+    roughness = max(roughness, 0.0000000000000001f); // Prevent 0 roughness)
     float3 emissive = gEmissiveMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb * gEmissiveFactor.rgb;
     float3 normalSample = gNormalMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb;
     //float3 normalSample = gNormalMap.SampleLevel(gSampler, vert.uv, 0).rgb; // No gradients for normal map to avoid artifacts)
