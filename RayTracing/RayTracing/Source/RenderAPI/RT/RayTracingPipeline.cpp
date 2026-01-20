@@ -5,6 +5,12 @@
 
 // In RayTracingPipeline.cpp
 
+template<typename T>
+static T Align(T size, T alignment)
+{
+	return (size + (alignment - 1)) & ~(alignment - 1);
+}
+
 UINT RayTracingPipeline::GetShaderIdentifierSize(ID3D12Device5* pDevice)
 {
 	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options = {};
@@ -99,13 +105,15 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer
 	UINT shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 	UINT materialSize = sizeof(MeshMaterialData);
 	// ID + 3 GPU Addresses (Index, Vertex, Texture) + Material Constants
-	UINT recordSize = (shaderIDSize + 8 * 3 + materialSize + 31) & ~31; // Align to 32 bytes
+	UINT rawRecordSize = shaderIDSize + 8 * 3 + materialSize;
+	UINT recordStride = Align(rawRecordSize, 32u);
 
-	mRayGenSectionSize = recordSize;    // 1 RayGen record
-	mMissSectionSize = recordSize * 2;  // 2 Miss records
-	mHitGroupSectionSize = recordSize * static_cast<UINT>(totalMeshes); // Contiguous block
+	mRayGenSectionSize = Align(recordStride, 64u);    // 1 RayGen record
+	mMissSectionSize = Align(recordStride * 2, 64u); // 2 Miss records
+	mHitGroupSectionSize = Align(recordStride * static_cast<UINT>(totalMeshes), 64u); // Contiguous block
 
-	UINT sbtSize = (mRayGenSectionSize + mMissSectionSize + mHitGroupSectionSize + 255) & ~255;
+	UINT sbtSize = mRayGenSectionSize + mMissSectionSize + mHitGroupSectionSize;
+	sbtSize = Align(sbtSize, 256u);
 
 	// 3. Initialize/Re-initialize SBT Buffer
 	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -151,13 +159,14 @@ void RayTracingPipeline::BuildSBT(ID3D12Device5* pDevice, const std::initializer
 
 			D3D12_GPU_VIRTUAL_ADDRESS ibAddr = mesh.ib.Get()->GetGPUVirtualAddress();
 			D3D12_GPU_VIRTUAL_ADDRESS vbAddr = mesh.vb.Get()->GetGPUVirtualAddress();
-			memcpy(pData, &ibAddr, 8); pData += 8;
-			memcpy(pData, &vbAddr, 8); pData += 8;
+			memcpy(pData, &ibAddr, sizeof(ibAddr)); pData += sizeof(ibAddr);
+			memcpy(pData, &vbAddr, sizeof(vbAddr)); pData += sizeof(vbAddr);
 
-			memcpy(pData, &mesh.materialTable.gpuHandle, 8); pData += 8;
+			auto textureHandle = mesh.materialTable.gpuHandle;
+			memcpy(pData, &textureHandle, sizeof(textureHandle)); pData += sizeof(textureHandle);
 			memcpy(pData, &mesh.materialData, sizeof(MeshMaterialData));
 
-			pData = pRecordStart + recordSize;
+			pData = pRecordStart + recordStride;
 		}
 		listIndex++;
 	}
