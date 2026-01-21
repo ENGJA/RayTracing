@@ -56,13 +56,23 @@ AlphaProperties Model::GetAlphaProperties(const aiMaterial* material)
 }
 
 
+//static DirectX::XMMATRIX AiToXMMatrix(const aiMatrix4x4& m)
+//{
+//	return DirectX::XMMATRIX(
+//		(float)m.a1, (float)m.a2, (float)m.a3, (float)m.a4,
+//		(float)m.b1, (float)m.b2, (float)m.b3, (float)m.b4,
+//		(float)m.c1, (float)m.c2, (float)m.c3, (float)m.c4,
+//		(float)m.d1, (float)m.d2, (float)m.d3, (float)m.d4
+//	);
+//}
+
 static DirectX::XMMATRIX AiToXMMatrix(const aiMatrix4x4& m)
 {
 	return DirectX::XMMATRIX(
-		(float)m.a1, (float)m.a2, (float)m.a3, (float)m.a4,
-		(float)m.b1, (float)m.b2, (float)m.b3, (float)m.b4,
-		(float)m.c1, (float)m.c2, (float)m.c3, (float)m.c4,
-		(float)m.d1, (float)m.d2, (float)m.d3, (float)m.d4
+		(float)m.a1, (float)m.b1, (float)m.c1, (float)m.d1,
+		(float)m.a2, (float)m.b2, (float)m.c2, (float)m.d2,
+		(float)m.a3, (float)m.b3, (float)m.c3, (float)m.d3,
+		(float)m.a4, (float)m.b4, (float)m.c4, (float)m.d4
 	);
 }
 
