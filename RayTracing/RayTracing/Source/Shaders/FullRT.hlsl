@@ -450,7 +450,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     float alpha = albedoSample.a * gBaseColorFactor.a;
     float metalness = gMetalnessMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).b * gMetalnessFactor;
     float roughness = gMetalnessMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).g * gRoughnessFactor;
-    roughness = max(roughness, 0.0000000000000001f); // Prevent 0 roughness)
+    roughness = max(roughness, 0.001f); // Prevent 0 roughness)
     float3 emissive = gEmissiveMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb * gEmissiveFactor.rgb;
     float3 normalSample = gNormalMap.SampleGrad(gSampler, vert.uv, dUVdx, dUVdy).rgb;
     //float3 normalSample = gNormalMap.SampleLevel(gSampler, vert.uv, 0).rgb; // No gradients for normal map to avoid artifacts)
@@ -683,9 +683,12 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
     
     float3 reflectedColor = float3(0, 0, 0);
     float3 transmittedColor = float3(0, 0, 0);
+    
+    transmission = transmission * (1.0f - metalness);
 
     // Fresnel (Schlick)
     float3 F = FresnelSchlick(NdotV, F0);
+
 
     // --- Recursive Reflection ---
     //float3 reflectedColor = float3(0, 0, 0);
@@ -861,11 +864,13 @@ float3 tirDir = reflect(-V, H); // Reflect view off microfacet H
     }
     
     float3 diffuseLobe = directDiffuseIrradiance * albedo;
-    float3 finalDiffuseTrans = lerp(diffuseLobe, transmittedColor * albedo, transmission);
+    float3 finalDiffuse = diffuseLobe * (1.0f - transmission);
+    float3 finalTransmission = transmittedColor * albedo * (1.0f - F) * transmission;
+    //float3 finalDiffuseTrans = lerp(diffuseLobe, transmittedColor * albedo, transmission);
     float3 finalSpecular = directSpecular + reflectedColor;
     // --- Calculate Final Color for this surface ---
     // Combined = (Irradiance * Albedo) + Specular + Emissive + Reflections
-    float3 myFinalColor = finalDiffuseTrans + finalSpecular + emissive;
+    float3 myFinalColor = finalDiffuse + finalTransmission + finalSpecular + emissive;
     //float3 myFinalColor = (directDiffuseIrradiance * albedo) + directSpecular + emissive + reflectedColor;
 
     float4 myAlbedo = float4(albedo, alpha);
