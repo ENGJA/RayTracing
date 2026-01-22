@@ -797,7 +797,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
             // If we just entered (Hit Front Face), the ray travels inside.
             // If we just exited (Hit Back Face), the ray travels outside (air).
 
-            if (!isBackFace) // We are entering, so the ray travels through the object
+            if (!isBackFace && transPayload.hitT >= 0.0f) // We are entering, so the ray travels through the object
             {
                 // Beer's Law: exp(-sigma * distance)
                 // sigma = -log(attenuationColor) / attenuationDistance
@@ -815,7 +815,7 @@ void DoShading(inout RayPayload payload, in BuiltInTriangleIntersectionAttribute
         }
         else
         {
-float3 tirDir = reflect(-V, H); // Reflect view off microfacet H
+            float3 tirDir = reflect(-V, H); // Reflect view off microfacet H
             
             if (length(tirDir) > 0.0f)
             {
@@ -847,7 +847,7 @@ float3 tirDir = reflect(-V, H); // Reflect view off microfacet H
                 // --- Apply Volume Attenuation (Beer's Law) ---
                 // The TIR ray is traveling through the volume, just like an entering ray.
                 // If we are currently inside (isBackFace), this new ray continues inside.
-                if (isBackFace)
+                if (isBackFace && transPayload.hitT >= 0.0f)
                 {
                     float3 attColor = max(gAttenuationColor.rgb, 0.0001f);
                     float attDist = max(gAttenuationDistance, 0.0001f);
