@@ -226,6 +226,7 @@ void Renderer::UploadMeshes(const function<void()>& executeBatch, DirectX::Resou
 
 void Renderer::BuildMeshGpuData()
 {
+
 	mUploadHeap.Reset();
 	mCommandList.ResetCommandList(0); // Use allocator 0 for one-time upload, not swap chain index
 	DirectX::ResourceUploadBatch ddsBatch(mDevice.Get());
@@ -749,6 +750,7 @@ void Renderer::UnloadScene()
 	mMaskedSingleSidedMeshes.clear();
 	mMaskedDoubleSidedMeshes.clear();
 	mTransparentSingleSidedMeshes.clear();
+	mTransparentDoubleSidedMeshes.clear();
 
 	mModels.clear();
 	mTextureCache.clear();
