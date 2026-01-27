@@ -90,8 +90,9 @@ float4 main(PSInput input) : SV_TARGET
         input.normalWS = -input.normalWS;
     }
 
-    float texMetal = gMetalness.Sample(gSampler, input.uv).r;
-    float texRough = gRoughness.Sample(gSampler, input.uv).r;
+    float texMetal = gMetalness.Sample(gSampler, input.uv).b;
+    //float texRough = gRoughness.Sample(gSampler, input.uv).r;
+    float texRough = gMetalness.Sample(gSampler, input.uv).g;
 
     float metalness = texMetal * gMetalnessFactor;
     float roughness = texRough * gRoughnessFactor;

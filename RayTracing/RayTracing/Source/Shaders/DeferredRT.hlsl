@@ -281,7 +281,7 @@ void RayGen()
             dist = length(toLight);
             L_central = normalize(toLight);
             L_shadow = GetConeSample(seed, L_central, radians(5.0f)); // Soft shadows with 5 degree cone
-            attenuation = 1.0f / (1.0f + 0.1f * dist + 0.01f * dist * dist);
+            attenuation = 1.0f / (1.0f + 0.0f * dist + 1.0f * dist * dist);
         }
         
         float NdotL = max(dot(normal, L_central), 0.0f);
@@ -422,7 +422,7 @@ void ClosestHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttribut
             float3 toLight = light.position.xyz - hitPos;
             float dist = length(toLight);
             L = normalize(toLight);
-            attenuation = 1.0 / (1.0 + 0.1 * dist + 0.01 * dist * dist);
+            attenuation = 1.0 / (1.0 + 0.0 * dist + 1.0 * dist * dist);
         }
 
         float NdotL = max(dot(worldNormal, L), 0.0);
