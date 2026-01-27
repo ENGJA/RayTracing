@@ -528,8 +528,8 @@ void Renderer::OnResize(UINT width, UINT height)
 		return; // Ignore invalid sizes (minimized window)
 
 	// TODO: uncomment after DLSS reinit fix
-	//if (width == mWidth && height == mHeight)
-	//	return; // No actual resize
+	if (width == mWidth && height == mHeight)
+		return; // No actual resize
 
 	wcout << "Resizing renderer to " << width << "x" << height << endl;
 
