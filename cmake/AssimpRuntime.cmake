@@ -509,9 +509,20 @@ function(rt_fetch_assimp_runtime_if_missing)
   rt_assimp_find_single_file(_dll_path "${_search_root}" "${RT_ASSIMP_DLL_NAME}")
   rt_assimp_find_single_file(_lib_path "${_search_root}" "${RT_ASSIMP_LIB_NAME}")
 
+  # Search fallbacks (try wildcards if exact names not found)
+  if(_dll_path STREQUAL "")
+    rt_assimp_find_single_file(_dll_path "${_search_root}" "assimp-vc*-mt.dll")
+  endif()
+  if(_lib_path STREQUAL "")
+    rt_assimp_find_single_file(_lib_path "${_search_root}" "assimp-vc*-mt.lib")
+  endif()
+
   # DLL fallback search in whole extracted runtime zip
   if((_need_rel_dll OR _need_dbg_dll) AND (_dll_path STREQUAL ""))
     rt_assimp_find_single_file(_dll_path "${_src}" "${RT_ASSIMP_DLL_NAME}")
+    if(_dll_path STREQUAL "")
+       rt_assimp_find_single_file(_dll_path "${_src}" "assimp-vc*-mt.dll")
+    endif()
   endif()
 
   if((_need_rel_dll OR _need_dbg_dll) AND (_dll_path STREQUAL ""))
@@ -566,11 +577,17 @@ function(rt_fetch_assimp_runtime_if_missing)
     set(_gen "${CMAKE_GENERATOR}")
     set(_plat "${CMAKE_GENERATOR_PLATFORM}")
 
-    message(STATUS "Assimp: configuring source build -> ${_build}")
+    # Force v143 (VS 2022) to match prebuilt runtime DLLs if using a VS generator
+    set(_toolset "")
+    if(_gen MATCHES "Visual Studio")
+      set(_toolset "-T" "v143")
+    endif()
+
+    message(STATUS "Assimp: configuring source build -> ${_build} (forcing v143 toolset)")
     if(_plat)
       rt_run_checked(
         "${CMAKE_COMMAND}" -S "${_assimp_root}" -B "${_build}"
-        -G "${_gen}" -A "${_plat}"
+        -G "${_gen}" -A "${_plat}" ${_toolset}
         -DBUILD_SHARED_LIBS=ON
         -DASSIMP_BUILD_TESTS=OFF
         -DASSIMP_BUILD_ASSIMP_TOOLS=OFF
@@ -580,7 +597,7 @@ function(rt_fetch_assimp_runtime_if_missing)
     else()
       rt_run_checked(
         "${CMAKE_COMMAND}" -S "${_assimp_root}" -B "${_build}"
-        -G "${_gen}"
+        -G "${_gen}" ${_toolset}
         -DBUILD_SHARED_LIBS=ON
         -DASSIMP_BUILD_TESTS=OFF
         -DASSIMP_BUILD_ASSIMP_TOOLS=OFF
@@ -595,13 +612,19 @@ function(rt_fetch_assimp_runtime_if_missing)
     set(_lib_path2 "")
     rt_assimp_find_single_file(_lib_path2 "${_build}" "${RT_ASSIMP_LIB_NAME}")
     if(_lib_path2 STREQUAL "")
+      rt_assimp_find_single_file(_lib_path2 "${_build}" "assimp-vc*-mt.lib")
+    endif()
+    if(_lib_path2 STREQUAL "")
       rt_assimp_find_single_file(_lib_path2 "${_assimp_root}" "${RT_ASSIMP_LIB_NAME}")
+    endif()
+    if(_lib_path2 STREQUAL "")
+      rt_assimp_find_single_file(_lib_path2 "${_assimp_root}" "assimp-vc*-mt.lib")
     endif()
 
     if(_lib_path2 STREQUAL "")
       message(FATAL_ERROR
-        "Assimp: built from source but could not find ${RT_ASSIMP_LIB_NAME}.\n"
-        "Most likely output name differs (often 'assimp.lib'). Update RT_ASSIMP_LIB_NAME or add mapping."
+        "Assimp: built from source but could not find ${RT_ASSIMP_LIB_NAME} nor any assimp-vc*-mt.lib.\n"
+        "Check build output in: ${_build}"
       )
     endif()
 
@@ -611,14 +634,20 @@ function(rt_fetch_assimp_runtime_if_missing)
   # Install/copy to repo
   if(_need_rel_dll)
     file(MAKE_DIRECTORY "${RT_ASSIMP_DLL_REL_DIR}")
-    message(STATUS "Assimp: installing Release DLL -> ${_rel_dll_marker}")
-    file(COPY_FILE "${_dll_path}" "${_rel_dll_marker}" ONLY_IF_DIFFERENT)
+    message(STATUS "Assimp: installing Release DLL -> ${RT_ASSIMP_DLL_REL_DIR}")
+    # Copy with original name (required for the EXE to find it)
+    get_filename_component(_orig_dll_name "${_dll_path}" NAME)
+    file(COPY_FILE "${_dll_path}" "${RT_ASSIMP_DLL_REL_DIR}/${_orig_dll_name}" ONLY_IF_DIFFERENT)
+    # Also copy to generic name that matches RT_ASSIMP_DLL_NAME
+    file(COPY_FILE "${_dll_path}" "${RT_ASSIMP_DLL_REL_DIR}/${RT_ASSIMP_DLL_NAME}" ONLY_IF_DIFFERENT)
   endif()
 
   if(_need_dbg_dll)
     file(MAKE_DIRECTORY "${RT_ASSIMP_DLL_DBG_DIR}")
-    message(STATUS "Assimp: installing Debug DLL -> ${_dbg_dll_marker}")
-    file(COPY_FILE "${_dll_path}" "${_dbg_dll_marker}" ONLY_IF_DIFFERENT)
+    message(STATUS "Assimp: installing Debug DLL -> ${RT_ASSIMP_DLL_DBG_DIR}")
+    get_filename_component(_orig_dll_name "${_dll_path}" NAME)
+    file(COPY_FILE "${_dll_path}" "${RT_ASSIMP_DLL_DBG_DIR}/${_orig_dll_name}" ONLY_IF_DIFFERENT)
+    file(COPY_FILE "${_dll_path}" "${RT_ASSIMP_DLL_DBG_DIR}/${RT_ASSIMP_DLL_NAME}" ONLY_IF_DIFFERENT)
   endif()
 
   if(_need_lib)
@@ -626,18 +655,19 @@ function(rt_fetch_assimp_runtime_if_missing)
       message(FATAL_ERROR "Assimp: internal error: need lib but _lib_path is empty.")
     endif()
     file(MAKE_DIRECTORY "${RT_ASSIMP_LIBS_DIR}")
-    message(STATUS "Assimp: installing LIB -> ${_lib_marker}")
-    file(COPY_FILE "${_lib_path}" "${_lib_marker}" ONLY_IF_DIFFERENT)
+    message(STATUS "Assimp: installing LIB -> ${RT_ASSIMP_LIBS_DIR}/${RT_ASSIMP_LIB_NAME}")
+    # Always copy to the name expected by vcxproj (RT_ASSIMP_LIB_NAME)
+    file(COPY_FILE "${_lib_path}" "${RT_ASSIMP_LIBS_DIR}/${RT_ASSIMP_LIB_NAME}" ONLY_IF_DIFFERENT)
   endif()
 
-  if(NOT EXISTS "${_rel_dll_marker}")
-    message(FATAL_ERROR "Assimp: missing after install: ${_rel_dll_marker}")
+  if(_need_rel_dll AND NOT EXISTS "${RT_ASSIMP_DLL_REL_DIR}/${RT_ASSIMP_DLL_NAME}")
+    message(FATAL_ERROR "Assimp: missing after install: ${RT_ASSIMP_DLL_REL_DIR}/${RT_ASSIMP_DLL_NAME}")
   endif()
-  if(NOT EXISTS "${_dbg_dll_marker}")
-    message(FATAL_ERROR "Assimp: missing after install: ${_dbg_dll_marker}")
+  if(_need_dbg_dll AND NOT EXISTS "${RT_ASSIMP_DLL_DBG_DIR}/${RT_ASSIMP_DLL_NAME}")
+    message(FATAL_ERROR "Assimp: missing after install: ${RT_ASSIMP_DLL_DBG_DIR}/${RT_ASSIMP_DLL_NAME}")
   endif()
-  if(NOT EXISTS "${_lib_marker}")
-    message(FATAL_ERROR "Assimp: missing after install: ${_lib_marker}")
+  if(_need_lib AND NOT EXISTS "${RT_ASSIMP_LIBS_DIR}/${RT_ASSIMP_LIB_NAME}")
+    message(FATAL_ERROR "Assimp: missing after install: ${RT_ASSIMP_LIBS_DIR}/${RT_ASSIMP_LIB_NAME}")
   endif()
 
   message(STATUS "Assimp: runtime done.")
@@ -653,11 +683,12 @@ function(rt_fetch_assimp_if_missing)
 
   rt_assimp_all_files_exist(_have_headers "${RT_ASSIMP_INCLUDE_DIR}" ${RT_ASSIMP_HEADER_FILES})
 
+  # Check if we have the headers and the files expected by the vcxproj
   if(_have_headers AND
      EXISTS "${RT_ASSIMP_DLL_REL_DIR}/${RT_ASSIMP_DLL_NAME}" AND
      EXISTS "${RT_ASSIMP_DLL_DBG_DIR}/${RT_ASSIMP_DLL_NAME}" AND
      EXISTS "${RT_ASSIMP_LIBS_DIR}/${RT_ASSIMP_LIB_NAME}")
-    message(STATUS "Assimp: all headers + runtime already present. Skipping everything.")
+    message(STATUS "Assimp: all headers + runtime already present. Skipping.")
     return()
   endif()
 
