@@ -425,7 +425,7 @@ FodyWeavers.xsd
 /RayTracing/Resources/Objects/merged_sponza
 
 /build
-/RayTracing/Includes/ngx
-/RayTracing/Includes/streamline
+/RayTracing/Includes
 /RayTracing/Libs
+/RayTracing/Dlls
 
