@@ -23,6 +23,36 @@ public:
 	using ToggleMenuCallback = std::function<void()>;
 	using ExitCallback = std::function<void()>;
 	using ExitToMainMenuCallback = std::function<void()>;
+	using SetDLSSModeCallback = std::function<void(int)>;
+
+	using SetShadowsEnabledCallback = std::function<void(bool)>;
+	using GetShadowsEnabledCallback = std::function<bool()>;
+
+	using SetReflectionsEnabledCallback = std::function<void(bool)>;
+	using GetReflectionsEnabledCallback = std::function<bool()>;
+
+	using SetMaxReflectionDepthCallback = std::function<void(UINT)>;
+	using GetMaxReflectionDepthCallback = std::function<UINT()>;
+	using SetMaxTransmissionDepthCallback = std::function<void(UINT)>;
+	using GetMaxTransmissionDepthCallback = std::function<UINT()>;
+
+	using SetSunDirectionCallback = std::function<void(float, float, float)>;
+	using GetSunDirectionCallback = std::function<DirectX::XMFLOAT3()>;
+
+	using SetSunColorCallback = std::function<void(float, float, float)>;
+	using GetSunColorCallback = std::function<DirectX::XMFLOAT3()>;
+	using SetSunEnabledCallback = std::function<void(bool)>;
+	using GetSunEnabledCallback = std::function<bool()>;
+
+	using SetRISCandidatesCallback = std::function<void(UINT)>;
+	using GetRISCandidatesCallback = std::function<UINT()>;
+	using GetNumPointLightsCallback = std::function<UINT()>;
+
+	using SetShadowRaysCallback = std::function<void(UINT)>;
+	using GetShadowRaysCallback = std::function<UINT()>;
+
+	using SetRenderModeCallback = std::function<void(int)>;
+	using GetRenderModeCallback = std::function<int()>;
 
 	/**
 	 * @brief Application states for UI rendering.
@@ -85,6 +115,16 @@ public:
 	void SetAddExtensionScenesCallback(AddExtensionScenesCallback callback) { mAddExtensionScenesCallback = callback; }
 
 	/**
+	 * @brief Set callback for changing DLSS mode.
+	 */
+	void SetSetDLSSModeCallback(SetDLSSModeCallback callback) { mSetDLSSModeCallback = callback; }
+
+	/**
+	 * @brief Set current DLSS mode index for UI display.
+	 */
+	void SetCurrentDLSSMode(int mode) { mCurrentDLSSMode = mode; }
+
+	/**
 	 * @brief Toggle settings window visibility.
 	 */
 	void ToggleSettings() { mShowSettingsWindow = !mShowSettingsWindow; }
@@ -115,6 +155,69 @@ public:
 	 * @brief Clear the current warning message.
 	 */
 	void ClearWarning() { mShowWarning = false; mWarningMessage.clear(); }
+
+
+	void SetShadowsCallbacks(GetShadowsEnabledCallback get, SetShadowsEnabledCallback set)
+	{
+		mGetShadowsEnabled = get;
+		mSetShadowsEnabled = set;
+	}
+
+	void SetReflectionsCallbacks(GetReflectionsEnabledCallback get, SetReflectionsEnabledCallback set)
+	{
+		mGetReflectionsEnabled = get;
+		mSetReflectionsEnabled = set;
+	}
+
+	void SetMaxReflectionDepthCallbacks(GetMaxReflectionDepthCallback get, SetMaxReflectionDepthCallback set)
+	{
+		mGetMaxRecursionDepth = get;
+		mSetMaxRecursionDepth = set;
+	}
+
+	void SetMaxTransmissionDepthCallbacks(GetMaxTransmissionDepthCallback get, SetMaxTransmissionDepthCallback set)
+	{
+		mGetMaxTransmissionDepth = get;
+		mSetMaxTransmissionDepth = set;
+	}
+
+
+	void SetSunDirectionCallbacks(GetSunDirectionCallback get, SetSunDirectionCallback set)
+	{
+		mGetSunDirection = get;
+		mSetSunDirection = set;
+	}
+
+	void SetSunColorCallbacks(GetSunColorCallback get, SetSunColorCallback set)
+	{
+		mGetSunColor = get;
+		mSetSunColor = set;
+	}
+
+	void SetSunEnabledCallbacks(GetSunEnabledCallback get, SetSunEnabledCallback set)
+	{
+		mGetSunEnabled = get;
+		mSetSunEnabled = set;
+	}
+
+	void SetRISCandidatesCallbacks(GetRISCandidatesCallback get, SetRISCandidatesCallback set, GetNumPointLightsCallback getCount)
+	{
+		mGetRISCandidates = get;
+		mSetRISCandidates = set;
+		mGetNumPointLights = getCount;
+	}
+
+	void SetShadowRaysCallbacks(GetShadowRaysCallback get, SetShadowRaysCallback set)
+	{
+		mGetShadowRays = get;
+		mSetShadowRays = set;
+	}
+
+	void SetRenderModeCallbacks(GetRenderModeCallback get, SetRenderModeCallback set)
+	{
+		mGetRenderMode = get;
+		mSetRenderMode = set;
+	}
 
 private:
 	// Rendering methods
@@ -157,4 +260,37 @@ private:
 	ToggleMenuCallback mToggleMenuCallback;
 	ExitCallback mExitCallback;
 	ExitToMainMenuCallback mExitToMainMenuCallback;
+	SetDLSSModeCallback mSetDLSSModeCallback;
+
+	GetShadowsEnabledCallback mGetShadowsEnabled;
+	SetShadowsEnabledCallback mSetShadowsEnabled;
+
+	GetReflectionsEnabledCallback mGetReflectionsEnabled;
+	SetReflectionsEnabledCallback mSetReflectionsEnabled;
+
+	GetMaxReflectionDepthCallback mGetMaxRecursionDepth;
+	SetMaxReflectionDepthCallback mSetMaxRecursionDepth;
+
+	GetMaxTransmissionDepthCallback mGetMaxTransmissionDepth;
+	SetMaxTransmissionDepthCallback mSetMaxTransmissionDepth;
+
+	GetSunDirectionCallback mGetSunDirection;
+	SetSunDirectionCallback mSetSunDirection;
+
+	GetSunColorCallback mGetSunColor;
+	SetSunColorCallback mSetSunColor;
+	GetSunEnabledCallback mGetSunEnabled;
+	SetSunEnabledCallback mSetSunEnabled;
+
+	GetRISCandidatesCallback mGetRISCandidates;
+	SetRISCandidatesCallback mSetRISCandidates;
+	GetNumPointLightsCallback mGetNumPointLights;
+
+	GetShadowRaysCallback mGetShadowRays;
+	SetShadowRaysCallback mSetShadowRays;
+
+	GetRenderModeCallback mGetRenderMode;
+	SetRenderModeCallback mSetRenderMode;
+
+	int mCurrentDLSSMode = 0;
 };

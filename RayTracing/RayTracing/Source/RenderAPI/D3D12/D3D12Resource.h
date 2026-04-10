@@ -8,6 +8,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> mResource;
 
 public:
+
+	ID3D12Resource** GetAddressOf() { return mResource.GetAddressOf(); }
 	/**
 	 * @brief Returns the native resource pointer.
 	 */
@@ -40,4 +42,5 @@ public:
 	*/
 	void Initialize(ID3D12Device* pDevice, const D3D12_RESOURCE_DESC& resourceDesc, const D3D12_HEAP_PROPERTIES& heapProps);
 
+	void Reset() { mResource.Reset(); }
 };

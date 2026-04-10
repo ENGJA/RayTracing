@@ -1,11 +1,12 @@
 #pragma once
 #include "RenderAPI/D3D12/D3D12Resource.h"
-#include "RenderAPI/Descriptors/ShaderVisibleDescriptorHeap.h"
+#include "RenderAPI/Descriptors/DescriptorHeap.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandQueue.h"
 #include "RenderAPI/D3D12/Command/D3D12CommandList.h"
 #include "ResourceLoading/UploadHeap.h"
 #include "Mipmapping/MipmapGenerator.h"
 #include "ResourceLoading/ImageDecoder.h"
+
 
 struct GPUTexture
 {
@@ -31,15 +32,25 @@ public:
 	* @param cmdList Command list for recording copy commands.
 	* @param uploadHeap Upload heap for staging texture data.    
     */
-	void Initialize(ID3D12Device* device, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader);
+	void Initialize(ID3D12Device* device, DescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader);
 
 	/**
 	* @brief Creates a GPU texture from decoded image data.
 	* @param img Decoded image data.
 	* @param executeQueue Function to execute the command queue when needed.
+	* @param sRGB Whether to treat the texture as sRGB (linearize on fetch).
 	* @return Created GPU texture with resource and SRV.
 	*/
-	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue);
+	GPUTexture CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue, bool sRGB = false);
+
+	/**
+	 * @brief Queues a DDS texture load into the provided upload batch.
+	 * @param path File path to the .dds file.
+	 * @param batch Reference to the active ResourceUploadBatch.
+	 * @return GPUTexture struct with metadata (Width/Height/Format).
+	 * Note: Content is not on GPU until batch.End() is called.
+	 */
+	GPUTexture CreateTextureFromDDSPath(const std::wstring& path, DirectX::ResourceUploadBatch& batch);
 
 	/**
 	* @brief Creates a solid color 1x1 texture for default/dummy usage.
@@ -57,7 +68,7 @@ private:
     ID3D12Device* mDevice = nullptr;
 
 	/** <Shader-visible descriptor heap for SRV allocation. */
-    ShaderVisibleDescriptorHeap* mHeap = nullptr;
+    DescriptorHeap* mHeap = nullptr;
 
 	/** <Command queue for copy execution. */
     D3D12CommandQueue* mQueue = nullptr;
@@ -75,13 +86,10 @@ private:
 	* @brief Creates a 2D texture resource description.
 	* @param width Texture width.
 	* @param height Texture height.
+	* @param mipLevels Number of mip levels.
+	* @param sRGB Whether to create an sRGB format texture.
 	*/
-	static D3D12_RESOURCE_DESC CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels);
+	static D3D12_RESOURCE_DESC CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels, bool sRGB = false);
 
-	/**
-	* @brief Creates a default transition barrier for a texture resource (COPY_DEST to PIXEL_SHADER_RESOURCE).
-	* @param resource Texture resource.
-	* @return Resource barrier structure.
-	*/
-	static D3D12_RESOURCE_BARRIER CreateTextureTransitionBarrier(ID3D12Resource* resource);
+
 };

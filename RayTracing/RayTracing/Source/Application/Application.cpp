@@ -188,11 +188,11 @@ void Application::Update()
 	}
 
 	// Render the scene (if loaded)
-	DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
-	DirectX::XMFLOAT3 camPos = mCameraManager.GetActiveCameraPosition();
-	DirectX::XMFLOAT3 camForward = mCameraManager.GetActiveCameraForward();
+	//DirectX::XMMATRIX vp = mCameraManager.GetActiveViewProjection();
+	//DirectX::XMFLOAT3 camPos = mCameraManager.GetActiveCameraPosition();
+	//DirectX::XMFLOAT3 camForward = mCameraManager.GetActiveCameraForward();
 
-	mRenderer.Update(vp, camPos, camForward);
+	mRenderer.Update(mCameraManager.GetActiveCamera());
 
 	// Process scene loading AFTER rendering current frame
 	// This ensures the loading screen is visible before we start loading
@@ -254,6 +254,64 @@ void Application::OnCreate(HWND hwnd)
 		ExitToMainMenu();
 	});
 	
+	mUIManager.SetSetDLSSModeCallback([this](int mode) {
+		mRenderer.SetDLSSMode(static_cast<sl::DLSSMode>(mode));
+	});
+
+	// Initialize UI with current DLSS mode
+	mUIManager.SetCurrentDLSSMode(static_cast<int>(mRenderer.GetDLSSMode()));
+
+	mUIManager.SetShadowsCallbacks(
+		[this]() { return mRenderer.GetShadowsEnabled(); },
+		[this](bool enabled) { mRenderer.SetShadowsEnabled(enabled); }
+	);
+	mUIManager.SetReflectionsCallbacks(
+		[this]() { return mRenderer.GetReflectionsEnabled(); },
+		[this](bool enabled) { mRenderer.SetReflectionsEnabled(enabled); }
+	);
+	mUIManager.SetMaxReflectionDepthCallbacks(
+		[this]() { return mRenderer.GetMaxReflectionDepth(); },
+		[this](UINT depth) { mRenderer.SetMaxReflectionDepth(depth); }
+	);
+
+	mUIManager.SetMaxTransmissionDepthCallbacks(
+		[this]() { return mRenderer.GetMaxTransmissionDepth(); },
+		[this](UINT depth) { mRenderer.SetMaxTransmissionDepth(depth); }
+	);
+
+
+	mUIManager.SetSunDirectionCallbacks(
+		[this]() { return mRenderer.GetSunDirection(); },
+		[this](float x, float y, float z) { mRenderer.SetSunDirection(x, y, z); }
+	);
+
+	mUIManager.SetSunColorCallbacks(
+		[this]() { return mRenderer.GetSunColor(); },
+		[this](float r, float g, float b) { mRenderer.SetSunColor(r, g, b); }
+	);
+
+	mUIManager.SetSunEnabledCallbacks(
+		[this]() { return mRenderer.GetSunEnabled(); },
+		[this](bool enabled) { mRenderer.SetSunEnabled(enabled); }
+	);
+
+	mUIManager.SetRISCandidatesCallbacks(
+		[this]() { return mRenderer.GetRISCandidates(); },
+		[this](UINT n) { mRenderer.SetRISCandidates(n); },
+		[this]() { return mRenderer.GetNumPointLights(); }
+	);
+
+	mUIManager.SetShadowRaysCallbacks(
+		[this]() { return mRenderer.GetShadowRays(); },
+		[this](UINT n) { mRenderer.SetShadowRays(n); }
+	);
+
+	mUIManager.SetRenderModeCallbacks(
+		[this]() { return static_cast<int>(mRenderer.GetRenderMode()); },
+		[this](int mode) { mRenderer.SetRenderMode(static_cast<RenderMode>(mode)); }
+	);
+
+
 	// Input callbacks
 	input.RegisterKeyPressedCallback(VK_ESCAPE, [this]() {
 		if (mCurrentState == UIManager::AppState::Scene || mCurrentState == UIManager::AppState::Menu)

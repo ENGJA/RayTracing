@@ -4,6 +4,10 @@
 
 using std::cerr, std::endl;
 
+// Export D3D12 Agility SDK version for Windows 10 compatibility
+extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 618; }
+extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\"; }
+
 int main()
 {
 	LPCWSTR className = L"RayTracingWindowClass";

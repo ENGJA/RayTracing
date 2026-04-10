@@ -12,17 +12,17 @@ void CameraManager::Initialize(UINT width, UINT height)
     float aspect = static_cast<float>(width) / static_cast<float>(height);
 
     // Fixed camera
-    CameraParams fixedParams;
-    fixedParams.lookFrom = { 8.0f, 4.0f, 1.0f };
-    fixedParams.lookAt = { 0.0f, 0.0f, 0.0f };
-    fixedParams.up = { 0.0f, 1.0f, 0.0f };
-    fixedParams.fovY = 1.2217304764f;
-    fixedParams.aspect = aspect;
-    fixedParams.nearZ = 1.0f;
-    fixedParams.farZ = 50.0f;
+    //CameraParams fixedParams;
+    //fixedParams.lookFrom = { 8.0f, 4.0f, 1.0f };
+    //fixedParams.lookAt = { 0.0f, 0.0f, 0.0f };
+    //fixedParams.up = { 0.0f, 1.0f, 0.0f };
+    //fixedParams.fovY = 1.2217304764f;
+    //fixedParams.aspect = aspect;
+    //fixedParams.nearZ = 1.0f;
+    //fixedParams.farZ = 50.0f;
 
-    mCameras.emplace_back();
-    mCameras[0].Initialize(CameraType::Fixed, fixedParams);
+    //mCameras.emplace_back();
+    //mCameras[0].Initialize(CameraType::Fixed, fixedParams);
 
     // Free camera
     CameraParams freeParams;
@@ -35,7 +35,7 @@ void CameraManager::Initialize(UINT width, UINT height)
     freeParams.farZ = 50.0f;
 
     mCameras.emplace_back();
-    mCameras[1].Initialize(CameraType::Free, freeParams);
+    mCameras.back().Initialize(CameraType::Free, freeParams);
 
     mActiveIndex = 0;
 

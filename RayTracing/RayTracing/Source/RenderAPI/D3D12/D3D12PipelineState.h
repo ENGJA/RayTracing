@@ -9,9 +9,10 @@ class D3D12PipelineState
 {
 private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> mPipelineState;
-	D3D12RootSignature mRootSignature;
+	ID3D12RootSignature* mRootSignature;
 	HLSLShader mVertexShader;
 	HLSLShader mPixelShader;
+	HLSLShader mComputeShader;
 
 	/**
 	* @brief Creates a base graphics pipeline state description with common settings.
@@ -27,7 +28,7 @@ private:
 	 * @param vertexShader Compiled vertex shader.
 	 * @param pixelShader Compiled pixel shader.
 	 */
-	void InitializeCommon(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader);
+	void InitializeCommon(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader);
 
 public:
 	/**
@@ -38,7 +39,7 @@ public:
 	 * @param inputLayoutDesc Input layout description for vertex buffers.
 	 * @param doubleSided Whether to disable back-face culling.
 	 */
-	void InitializeOpaque(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false);
+	void InitializeOpaque(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false);
 
 	/**
 	 * @brief Builds a PSO for the provided shaders and input layout.
@@ -47,11 +48,18 @@ public:
 	 * @param pixelShader Compiled pixel shader.
 	 * @param inputLayoutDesc Input layout description for vertex buffers.
 	 */
-	void InitializeTransparent(ID3D12Device* pDevice, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc);
+	void InitializeTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided= false);
+
+	void InitializeForwardOpaque(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false);
+
+	void InitializeForwardTransparent(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader vertexShader, HLSLShader pixelShader, const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, bool doubleSided = false);
+
+
+	void InitializeCompute(ID3D12Device* pDevice, ID3D12RootSignature* rootSig, HLSLShader computeShader);
 	/**
 	 * @brief Returns the native root signature pointer.
 	 */
-	ID3D12RootSignature* GetRootSignature() const { return mRootSignature.Get(); }
+	ID3D12RootSignature* GetRootSignature() const { return mRootSignature; }
 	/**
 	 * @brief Returns the native pipeline state pointer.
 	 */

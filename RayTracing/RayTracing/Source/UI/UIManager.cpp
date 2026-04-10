@@ -2,7 +2,9 @@
 #include "UIManager.h"
 #include "RenderAPI/Camera/CameraManager.h"
 #include "Utils/PerformanceMonitor.h"
+#include "ResourceLoading/Model.h"
 #include "imgui.h"
+#include "config.h"
 
 void UIManager::Initialize(HWND hwnd, CameraManager* cameraManager, PerformanceMonitor* perfMonitor)
 {
@@ -206,7 +208,7 @@ void UIManager::RenderPauseMenu()
 void UIManager::RenderSettingsWindow()
 {
 	ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_Once);
-	ImGui::SetNextWindowSize(ImVec2(450, 180), ImGuiCond_Once);
+	ImGui::SetNextWindowSize(ImVec2(450, 330), ImGuiCond_Once);
 
 	if (!ImGui::Begin("Settings", &mShowSettingsWindow, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize))
 	{
@@ -236,6 +238,213 @@ void UIManager::RenderSettingsWindow()
 		mCameraManager->SetMoveSpeedMultiplier(currentSpeed);
 	}
 	
+	ImGui::Spacing();
+	
+	// Get current active camera
+	Camera& activeCamera = mCameraManager->GetActiveCamera();
+	
+	// Near plane slider
+	float nearZ = activeCamera.GetNearZ();
+	ImGui::Text("Near Plane: %.3f", nearZ);
+	if (ImGui::SliderFloat("##near", &nearZ, 0.001f, 10.0f, "%.3f"))
+	{
+		// Clamp to ensure near < far
+		float farZ = activeCamera.GetFarZ();
+		if (nearZ >= farZ)
+			nearZ = farZ - 0.01f;
+		activeCamera.SetNearZ(nearZ);
+	}
+	
+	ImGui::Spacing();
+	
+	// Far plane slider
+	float farZ = activeCamera.GetFarZ();
+	ImGui::Text("Far Plane: %.1f", farZ);
+	if (ImGui::SliderFloat("##far", &farZ, 1.0f, 1000.0f, "%.1f"))
+	{
+		// Clamp to ensure far > near
+		float nearZ = activeCamera.GetNearZ();
+		if (farZ <= nearZ)
+			farZ = nearZ + 0.01f;
+		activeCamera.SetFarZ(farZ);
+	}
+	
+	ImGui::Spacing();
+	ImGui::Text("Rendering Pipeline");
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	if (mGetRenderMode && mSetRenderMode)
+	{
+		// Matches Renderer.h enum: Phong, RayTracing, Hybrid
+		const char* modes[] = { "Phong", "Ray Tracing", "Hybrid" };
+		int currentMode = mGetRenderMode();
+
+		if (ImGui::Combo("Render Mode", &currentMode, modes, IM_ARRAYSIZE(modes)))
+		{
+			mSetRenderMode(currentMode);
+		}
+
+		// Tooltips describing the modes
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			if (currentMode == 0)
+				ImGui::Text("Phong: Fast rasterization-based rendering with basic lighting.");
+			else if (currentMode == 1)
+				ImGui::Text("Ray Tracing: High-quality rendering using ray tracing techniques.");
+			else if (currentMode == 2)
+				ImGui::Text("Hybrid: Combines rasterization and ray tracing for balanced performance and quality.");
+			ImGui::EndTooltip();
+		}
+	}
+	ImGui::Spacing();
+
+	// -------------------------------------------
+	ImGui::Text("Rendering Quality");
+
+	// Shadows
+	if (mGetShadowsEnabled && mSetShadowsEnabled)
+	{
+		bool shadows = mGetShadowsEnabled();
+		if (ImGui::Checkbox("Enable Shadows", &shadows))
+		{
+			mSetShadowsEnabled(shadows);
+		}
+	}
+
+	// Reflections
+	if (mGetReflectionsEnabled && mSetReflectionsEnabled)
+	{
+		bool reflections = mGetReflectionsEnabled();
+		if (ImGui::Checkbox("Enable Reflections", &reflections))
+		{
+			mSetReflectionsEnabled(reflections);
+		}
+	}
+
+	// Reflection Depth
+	if (mGetMaxRecursionDepth && mSetMaxRecursionDepth)
+	{
+		int depth = mGetMaxRecursionDepth();
+		// Update label to be specific
+		if (ImGui::SliderInt("Max Reflection Bounces", &depth, 1, Config::cMaxReflectionDepth))
+		{
+			mSetMaxRecursionDepth(depth);
+		}
+	}
+
+	// Transmission Depth
+	if (mGetMaxTransmissionDepth && mSetMaxTransmissionDepth)
+	{
+		int transDepth = mGetMaxTransmissionDepth();
+		if (ImGui::SliderInt("Max Transparency Bounces", &transDepth, 0, Config::cMaxTransmitionDepth))
+		{
+			mSetMaxTransmissionDepth(transDepth);
+		}
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Controls layers of glass/leaves. Cheap to increase.");
+		}
+	}
+
+
+	if (mGetRISCandidates && mSetRISCandidates && mGetNumPointLights && mGetShadowRays && mSetShadowRays)
+    {
+        UINT numLights = mGetNumPointLights();
+        int currentM = mGetRISCandidates();
+        int currentR = mGetShadowRays();
+
+		UINT risMax = std::min(numLights, Config::cMaxRISCandidates);
+		UINT shadowMax = std::min(numLights, Config::cMaxRISCandidates);
+        
+        if (ImGui::SliderInt("Candidates (Math)", &currentM, 0, risMax))
+        {
+            mSetRISCandidates(currentM);
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many lights to check mathematically per pixel.");
+        
+		if (ImGui::SliderInt("Shadow Rays (Trace)", &currentR, 0, shadowMax))
+        {
+            mSetShadowRays(currentR);
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many shadow rays to trace per pixel.\nHigher = Less Noise, Lower FPS.");
+    }
+	// -------------------------------------------
+
+	ImGui::Text("Lighting");
+
+	if (mGetSunEnabled && mSetSunEnabled)
+	{
+		bool enabled = mGetSunEnabled();
+		if (ImGui::Checkbox("Sun Enabled", &enabled))
+		{
+			mSetSunEnabled(enabled);
+		}
+	}
+
+	// 2. Sun Direction Slider (from previous step)
+	if (mGetSunDirection && mSetSunDirection)
+	{
+		DirectX::XMFLOAT3 sunDir = mGetSunDirection();
+		float dir[3] = { sunDir.x, sunDir.y, sunDir.z };
+		if (ImGui::SliderFloat3("Sun Direction", dir, -1.0f, 1.0f))
+		{
+			mSetSunDirection(dir[0], dir[1], dir[2]);
+		}
+	}
+
+	// 3. Sun Color Picker
+	if (mGetSunColor && mSetSunColor)
+	{
+		DirectX::XMFLOAT3 color = mGetSunColor();
+		float col[3] = { color.x, color.y, color.z };
+
+		// ColorEdit3 lets you pick color comfortably
+		if (ImGui::ColorEdit3("Sun Color", col))
+		{
+			mSetSunColor(col[0], col[1], col[2]);
+		}
+	}
+
+
+	// -------------------------------------------
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	ImGui::Text("DLSS Settings");
+	
+	// DLSS Modes mapping to sl::DLSSMode enum values (excluding Ultra Quality)
+	// Ordered from lowest to highest quality
+	const char* dlssModes[] = {
+		"Off",				  // sl::DLSSMode::eOff = 0
+		"Ultra Performance",  // 4
+		"Max Performance",    // 1
+		"Balanced",           // 2
+		"Max Quality",        // 3
+		"DLAA"                // 6
+	};
+	const int dlssModeValues[] = { 0, 4, 1, 2, 3, 6 };
+
+	// Find UI index corresponding to current mode value
+	int uiModeIndex = 0;
+	for (int i = 0; i < IM_ARRAYSIZE(dlssModeValues); ++i)
+	{
+		if (mCurrentDLSSMode == dlssModeValues[i])
+		{
+			uiModeIndex = i;
+			break;
+		}
+	}
+
+	if (ImGui::Combo("DLSS Mode", &uiModeIndex, dlssModes, IM_ARRAYSIZE(dlssModes)))
+	{
+		mCurrentDLSSMode = dlssModeValues[uiModeIndex];
+		if (mSetDLSSModeCallback)
+			mSetDLSSModeCallback(mCurrentDLSSMode);
+	}
+
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();
@@ -369,11 +578,11 @@ void UIManager::RenderPerformanceOverlay()
 	ImGui::SetNextWindowBgAlpha(0.35f);
 
 	ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration | 
-	                                ImGuiWindowFlags_AlwaysAutoResize | 
-	                                ImGuiWindowFlags_NoSavedSettings | 
-	                                ImGuiWindowFlags_NoFocusOnAppearing | 
-	                                ImGuiWindowFlags_NoNav | 
-	                                ImGuiWindowFlags_NoMove;
+							ImGuiWindowFlags_AlwaysAutoResize | 
+							ImGuiWindowFlags_NoSavedSettings | 
+							ImGuiWindowFlags_NoFocusOnAppearing | 
+							ImGuiWindowFlags_NoNav | 
+							ImGuiWindowFlags_NoMove;
 
 	if (ImGui::Begin("Performance", nullptr, windowFlags))
 	{
@@ -385,7 +594,6 @@ void UIManager::RenderPerformanceOverlay()
 		float cpuUsage = mPerformanceMonitor->GetCPUUsage();
 		float gpuUsage = mPerformanceMonitor->GetGPUUsage();
 		float gpu3DUsage = mPerformanceMonitor->GetGPU3DUsage();
-		float gpuComputeUsage = mPerformanceMonitor->GetGPUComputeUsage();
 		float ramUsage = mPerformanceMonitor->GetRAMUsageMB();
 		float vramUsage = mPerformanceMonitor->GetVRAMUsageMB();
 
@@ -402,10 +610,14 @@ void UIManager::RenderPerformanceOverlay()
 		
 		ImGui::Text("CPU: %.1f%%", cpuUsage);
 		
-		if (gpuUsage > 0.0f)
+		// Display GPU usage (prefer 3D usage, fallback to general GPU usage)
+		if (gpu3DUsage > 0.0f)
 		{
-			ImGui::Text("GPU 3D/Graphics: %.1f%%", gpu3DUsage);
-			ImGui::Text("GPU Compute/RT: %.1f%%", gpuComputeUsage);
+			ImGui::Text("GPU: %.1f%%", gpu3DUsage);
+		}
+		else if (gpuUsage > 0.0f)
+		{
+			ImGui::Text("GPU: %.1f%%", gpuUsage);
 		}
 		else
 		{
@@ -470,7 +682,7 @@ void UIManager::RenderMultiSceneSelectionWindow()
 {
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
 	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(650, 500), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(650, 550), ImGuiCond_Appearing);
 
 	std::string windowTitle = mIsExtensionMode ? "Add Extension Scene(s)" : "Scene Selection";
 	if (!ImGui::Begin(windowTitle.c_str(), &mShowMultiSceneSelectionWindow, ImGuiWindowFlags_NoCollapse))
@@ -499,7 +711,7 @@ void UIManager::RenderMultiSceneSelectionWindow()
 
 	// Display list of selected files with delete buttons
 	ImGui::Text("Selected Files (%zu):", mSelectedScenePaths.size());
-	ImGui::BeginChild("FileList", ImVec2(0, -110), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+	ImGui::BeginChild("FileList", ImVec2(0, -160), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 	
 	if (mSelectedScenePaths.empty())
 	{
@@ -567,6 +779,25 @@ void UIManager::RenderMultiSceneSelectionWindow()
 	
 	ImGui::EndChild();
 
+	ImGui::Spacing();
+	
+	// Loading options section
+	ImGui::Separator();
+	ImGui::Text("Loading Options:");
+	ImGui::Spacing();
+	
+	// Checkbox for loading double-sided materials without textures
+	if (ImGui::Checkbox("Load double-sided materials without textures", &Model::sLoadDoubleSidedWithoutTextures))
+	{
+		// Value is automatically updated by ImGui
+	}
+	if (ImGui::IsItemHovered())
+	{
+		ImGui::SetTooltip("When enabled, loads all double-sided materials even if they have no textures.\nWhen disabled (default), skips double-sided materials without textures.");
+	}
+	
+	ImGui::Spacing();
+	ImGui::Separator();
 	ImGui::Spacing();
 	
 	// Info text

@@ -38,6 +38,12 @@ HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, const
 	sourceBuffer.Size = sourceBlob->GetBufferSize();
 	sourceBuffer.Encoding = DXC_CP_ACP;
 
+
+	// 1. Get the directory of the shader file
+	std::wstring pathStr = filePath;
+	size_t lastSlash = pathStr.find_last_of(L"\\/");
+	std::wstring directory = (lastSlash != std::wstring::npos) ? pathStr.substr(0, lastSlash) : L".";
+
 	std::vector<LPCWSTR> arguments = {
 		L"-E", // entry point
 		entryPoint,
@@ -50,6 +56,7 @@ HLSLShader HLSLCompiler::CompileFromFile(LPCWSTR filePath, LPCWSTR target, const
 #else
 		L"-O3", // optimization level 3
 #endif
+		L"-I", directory.c_str() // include directory
 	};
 
 	std::vector<std::wstring> macroStrings;

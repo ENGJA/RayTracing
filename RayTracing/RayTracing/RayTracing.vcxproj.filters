@@ -207,6 +207,12 @@
     <ClCompile Include="Source\RenderAPI\RT\RayTracingBuilder.cpp">
       <Filter>Pliki źródłowe</Filter>
     </ClCompile>
+    <ClCompile Include="Source\RenderAPI\Descriptors\DescriptorHeap.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\RenderAPI\RT\RayTracingPipeline.cpp">
+      <Filter>Pliki źródłowe</Filter>
+    </ClCompile>
     <ClCompile Include="..\Includes\imgui\imgui.cpp">
       <Filter>Pliki źródłowe\Imgui</Filter>
     </ClCompile>
@@ -347,6 +353,12 @@
     <ClInclude Include="Source\RenderAPI\RT\RayTracingBuilder.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
+    <ClInclude Include="Source\RenderAPI\Descriptors\DescriptorHeap.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\RenderAPI\RT\RayTracingPipeline.h">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Utils\PerformanceMonitor.h">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
@@ -355,15 +367,22 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Source\Shaders\PixelShader.hlsl" />
-    <FxCompile Include="Source\Shaders\VertexShader.hlsl" />
     <FxCompile Include="Source\Shaders\MipmapShader.hlsl" />
-    <FxCompile Include="Source\Shaders\PixelShader_Masked.hlsl" />
+    <FxCompile Include="Source\Shaders\LightPassCS.hlsl" />
+    <FxCompile Include="Source\Shaders\TransparentPixelShader.hlsl" />
+    <FxCompile Include="Source\Shaders\CompositeCS.hlsl" />
+    <FxCompile Include="Source\Shaders\ToneMapCS.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredRT.hlsl" />
+    <FxCompile Include="Source\Shaders\FullRT.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredPS_Masked.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredPS.hlsl" />
+    <FxCompile Include="Source\Shaders\PhongPS.hlsl" />
+    <FxCompile Include="Source\Shaders\PhongPS_Masked.hlsl" />
+    <FxCompile Include="Source\Shaders\PhongVS.hlsl" />
+    <FxCompile Include="Source\Shaders\DeferredVS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="..\Libs\assimp-vc143-mt.dll" />
+    <None Include="Source\Shaders\PBR.hlsli" />
   </ItemGroup>
 </Project>

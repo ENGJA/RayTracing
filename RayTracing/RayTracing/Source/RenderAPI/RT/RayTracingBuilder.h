@@ -41,11 +41,13 @@ public:
 	* @param transparent list of transparent meshes.
     */
     void BuildAllBLAS(
-        std::vector<MeshGpuData>& opaqueSingle, 
+        std::vector<MeshGpuData>& opaqueSingle,
         std::vector<MeshGpuData>& opaqueDouble,
-        std::vector<MeshGpuData>& maskedSingle, 
+        std::vector<MeshGpuData>& maskedSingle,
         std::vector<MeshGpuData>& maskedDouble,
-        std::vector<MeshGpuData>& transparent);
+        std::vector<MeshGpuData>& transparentSignle,
+        std::vector<MeshGpuData>& transparentDouble);
+
 
 	/**
 	* @brief Builds the top-level acceleration structure (TLAS) from categorized mesh lists.
@@ -63,11 +65,29 @@ public:
         const std::vector<MeshGpuData>& opaqueDouble, 
         const std::vector<MeshGpuData>& maskedSingle, 
         const std::vector<MeshGpuData>& maskedDouble,
-        const std::vector<MeshGpuData>& transparent,
+        const std::vector<MeshGpuData>& transparentSingle,
+        const std::vector<MeshGpuData>& transparentDouble,
         D3D12Resource& tlasResultBuffer, 
         D3D12Resource& tlasScratchBuffer, 
         D3D12Resource& instanceDescsBuffer);
 
+
+    void BuildSingleGlobalBLAS(
+        std::vector<MeshGpuData>& opaqueSingle,
+        std::vector<MeshGpuData>& opaqueDouble,
+        std::vector<MeshGpuData>& maskedSingle,
+        std::vector<MeshGpuData>& maskedDouble,
+        std::vector<MeshGpuData>& transparentSingle,
+        std::vector<MeshGpuData>& transparentDouble,
+        D3D12Resource& outBlasResult);
+
+
+    void BuildSingleGlobalTLAS(
+        const D3D12Resource& unifiedBlas,
+        UINT totalGeomCount,
+        D3D12Resource& tlasResultBuffer,
+        D3D12Resource& tlasScratchBuffer,
+        D3D12Resource& instanceDescsBuffer);
 
     /**
 	* @brief Clears temporary scratch resources used during acceleration structure builds.

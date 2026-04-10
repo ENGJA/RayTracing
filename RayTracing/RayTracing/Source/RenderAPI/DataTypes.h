@@ -18,9 +18,25 @@ struct LightData
 struct ConstantBufferData
 {
 	DirectX::XMMATRIX vpMatrix;		///< View-Projection matrix
-	DirectX::XMFLOAT4 viewPos;		///< world-space camera position (w .xyz)
+	DirectX::XMMATRIX InvVpMatrix;    // Compute Shader needs this (NEW)
+	
+	DirectX::XMFLOAT3 viewPos;		///< world-space camera position (w .xyz)
 	int numLights;					///< number of active lights
-	float _pad[3];					///< padding for alignment
+
+	int numPointLights;
+	int frameCount;
+	int shadowsEnabled;
+	int reflectionsEnabled;
+
+	int maxReflectionDepth;
+	int maxTransmissionDepth;
+	int risCandidates;
+	int shadowRays;
+
+	float nearZ;
+	float farZ;
+	float _pad[2]; // Padding for 16-byte alignment
+
 	LightData lights[cMaxLights];
 };
 
@@ -30,6 +46,12 @@ struct MeshMaterialData
 	float metalnessFactor = 1.0f;
 	float roughnessFactor = 1.0f;
 	float alphaCutoff = 0.5f;
-	float _pad[1]; // Padding for 16-byte alignment
+	float transmissionFactor = 0.0f;
 	DirectX::XMFLOAT4 emissiveFactor = { 0.0f, 0.0f, 0.0f, 1.0f }; // .w not used, reserved for alignment
+
+	float ior = 1.5f;                   
+	float attenuationDistance = 10000.0f; 
+	float _pad[2];                      
+
+	DirectX::XMFLOAT4 attenuationColor = { 1.0f, 1.0f, 1.0f, 1.0f }; // Color of the volume (medium)
 };

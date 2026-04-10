@@ -2,10 +2,11 @@
 #include "TextureLoader.h"
 #include "helpers.h"
 
+
 using Microsoft::WRL::ComPtr;
 using std::wcout, std::endl;
 
-void TextureLoader::Initialize(ID3D12Device* pDevice, ShaderVisibleDescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader)
+void TextureLoader::Initialize(ID3D12Device* pDevice, DescriptorHeap* heap, D3D12CommandQueue* queue, D3D12CommandList* cmdList, UploadHeap* uploadHeap, HLSLShader mipmapComputeShader)
 {
 	mDevice = pDevice;
 	mHeap = heap;
@@ -29,11 +30,11 @@ static UINT CalculateMipLevels(UINT width, UINT height)
 }
 
 
-GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue)
+GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img, const std::function<void()>& executeQueue, bool sRGB)
 {
 	// Describe and create the texture resource
 	const UINT mipLevels = CalculateMipLevels(img.width, img.height);
-	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(img.width, img.height, mipLevels);
+	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(img.width, img.height, mipLevels, sRGB);
 	
 	// Calculate required memory
 	UINT64 textureSize = 0;
@@ -48,7 +49,8 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	GPUTexture gpuTex{};
 	gpuTex.width = img.width;
 	gpuTex.height = img.height;
-	gpuTex.format = desc.Format;
+	// For sRGB textures, store the SRGB format (not TYPELESS) for creating SRV later
+	gpuTex.format = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 	gpuTex.mipLevels = mipLevels;
 	
 	try
@@ -68,7 +70,13 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 	UINT numRows = 0;
 	UINT64 rowSize = 0;
 	UINT64 totalBytes = 0;
-	mDevice->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, &numRows, &rowSize, &totalBytes);
+	
+	// GetCopyableFootprints doesn't work with TYPELESS formats, use UNORM instead
+	D3D12_RESOURCE_DESC descForFootprint = desc;
+	if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS)
+		descForFootprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	
+	mDevice->GetCopyableFootprints(&descForFootprint, 0, 1, 0, &footprint, &numRows, &rowSize, &totalBytes);
 
 
 	// Allocate upload heap space and copy data
@@ -99,17 +107,45 @@ GPUTexture TextureLoader::CreateTextureFromDecodedImage(const DecodedImage& img,
 
 	mCmdList->Get()->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 
-	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
+	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		gpuTex.resource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
-	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, desc.Format, executeQueue);
+	// For mipmap generation, use UNORM format (compute shaders can't write to sRGB or TYPELESS)
+	DXGI_FORMAT mipmapFormat = (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) 
+		? DXGI_FORMAT_R8G8B8A8_UNORM 
+		: desc.Format;
+	
+	mMipmapGenerator.GenerateMipmaps(gpuTex.resource.Get(), img.width, img.height, mipLevels, mipmapFormat, executeQueue);
 
+	return gpuTex;
+}
+
+GPUTexture TextureLoader::CreateTextureFromDDSPath(const std::wstring& path, DirectX::ResourceUploadBatch& batch)
+{
+	GPUTexture gpuTex{};
+
+	// 1. Create the Resource
+	HRESULT hr = DirectX::CreateDDSTextureFromFile(
+		mDevice,
+		batch,
+		path.c_str(),
+		gpuTex.resource.GetAddressOf(), true);
+	ASSERT_HR(hr, L"Failed to create texture from DDS file: " + path);
+
+	D3D12_RESOURCE_DESC desc = gpuTex.resource.Get()->GetDesc();
+	gpuTex.width = static_cast<UINT>(desc.Width);
+	gpuTex.height = desc.Height;
+	gpuTex.mipLevels = desc.MipLevels;
+	gpuTex.format = desc.Format;
 	return gpuTex;
 }
 
 GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
 {
-	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(1, 1, 1);
+	D3D12_RESOURCE_DESC desc = CreateTexture2DDesc(1, 1, 1, false); // Not sRGB for dummy textures
 
 	desc.Alignment = D3D12_SMALL_RESOURCE_PLACEMENT_ALIGNMENT;
 
@@ -145,40 +181,29 @@ GPUTexture TextureLoader::CreateSolidDummyTexture(uint32_t color)
 
 	mCmdList->Get()->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 
-	D3D12_RESOURCE_BARRIER barrier = CreateTextureTransitionBarrier(gpuTex.resource.Get());
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		gpuTex.resource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	mCmdList->Get()->ResourceBarrier(1, &barrier);
 
 	return gpuTex;
 }
 
-D3D12_RESOURCE_DESC TextureLoader::CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels)
+D3D12_RESOURCE_DESC TextureLoader::CreateTexture2DDesc(UINT width, UINT height, UINT16 mipLevels, bool sRGB)
 {
-	return
-	{
-		.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-		.Width = width,
-		.Height = height,
-		.DepthOrArraySize = 1,
-		.MipLevels = mipLevels,
-		.Format = DXGI_FORMAT_R8G8B8A8_UNORM,
-		.SampleDesc = { 1, 0 },
-		.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
-		.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-	};
-}
-
-D3D12_RESOURCE_BARRIER TextureLoader::CreateTextureTransitionBarrier(ID3D12Resource* pResource)
-{
-	return
-	{
-		.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-		.Transition = 
-			{
-			.pResource = pResource,
-			.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-			.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST,
-			.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-			}
-	};
+	// For sRGB textures, use TYPELESS format to allow both UNORM (UAV) and SRGB (SRV) views
+	DXGI_FORMAT format = sRGB ? DXGI_FORMAT_R8G8B8A8_TYPELESS : DXGI_FORMAT_R8G8B8A8_UNORM;
+	
+	return CD3DX12_RESOURCE_DESC::Tex2D(
+		format,
+		width,
+		height,
+		1, // array size
+		mipLevels,
+		1, // sample count
+		0, // sample quality
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	);
 }

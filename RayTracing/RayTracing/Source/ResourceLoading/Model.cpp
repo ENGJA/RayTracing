@@ -9,7 +9,8 @@
 #include "ResourceLoading/ImageDecoder.h"
 using std::string, std::vector, std::cerr, std::endl;
 
-
+// Define static member
+bool Model::sLoadDoubleSidedWithoutTextures = false;
 
 AlphaProperties Model::GetAlphaProperties(const aiMaterial* material)
 {
@@ -55,13 +56,23 @@ AlphaProperties Model::GetAlphaProperties(const aiMaterial* material)
 }
 
 
+//static DirectX::XMMATRIX AiToXMMatrix(const aiMatrix4x4& m)
+//{
+//	return DirectX::XMMATRIX(
+//		(float)m.a1, (float)m.a2, (float)m.a3, (float)m.a4,
+//		(float)m.b1, (float)m.b2, (float)m.b3, (float)m.b4,
+//		(float)m.c1, (float)m.c2, (float)m.c3, (float)m.c4,
+//		(float)m.d1, (float)m.d2, (float)m.d3, (float)m.d4
+//	);
+//}
+
 static DirectX::XMMATRIX AiToXMMatrix(const aiMatrix4x4& m)
 {
 	return DirectX::XMMATRIX(
-		(float)m.a1, (float)m.a2, (float)m.a3, (float)m.a4,
-		(float)m.b1, (float)m.b2, (float)m.b3, (float)m.b4,
-		(float)m.c1, (float)m.c2, (float)m.c3, (float)m.c4,
-		(float)m.d1, (float)m.d2, (float)m.d3, (float)m.d4
+		(float)m.a1, (float)m.b1, (float)m.c1, (float)m.d1,
+		(float)m.a2, (float)m.b2, (float)m.c2, (float)m.d2,
+		(float)m.a3, (float)m.b3, (float)m.c3, (float)m.d3,
+		(float)m.a4, (float)m.b4, (float)m.c4, (float)m.d4
 	);
 }
 
@@ -103,62 +114,60 @@ void Model::loadModel(const string& path)
 	aiMatrix4x4 identity;
 
 	mLights.clear();
-	if (scene->mNumLights > 0)
+	for (unsigned int li = 0; li < scene->mNumLights && mLights.size() < cMaxLights; ++li)
 	{
-		for (unsigned int li = 0; li < scene->mNumLights && mLights.size() < cMaxLights; ++li)
+		aiLight* aLight = scene->mLights[li];
+		LightData ld{};
+		//ld.color = DirectX::XMFLOAT4(
+		//	1.0f,
+		//	0.8f,
+		//	0.3f,
+		//	0.5f 
+		//);
+
+		ld.diffuseColor = aLight->mColorDiffuse.IsBlack() ? DirectX::XMFLOAT4(5.0f, 5.0f, 5.0f, 1.0f) : DirectX::XMFLOAT4(
+			aLight->mColorDiffuse.r,
+			aLight->mColorDiffuse.g,
+			aLight->mColorDiffuse.b,
+			1.0f 
+		);
+
+		ld.specularColor = aLight->mColorSpecular.IsBlack() ? DirectX::XMFLOAT4(5.0f, 5.0f, 5.0f, 1.0f) : DirectX::XMFLOAT4(
+			aLight->mColorSpecular.r,
+			aLight->mColorSpecular.g,
+			aLight->mColorSpecular.b,
+			1.0f 
+		);
+
+		if (aLight->mType == aiLightSource_DIRECTIONAL)
 		{
-			aiLight* aLight = scene->mLights[li];
-			LightData ld{};
-			//ld.color = DirectX::XMFLOAT4(
-			//	1.0f,
-			//	0.8f,
-			//	0.3f,
-			//	0.5f 
-			//);
-
-			ld.diffuseColor = aLight->mColorDiffuse.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
-				aLight->mColorDiffuse.r,
-				aLight->mColorDiffuse.g,
-				aLight->mColorDiffuse.b,
+			ld.dirType = DirectX::XMFLOAT4(
+				aLight->mDirection.x,
+				aLight->mDirection.y,
+				aLight->mDirection.z,
 				1.0f 
 			);
-
-			ld.specularColor = aLight->mColorSpecular.IsBlack() ? DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f) : DirectX::XMFLOAT4(
-				aLight->mColorSpecular.r,
-				aLight->mColorSpecular.g,
-				aLight->mColorSpecular.b,
-				1.0f 
-			);
-
-			if (aLight->mType == aiLightSource_DIRECTIONAL)
-			{
-				ld.dirType = DirectX::XMFLOAT4(
-					aLight->mDirection.x,
-					aLight->mDirection.y,
-					aLight->mDirection.z,
-					1.0f 
-				);
-				ld.position = DirectX::XMFLOAT4(0, 0, 0, 0);
-			}
-			else 
-			{
-				ld.position = DirectX::XMFLOAT4(
-					aLight->mPosition.x,
-					aLight->mPosition.y,
-					aLight->mPosition.z,
-					1.0f 
-				);
-				ld.dirType = DirectX::XMFLOAT4(
-					aLight->mDirection.x,
-					aLight->mDirection.y,
-					aLight->mDirection.z,
-					0.0f 
-				);
-			}
-
-			mLights.push_back(ld);
+			ld.position = DirectX::XMFLOAT4(0, 0, 0, 0);
 		}
+		else 
+		{
+			ld.position = DirectX::XMFLOAT4(
+				aLight->mPosition.x,
+				aLight->mPosition.y,
+				aLight->mPosition.z,
+				1.0f 
+			);
+			ld.dirType = DirectX::XMFLOAT4(
+				aLight->mDirection.x,
+				aLight->mDirection.y,
+				aLight->mDirection.z,
+				0.0f 
+			);
+		}
+
+		mLights.push_back(ld);
 	}
+	
 
 	processNode(scene->mRootNode, scene, identity, tangentSpaceHandednessMultiplier );
 }
@@ -179,11 +188,15 @@ void Model::processNode(aiNode* node, const aiScene* scene, const aiMatrix4x4& p
 			mat->Get(AI_MATKEY_TWOSIDED, twoSided);
 			if (twoSided)
 			{
-				bool hasTexture = false;
-				if (mat->GetTextureCount(aiTextureType_BASE_COLOR) == 0 &&
-					mat->GetTextureCount(aiTextureType_DIFFUSE) == 0)
+				// Skip double-sided materials without textures only if configuration is disabled
+				if (!sLoadDoubleSidedWithoutTextures)
 				{
-					continue;
+					bool hasTexture = false;
+					if (mat->GetTextureCount(aiTextureType_BASE_COLOR) == 0 &&
+						mat->GetTextureCount(aiTextureType_DIFFUSE) == 0)
+					{
+						continue;
+					}
 				}
 			}
 		}
@@ -335,6 +348,31 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& t
 			DirectX::XMVECTOR v = DirectX::XMLoadFloat4(&matData.emissiveFactor);
 			v = DirectX::XMVectorScale(v, static_cast<float>(f));
 			DirectX::XMStoreFloat4(&matData.emissiveFactor, v);
+		}
+		// 1. Transmission (KHR_materials_transmission)
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_TRANSMISSION_FACTOR, &f))
+		{
+			matData.transmissionFactor = static_cast<float>(f);
+		}
+
+		// 2. Index of Refraction (KHR_materials_ior)
+		// Default glTF IOR is 1.5. If not present, Assimp might return 1.0 or fail.
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_REFRACTI, &f))
+		{
+			matData.ior = static_cast<float>(f);
+		}
+
+		// 3. Volume (KHR_materials_volume)
+		if (AI_SUCCESS == aiGetMaterialFloat(material, AI_MATKEY_VOLUME_ATTENUATION_DISTANCE, &f))
+		{
+			// glTF allows infinity, handle practically
+			matData.attenuationDistance = (f == 0.0f) ? FLT_MAX : static_cast<float>(f);
+		}
+
+		aiColor4D volColor;
+		if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_VOLUME_ATTENUATION_COLOR, &volColor))
+		{
+			matData.attenuationColor = { volColor.r, volColor.g, volColor.b, 1.0f };
 		}
 	}
 

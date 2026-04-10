@@ -12,4 +12,8 @@ namespace Config
 	constexpr static DXGI_FORMAT cDepthBufferFormat = DXGI_FORMAT_D32_FLOAT; ///< Depth buffer format
 	constexpr static UINT cNumberOfTextureSlots = 5; ///< Number of texture slots per material
 	constexpr static UINT cNumberOfSrvDescriptors = 4096;
+	constexpr static UINT cMaxReflectionDepth = 4;
+	constexpr static UINT cMaxTransmitionDepth = 10;
+	constexpr static UINT cMaxRISCandidates = 32;
+	constexpr static UINT cMaxPointShadowRays = 32;
 }

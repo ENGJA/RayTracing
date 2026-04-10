@@ -53,6 +53,10 @@ public:
 	std::vector<LightData> mLights;
 	/**< Directory of the source model, used to resolve relative textures. */
 	std::string mDirectory;
+
+	/**< Static configuration: Load double-sided materials without textures */
+	static bool sLoadDoubleSidedWithoutTextures;
+
 	/**
 	 * @brief Extracts alpha properties from a material (render layer and cutoff).
 	 * @param material Assimp material.

@@ -97,6 +97,8 @@ public:
     void AddPitch(float delta);
     void MoveLocal(float forward, float right, float up);
     void ChangeFov(float delta);
+    void SetNearZ(float nearZ);
+    void SetFarZ(float farZ);
 
     /**
      * @brief Update aspect ratio and rebuild projection matrix.
@@ -104,4 +106,12 @@ public:
      * @param height New render target height.
      */
     void OnResize(UINT width, UINT height);
+
+
+    float GetNearZ() const { return mNearZ; }
+	float GetFarZ() const { return mFarZ; }
+	float GetFovY() const { return mFovY; }
+    DirectX::XMMATRIX GetViewMatrix() const;
+	DirectX::XMMATRIX GetProjMatrix() const;
+	float GetAspect() const { return mAspect; }
 };
