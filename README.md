@@ -13,6 +13,13 @@ This project was developed as an engineering thesis at the Warsaw University of 
 
 The aim of this project was to design and implement a real-time rendering engine utilizing hardware-accelerated ray tracing via the **DirectX 12** API and its **DirectX Raytracing (DXR)** extension. The application demonstrates the practical application of modern rendering techniques to achieve high visual fidelity in interactive environments.
 
+### Key Features
+* **Hybrid Rendering Engine:** Support for rasterization, full ray tracing, and combined (hybrid) modes.
+* **Physically Based Rendering (PBR):** Implementation of materials based on the PBR model (Albedo, Roughness, Metalness).
+* **Advanced Light Sampling:** Implementation of **Resampled Importance Sampling (RIS)** with **Weighted Reservoir Sampling (WRS)** for efficient lighting calculations.
+* **NVIDIA DLSS Integration:** Full support for DLSS 3.5, including **Ray Reconstruction** and **Super Resolution** for improved performance and image quality.
+* **Visual Effects:** Realistic shadows, reflections, refraction (utilizing Beer-Lambert law for absorption), and recursive ray tracing.
+
 ## Building the Project
 
 To configure and generate the project files, run the following command in the root directory:
