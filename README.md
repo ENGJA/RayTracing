@@ -34,8 +34,7 @@ This command will automatically download all the required DLLs and libraries nee
 
 You can read the full engineering thesis (in Polish) by clicking the link below:
 
-### [Read the Engineering Thesis (PDF)](https://github.com/user-attachments/files/26857491/RayTracing.pdf)
-
+### [Read the Engineering Thesis (PDF)](https://github.com/user-attachments/files/26894617/RayTracing.pdf)
 
 ## Gallery
 <img width="2560" height="1369" alt="apartament2" src="https://github.com/user-attachments/assets/053fe54c-3396-48ee-9618-670bba5d5af8" />
